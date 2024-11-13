@@ -32,9 +32,3 @@ uv add omu-eddy-covariance
 ## コントリビュータ
 
 - [connect0459](https://github.com/connect0459)
-
-## 更新履歴
-
-| 日付 | バージョン | 内容 |
-| :--: | :--: | :--- |
-| 2024-11-13 | `v0.1.0` | リポジトリを作成 |
