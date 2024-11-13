@@ -2,7 +2,7 @@
 name = "omu-eddy-covariance"
 # version属性は"setuptools_scm"が自動的に設定
 dynamic = ["version"]
-description = "渦相関法を主とする大気観測データを解析するパッケージ"
+description = "This package provides methods for analyzing atmospheric observation data, primarily eddy covariance methods."
 authors = [{ name = "connect0459", email = "connect0459@gmail.com" }]
 # PILの代わりにfork先のpillowをインストール
 # 詳細は<https://pillow.readthedocs.io/en/stable/>を参照
