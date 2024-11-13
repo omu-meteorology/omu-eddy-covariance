@@ -1,1 +1,1 @@
-# omu-eddy-covariance
+# OMU Eddy Covariance
