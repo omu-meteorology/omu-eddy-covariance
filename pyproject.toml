@@ -25,12 +25,12 @@ requires-python = ">= 3.11"
 # PyPIで公開するための追加情報
 license = "MIT"
 classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Topic :: Scientific/Engineering :: Atmospheric Science",
+  "Development Status :: 3 - Alpha",                        # "Alpha":開発初期段階を示す
+  "Intended Audience :: Science/Research",                  # "Science/Research":科学研究者向け
+  "License :: OSI Approved :: MIT License",                 # MITライセンスで公開
+  "Programming Language :: Python :: 3",                    # Python 3 系列に対応
+  "Programming Language :: Python :: 3.11",                 # 特にPython 3.11 に対応
+  "Topic :: Scientific/Engineering :: Atmospheric Science", # "Atmospheric Science":大気科学分野
 ]
 keywords = [
   "omu",
