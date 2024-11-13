@@ -118,6 +118,7 @@ class SpectrumCalculator:
         self,
         key: str,
         frequency_weighted: bool = True,
+        weight_type: int = 0,
         smooth: bool = False,
         window_size: int = 30,
     ) -> tuple:
@@ -127,6 +128,7 @@ class SpectrumCalculator:
         Args:
             key (str): データの列名
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
+            weight_type (int, optional): 重みづけの種類。0は加法的、1は乗法的な重みづけを行う。デフォルトは0。
             smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
             window_size (int, optional): 平滑化のための移動平均ウィンドウサイズ。デフォルトは30。
 
@@ -175,16 +177,16 @@ class SpectrumCalculator:
         nonzero_freqs: np.ndarray = rfft_freq[nonzero_mask]
         nonzero_power_spectrum: np.ndarray = power_spectrum[nonzero_mask]
 
-        # # 周波数の加法的重みづけ
-        # if frequency_weighted:
-        #     nonzero_power_spectrum *= nonzero_freqs  # 各周波数に対応する値をかける
+        # 周波数の加法的重みづけ
+        if frequency_weighted and weight_type == 0:
+            nonzero_power_spectrum *= nonzero_freqs  # 各周波数に対応する値をかける
 
         # 周波数軸とパワースペクトルの対数を取る
         log_freqs: np.ndarray = np.log10(nonzero_freqs)
         log_power_spectrum: np.ndarray = np.log10(nonzero_power_spectrum)
 
         # 周波数の乗法的重みづけ
-        if frequency_weighted:
+        if frequency_weighted and weight_type == 1:
             log_power_spectrum *= log_freqs  # 各周波数に対応する値をかける
 
         if smooth:
@@ -219,6 +221,7 @@ class SpectrumCalculator:
         key1: str,
         key2: str,
         frequency_weighted: bool = True,
+        weight_type: int = 0,
         smooth: bool = False,
         window_size: int = 30,
     ) -> tuple:
@@ -229,6 +232,7 @@ class SpectrumCalculator:
             key1 (str): データの列名1
             key2 (str): データの列名2
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
+            weight_type (int, optional): 重みづけの種類。0は加法的、1は乗法的な重みづけを行う。デフォルトは0。
             smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
             window_size (int, optional): 平滑化のための移動平均ウィンドウサイズ。デフォルトは30。
 
@@ -287,16 +291,16 @@ class SpectrumCalculator:
         nonzero_cospectrum: np.ndarray = cospectrum[nonzero_mask]
 
         # 周波数の加法的重みづけ
-        if frequency_weighted:
+        if frequency_weighted and weight_type == 0:
             nonzero_cospectrum *= nonzero_freqs  # 各周波数に対応する値をかける
 
         # 周波数軸と正規化コスペクトルの対数を取る
         log_freqs: np.ndarray = np.log10(nonzero_freqs)
         log_cospectrum: np.ndarray = np.log10(np.abs(nonzero_cospectrum))
 
-        # # 周波数の乗法的重みづけ
-        # if frequency_weighted:
-        #     log_cospectrum *= log_freqs  # 各周波数に対応する値をかける
+        # 周波数の乗法的重みづけ
+        if frequency_weighted and weight_type == 1:
+            log_cospectrum *= log_freqs  # 各周波数に対応する値をかける
 
         if smooth:
             # データ端の処理のため、端点を複製
