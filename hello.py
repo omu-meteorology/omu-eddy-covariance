@@ -1,5 +1,5 @@
 def main():
-    print("Hello from omu-meteorology!")
+    print("Hello from omu-eddy-covariance!")
 
 
 if __name__ == "__main__":

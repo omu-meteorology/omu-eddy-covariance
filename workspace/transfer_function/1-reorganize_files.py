@@ -2,7 +2,7 @@ import os
 from omu_eddy_covariance import FftFileReorganizer
 
 # 変数定義
-base_path = "/home/connect0459/workspace/labo/omu-meteorology/workspace/transfer_function/private/2024.08.06"
+base_path = "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
 input_dir_name: str = "fft"
 output_dir_name: str = "sorted"
 # input_dir_name: str = "fft-detrend"

@@ -6,7 +6,7 @@ from omu_eddy_covariance import FluxFootprintAnalyzer
 
 
 # プロジェクトルートや作業ディレクトリのパスを定義
-project_root: str = "/home/connect0459/workspace/labo/omu-meteorology"
+project_root: str = "/home/connect0459/workspace/labo/omu-eddy-covariance"
 base_path: str = f"{project_root}/workspace/footprint"
 # I/O 用ディレクトリのパス
 csv_dir_path: str = f"{base_path}/private/csv_files"

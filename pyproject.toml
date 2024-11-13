@@ -1,7 +1,7 @@
 [project]
 name = "omu-eddy-covariance"
 version = "0.1.0"
-description = "大阪公立大学生態気象学研究グループのパッケージ"
+description = "渦相関法を主とする大気観測データを解析するパッケージ"
 authors = [{ name = "connect0459", email = "connect0459@gmail.com" }]
 # PILの代わりにfork先のpillowをインストール
 # 詳細は<https://pillow.readthedocs.io/en/stable/>を参照
@@ -31,11 +31,20 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
-keywords = ["omu", "meteorology"]
+keywords = [
+  "omu",
+  "meteorology",
+  "eddy",
+  "covariance",
+  "flux",
+  "power",
+  "co",
+  "spectrum",
+]
 
 [project.urls]
-"Homepage" = "https://github.com/omu-meteorology/omu-eddy-covariance"
-"Bug Tracker" = "https://github.com/omu-meteorology/omu-eddy-covariance/issues"
+"Homepage" = "https://github.com/omu-eddy-covariance/omu-eddy-covariance"
+"Bug Tracker" = "https://github.com/omu-eddy-covariance/omu-eddy-covariance/issues"
 
 [build-system]
 requires = ["hatchling"]

@@ -2,7 +2,7 @@ import os
 from omu_eddy_covariance import TransferFunctionCalculator
 
 # 変数定義
-base_path = "/home/connect0459/workspace/labo/omu-meteorology/workspace/transfer_function/private/2024.08.06"
+base_path = "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
 tf_dir_name: str = "tf"
 
 # tf_file_name: str = "TF_Ultra.2024.08.06.csv"

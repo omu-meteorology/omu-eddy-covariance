@@ -3,15 +3,15 @@ from omu_eddy_covariance import MobileSpatialAnalyzer, MSAInputConfig
 # 設定例：MSAInputConfigによる詳細指定
 inputs = [
     # MSAInputConfig(
-    #     path="/home/connect0459/workspace/labo/omu-meteorology/workspace/mobile/private/data/2024.10.17/input/Pico100121_241017_092120+.txt",
+    #     path="/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.10.17/input/Pico100121_241017_092120+.txt",
     #     delay=7,
     # ),
     # MSAInputConfig(
-    #     path="/home/connect0459/workspace/labo/omu-meteorology/workspace/mobile/private/data/2024.11.09/input/Pico100121_241109_103128.txt",
+    #     path="/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.09/input/Pico100121_241109_103128.txt",
     #     delay=7,
     # ),
     MSAInputConfig(
-        path="/home/connect0459/workspace/labo/omu-meteorology/workspace/mobile/private/data/2024.11.11/input/Pico100121_241111_091102+.txt",
+        path="/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.11/input/Pico100121_241111_091102+.txt",
         delay=7,
     ),
 ]
