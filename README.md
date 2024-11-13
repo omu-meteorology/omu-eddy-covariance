@@ -21,7 +21,13 @@ pip install omu-eddy-covariance
 uv add omu-eddy-covariance
 ```
 
+## ライセンス
+
+本ソフトウェアの使用は、大阪公立大学生態気象学研究グループの構成員、または著作権者から明示的な許可を得た第三者に限定されます。詳細は [LICENSE](https://github.com/omu-meteorology/omu-eddy-covariance/blob/main/LICENSE) を参照してください。
+
 ## ドキュメント
+
+開発者に向けてドキュメントを作成しています。`storage/docs`配下に格納しています。
 
 - [リファレンス](./storage/docs/references.md)
 - パッケージの開発
@@ -30,10 +36,6 @@ uv add omu-eddy-covariance
   - [3. 新機能の追加](./storage/docs/development/3-add-features.md)
 - [パッケージのデプロイ](./storage/docs/deployment.md)
 - [コマンド集](./storage/docs/cmd.md)
-
-## ライセンス
-
-本ソフトウェアの使用は、大阪公立大学生態気象学研究グループの構成員、または著作権者から明示的な許可を得た第三者に限定されます。詳細は [LICENSE](https://github.com/omu-meteorology/omu-eddy-covariance/blob/main/LICENSE) を参照してください。
 
 ## コントリビュータ
 
