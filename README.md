@@ -24,6 +24,9 @@ uv add omu-eddy-covariance
 ## ドキュメント
 
 - [リファレンス](./storage/docs/references.md)
+- [パッケージの開発](./storage/docs/development.md)
+- [パッケージのデプロイ](./storage/docs/deployment.md)
+- [コマンド集](./storage/docs/cmd.md)
 
 ## ライセンス
 
