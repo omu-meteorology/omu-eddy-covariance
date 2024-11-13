@@ -33,7 +33,7 @@ uv add omu-eddy-covariance
 
 ## ライセンス
 
-本ソフトウェアの使用は、大阪公立大学生態気象学研究グループの構成員、または著作権者から明示的な許可を得た第三者に限定されます。詳細は [LICENSE](./LICENSE) を参照してください。
+本ソフトウェアの使用は、大阪公立大学生態気象学研究グループの構成員、または著作権者から明示的な許可を得た第三者に限定されます。詳細は [LICENSE](https://github.com/omu-meteorology/omu-eddy-covariance/blob/main/LICENSE) を参照してください。
 
 ## コントリビュータ
 
