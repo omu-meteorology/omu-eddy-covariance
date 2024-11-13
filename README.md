@@ -24,7 +24,10 @@ uv add omu-eddy-covariance
 ## ドキュメント
 
 - [リファレンス](./storage/docs/references.md)
-- [パッケージの開発](./storage/docs/development.md)
+- パッケージの開発
+  - [1. プロジェクトの初期設定](./storage/docs/development/1-init-project.md)
+  - [2. Gitを用いた開発の概要](./storage/docs/development/2-overview-git.md)
+  - [3. 新機能の追加](./storage/docs/development/3-add-features.md)
 - [パッケージのデプロイ](./storage/docs/deployment.md)
 - [コマンド集](./storage/docs/cmd.md)
 
