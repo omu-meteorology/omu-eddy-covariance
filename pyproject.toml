@@ -1,6 +1,6 @@
 [project]
 name = "omu-eddy-covariance"
-version = "0.1.0"
+version = "0.1.1"
 description = "渦相関法を主とする大気観測データを解析するパッケージ"
 authors = [{ name = "connect0459", email = "connect0459@gmail.com" }]
 # PILの代わりにfork先のpillowをインストール
