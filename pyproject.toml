@@ -38,8 +38,8 @@ keywords = [
   "eddy",
   "covariance",
   "flux",
-  "power",
-  "co",
+  "powerspectrum",
+  "cospectrum",
   "spectrum",
 ]
 
