@@ -1,6 +1,7 @@
 [project]
 name = "omu-eddy-covariance"
-version = "0.1.1"
+# version属性は"setuptools_scm"が自動的に設定
+dynamic = ["version"]
 description = "渦相関法を主とする大気観測データを解析するパッケージ"
 authors = [{ name = "connect0459", email = "connect0459@gmail.com" }]
 # PILの代わりにfork先のpillowをインストール
@@ -43,12 +44,15 @@ keywords = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/omu-eddy-covariance/omu-eddy-covariance"
-"Bug Tracker" = "https://github.com/omu-eddy-covariance/omu-eddy-covariance/issues"
+"Homepage" = "https://github.com/omu-meteorology/omu-eddy-covariance"
+"Bug Tracker" = "https://github.com/omu-meteorology/omu-eddy-covariance/issues"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omu_eddy_covariance"]
