@@ -5,6 +5,15 @@ from matplotlib.font_manager import FontProperties
 """
 Ubuntu環境でのフォントの手動設定
 ここでは日本語フォントを読み込んでいる
+
+1. インストール : `sudo apt update && sudo apt install -y fonts-ipafont`
+2. キャッシュ削除 : `fc-cache -fv`
+3. パスを確認 : `fc-list | grep -i ipa`
+
+得られたパスを`font_path`に記述して実行
+これでも読み込まれない場合は、matplotlibのキャッシュを削除する
+
+4. `rm ~/.cache/matplotlib/fontlist-v390.json` # 実際のファイル名に変更
 """
 font_path = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
 font_prop = FontProperties(fname=font_path)
@@ -22,7 +31,7 @@ plt.rcParams.update(
     }
 )
 
-project_home_dir: str = "/home/z23641k/labo/omu-eddy-covariance/workspace/seminar"
+project_home_dir: str = "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/seminar"
 
 # データの読み込み
 df = pd.read_csv(f"{project_home_dir}/private/analyze_monthly-for_graphs.csv")
@@ -49,8 +58,10 @@ for idx, direction in enumerate(directions_order, 1):
 
     # 積み上げ棒グラフの作成
     width = 0.8
-    p1 = ax.bar(df["month"], gas, width, label="gas", color="orange")
-    p2 = ax.bar(df["month"], bio, width, bottom=gas, label="bio", color="lightblue")
+    # p1 = ax.bar(df["month"], gas, width, label="gas", color="orange")
+    # p2 = ax.bar(df["month"], bio, width, bottom=gas, label="bio", color="lightblue")
+    p1 = ax.bar(df["month"], gas, width, label="都市", color="orange")
+    p2 = ax.bar(df["month"], bio, width, bottom=gas, label="生物", color="lightblue")
 
     # y軸の上限を設定
     # total_flux = gas + bio
