@@ -4,7 +4,8 @@ from matplotlib.font_manager import FontProperties
 
 """
 Ubuntu環境でのフォントの手動設定
-ここでは日本語フォントを読み込んでいる
+不要な方はコメントアウトして実行してください。
+ここでは日本語フォントを読み込んでいます。
 
 1. インストール : `sudo apt update && sudo apt install -y fonts-ipafont`
 2. キャッシュ削除 : `fc-cache -fv`
@@ -15,8 +16,8 @@ Ubuntu環境でのフォントの手動設定
 
 4. `rm ~/.cache/matplotlib/fontlist-v390.json` # 実際のファイル名に変更
 """
-font_path = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
-font_prop = FontProperties(fname=font_path)
+font_path: str = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
+font_prop: FontProperties = FontProperties(fname=font_path)
 
 # rcParamsでの全体的な設定
 plt.rcParams.update(
@@ -31,14 +32,18 @@ plt.rcParams.update(
     }
 )
 
-project_home_dir: str = "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/seminar"
+project_home_dir: str = (
+    "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/seminar"
+)
 
 # データの読み込み
-df = pd.read_csv(f"{project_home_dir}/private/analyze_monthly-for_graphs.csv")
+df: pd.DataFrame = pd.read_csv(
+    f"{project_home_dir}/private/analyze_monthly-for_graphs.csv"
+)
 
 # 方角の配置順序を定義（左上から時計回り）
-directions_order = ["nw", "ne", "sw", "se"]
-titles = {"nw": "北西", "ne": "北東", "sw": "南西", "se": "南東"}
+directions_order: list[str] = ["nw", "ne", "sw", "se"]
+titles: dict[str, str] = {"nw": "北西", "ne": "北東", "sw": "南西", "se": "南東"}
 
 # サブプロットを含む大きな図を作成
 fig = plt.figure(figsize=(20, 13))
@@ -64,7 +69,6 @@ for idx, direction in enumerate(directions_order, 1):
     p2 = ax.bar(df["month"], bio, width, bottom=gas, label="生物", color="lightblue")
 
     # y軸の上限を設定
-    # total_flux = gas + bio
     ax.set_ylim(0, 62)
 
     # gas比率の表示
