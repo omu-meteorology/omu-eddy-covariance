@@ -431,14 +431,14 @@ class MobileSpatialAnalyzer:
     def __remove_duplicates_across_days(
         self,
         hotspots: list[HotspotData],
-        distance_threshold: float,
+        distance_threshold_meter: float,
     ) -> list[HotspotData]:
         """
         全期間での重複するホットスポットを除外します。
 
         Args:
             hotspots (list[HotspotData]): 元のホットスポットのリスト
-            distance_threshold (float): 重複とみなす距離の閾値（メートル）
+            distance_threshold_meter (float): 重複とみなす距離の閾値（メートル）
 
         Returns:
             list[HotspotData]: 重複を除外したホットスポットのリスト
@@ -457,7 +457,7 @@ class MobileSpatialAnalyzer:
                 distance = self.__calculate_distance(
                     spot.avg_lat, spot.avg_lon, used_lat, used_lon
                 )
-                if distance < distance_threshold:
+                if distance < distance_threshold_meter:
                     too_close = True
                     self.logger.debug(
                         f"重複を検出: {spot.source} ({spot.avg_lat}, {spot.avg_lon})"
@@ -477,6 +477,7 @@ class MobileSpatialAnalyzer:
     def analyze_hotspots(
         self,
         exclude_duplicates_across_days: bool = False,
+        distance_threshold_meter: float = 50,
     ) -> list[HotspotData]:
         """
         ホットスポットを検出して分析します。
@@ -489,6 +490,7 @@ class MobileSpatialAnalyzer:
                 True の場合、全期間で重複するホットスポットを除外します。
                 False の場合、日付ごとに独立してホットスポットを検出します。
                 デフォルトは False です。
+            distance_threshold_meter (float): 重複とみなす距離の閾値（メートル）。デフォルトは50。
 
         Returns:
             list[HotspotData]: 検出されたホットスポットのリスト。
@@ -512,7 +514,7 @@ class MobileSpatialAnalyzer:
         # 全期間での重複除外が有効な場合
         if exclude_duplicates_across_days:
             all_hotspots = self.__remove_duplicates_across_days(
-                all_hotspots, distance_threshold=self.__hotspot_area_meter
+                all_hotspots, distance_threshold_meter=distance_threshold_meter
             )
 
         return all_hotspots
@@ -545,8 +547,10 @@ class MobileSpatialAnalyzer:
                 color = "green"
             elif spot.type == "gas":
                 color = "red"
-            else:  # bio
+            elif spot.type == "bio":
                 color = "blue"
+            else:  # invalid type
+                color = "black"
 
             # HTMLタグを含むテキストを適切にフォーマット
             popup_html = f"""
@@ -583,8 +587,8 @@ class MobileSpatialAnalyzer:
         for section in range(self.__num_sections):
             start_angle = math.radians(-180 + section * self.__section_size)
 
-            # 区画の境界線を描画（3000mの半径で）
-            radius_meters = 3000
+            # 区画の境界線を描画（5000mの半径で）
+            radius_meters = 5000
             R = 6371000  # 地球の半径（メートル）
 
             # 境界線の座標を計算
