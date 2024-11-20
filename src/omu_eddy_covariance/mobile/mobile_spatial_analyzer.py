@@ -7,15 +7,23 @@ from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 from pathlib import Path
 
+"""
+堺市役所の位置情報
+
+center_lat=34.573904320329724,
+center_lon=135.4829511120712,
+"""
+
 
 @dataclass
 class HotspotData:
     """ホットスポットの情報を保持するデータクラス"""
 
     angle: float  # 中心からの角度
-    ratio: float  # ΔC2H6/ΔCH4の比率
     avg_lat: float  # 平均緯度
     avg_lon: float  # 平均経度
+    correlation: float  # ΔC2H6/ΔCH4相関係数
+    ratio: float  # ΔC2H6/ΔCH4の比率
     section: int  # 所属する区画番号
     source: str  # データソース
     type: str  # ホットスポットの種類 ("bio", "gas", or "comb")
@@ -26,20 +34,24 @@ class MSAInputConfig:
     """入力ファイルの設定を保持するデータクラス"""
 
     path: Path | str  # ファイルパス
-    delay: int = 0  # 測器の遅れ時間（秒）
+    delay: float = 0  # 測器の遅れ時間（秒）
 
 
 class MobileSpatialAnalyzer:
+    """
+    移動観測で得られた測定データを解析するクラス
+    """
+
     def __init__(
         self,
         center_lat: float,
         center_lon: float,
         inputs: list[MSAInputConfig] | list[tuple[str | Path, int]],
-        num_sections: int,
+        num_sections: int = 4,
         ch4_enhance_threshold: float = 0.1,
         correlation_threshold: float = 0.7,
         hotspot_area_meter: float = 30,
-        window_minutes: float = 5.0,  # 移動窓の大きさ（分）
+        window_minutes: float = 5,
         logger: Logger | None = None,
         logging_debug: bool = False,
     ):
@@ -50,11 +62,11 @@ class MobileSpatialAnalyzer:
             center_lat (float): 中心緯度
             center_lon (float): 中心経度
             inputs (list[MSAInputConfig] | list[tuple[str | Path, int]]): 入力ファイルのリスト
-            num_sections (int): 分割する区画数
+            num_sections (int): 分割する区画数。デフォルトは4。
             ch4_enhance_threshold (float): CH4増加の閾値(ppm)。デフォルトは0.1。
             correlation_threshold (float): 相関係数の閾値。デフォルトは0.7。
             hotspot_area_meter (float): ホットスポットの検出に使用するエリアの半径（メートル）。デフォルトは30メートル。
-            window_minutes (float): 移動窓の大きさ（分）。デフォルトは5.0分。
+            window_minutes (float): 移動窓の大きさ（分）。デフォルトは5分。
             logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
             logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
         """
@@ -79,7 +91,9 @@ class MobileSpatialAnalyzer:
         # 入力設定の標準化
         normalized_input_configs: list[MSAInputConfig] = self.__normalize_inputs(inputs)
         # 複数ファイルのデータを読み込み
-        self.__data = self.__load_all_data(normalized_input_configs)
+        self.__data: dict[str, pd.DataFrame] = self.__load_all_data(
+            normalized_input_configs
+        )
 
     def __setup_logger(self, logger: Logger | None, log_level: int = INFO):
         """
@@ -121,14 +135,14 @@ class MobileSpatialAnalyzer:
         Returns:
             float: 真北を0°として時計回りの角度（-180°から180°）
         """
-        d_lat = lat - self.__center_lat
-        d_lon = lon - self.__center_lon
+        d_lat: float = lat - self.__center_lat
+        d_lon: float = lon - self.__center_lon
 
         # arctanを使用して角度を計算（ラジアン）
-        angle_rad = math.atan2(d_lon, d_lat)
+        angle_rad: float = math.atan2(d_lon, d_lat)
 
         # ラジアンから度に変換（-180から180の範囲）
-        angle_deg = math.degrees(angle_rad)
+        angle_deg: float = math.degrees(angle_rad)
         return angle_deg
 
     def __calculate_distance(
@@ -144,26 +158,26 @@ class MobileSpatialAnalyzer:
             lon2 (float): 地点2の経度
 
         Returns:
-            float: 2点間の距離（メートル）
+            float: 2���間の距離（メートル）
         """
         R = 6371000  # 地球の半径（メートル）
 
         # 緯度経度をラジアンに変換
-        lat1_rad = math.radians(lat1)
-        lon1_rad = math.radians(lon1)
-        lat2_rad = math.radians(lat2)
-        lon2_rad = math.radians(lon2)
+        lat1_rad: float = math.radians(lat1)
+        lon1_rad: float = math.radians(lon1)
+        lat2_rad: float = math.radians(lat2)
+        lon2_rad: float = math.radians(lon2)
 
         # 緯度と経度の差分
-        dlat = lat2_rad - lat1_rad
-        dlon = lon2_rad - lon1_rad
+        dlat: float = lat2_rad - lat1_rad
+        dlon: float = lon2_rad - lon1_rad
 
         # Haversine formula
-        a = (
+        a: float = (
             math.sin(dlat / 2) ** 2
             + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
         )
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        c: float = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
         return R * c  # メートル単位での距離
 
@@ -179,11 +193,14 @@ class MobileSpatialAnalyzer:
         Returns:
             pd.DataFrame: 計算されたパラメータを含むデータフレーム
         """
+        # 各値の閾値
+        ch4_threshold: float = 0.05
+        c2h6_threshold: float = 0.0
+
         # 移動平均の計算
         df["ch4_ppm_mv"] = (
             df["ch4_ppm"].rolling(window=window_size, center=True, min_periods=1).mean()
         )
-
         df["c2h6_ppb_mv"] = (
             df["c2h6_ppb"]
             .rolling(window=window_size, center=True, min_periods=1)
@@ -205,10 +222,9 @@ class MobileSpatialAnalyzer:
         df["c2h6_ch4_ratio"] = df["c2h6_ppb"] / df["ch4_ppm"]
 
         # デルタ値に基づく比の計算
-        ch4_threshold = 0.05  # 閾値
         df["c2h6_ch4_ratio_delta"] = np.where(
             (df["ch4_ppm_delta"].abs() >= ch4_threshold)
-            & (df["c2h6_ppb_delta"] >= 0.0),
+            & (df["c2h6_ppb_delta"] >= c2h6_threshold),
             df["c2h6_ppb_delta"] / df["ch4_ppm_delta"],
             np.nan,
         )
@@ -245,7 +261,11 @@ class MobileSpatialAnalyzer:
         """
         hotspots: list[HotspotData] = []
         # タイプごとに使用された位置を記録
-        used_positions_by_type = {"comb": set(), "gas": set(), "bio": set()}
+        used_positions_by_type: dict[str, set] = {
+            "bio": set(),
+            "gas": set(),
+            "comb": set(),
+        }
 
         # CH4増加量が閾値を超えるデータポイントを抽出
         enhanced_mask = df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold
@@ -264,17 +284,17 @@ class MobileSpatialAnalyzer:
                 if pd.notna(ratios.iloc[i]):
                     current_lat = lat.iloc[i]
                     current_lon = lon.iloc[i]
+                    correlation = df["ch4_c2h6_correlation"].iloc[i]
 
                     # 比率に基づいてタイプを決定
+                    spot_type = "bio"
                     if ratios.iloc[i] >= 100:
                         spot_type = "comb"
                     elif ratios.iloc[i] >= 5:
                         spot_type = "gas"
-                    else:
-                        spot_type = "bio"
 
                     # 同じタイプのホットスポットとの距離のみをチェック
-                    too_close = False
+                    too_close: bool = False
                     for used_lat, used_lon in used_positions_by_type[spot_type]:
                         distance = self.__calculate_distance(
                             current_lat, current_lon, used_lat, used_lon
@@ -286,17 +306,18 @@ class MobileSpatialAnalyzer:
                     if too_close:
                         continue
 
-                    angle = self.__calculate_angle(current_lat, current_lon)
-                    section = self.__determine_section(angle)
+                    angle: float = self.__calculate_angle(current_lat, current_lon)
+                    section: int = self.__determine_section(angle)
 
                     hotspots.append(
                         HotspotData(
                             angle=angle,
-                            ratio=ratios.iloc[i],
                             avg_lat=current_lat,
                             avg_lon=current_lon,
+                            correlation=correlation,
+                            ratio=ratios.iloc[i],
                             section=section,
-                            source=ratios.index[i].strftime("%Y-%m-%d"),
+                            source=ratios.index[i].strftime("%Y-%m-%d %H:%M:%S"),
                             type=spot_type,
                         )
                     )
@@ -334,7 +355,7 @@ class MobileSpatialAnalyzer:
         Returns:
             dict[int, tuple[float, float]]: 区画番号とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
         """
-        sections = {}
+        sections: dict[int, tuple[float, float]] = {}
         for i in range(num_sections):
             # -180から180の範囲で区画を設定
             start_angle = -180 + i * section_size
@@ -356,10 +377,10 @@ class MobileSpatialAnalyzer:
         Returns:
             dict[str, pd.DataFrame]: 読み込まれたデータフレームの辞書。キーはファイル名、値はデータフレーム。
         """
-        all_data = {}
+        all_data: dict[str, pd.DataFrame] = {}
         for config in input_configs:
-            df = self.__load_data(config)
-            source_name = Path(config.path).stem
+            df: pd.DataFrame = self.__load_data(config)
+            source_name: str = Path(config.path).stem
             all_data[source_name] = df
         return all_data
 
@@ -373,10 +394,10 @@ class MobileSpatialAnalyzer:
         Returns:
             pd.DataFrame: 読み込んだデータフレーム
         """
-        df = pd.read_csv(config.path, na_values=["No Data", "nan"])
+        df: pd.DataFrame = pd.read_csv(config.path, na_values=["No Data", "nan"])
 
         # カラム名の標準化（測器に依存しない汎用的な名前に変更）
-        column_mapping = {
+        column_mapping: dict[str, str] = {
             "Time Stamp": "timestamp",
             "CH4 (ppm)": "ch4_ppm",
             "C2H6 (ppb)": "c2h6_ppb",
@@ -390,8 +411,8 @@ class MobileSpatialAnalyzer:
 
         if config.delay > 0:
             # 遅れ時間の補正
-            columns_to_shift = ["ch4_ppm", "c2h6_ppb", "h2o_ppm"]
-            shift_periods = -config.delay
+            columns_to_shift: list[str] = ["ch4_ppm", "c2h6_ppb", "h2o_ppm"]
+            shift_periods: float = -config.delay
 
             for col in columns_to_shift:
                 df[col] = df[col].shift(shift_periods)
@@ -415,7 +436,7 @@ class MobileSpatialAnalyzer:
         Returns:
             list[MSAInputConfig]: 標準化された入力設定のリスト
         """
-        normalized = []
+        normalized: list[MSAInputConfig] = []
         for inp in inputs:
             if isinstance(inp, MSAInputConfig):
                 normalized.append(inp)
@@ -444,17 +465,21 @@ class MobileSpatialAnalyzer:
             list[HotspotData]: 重複を除外したホットスポットのリスト
         """
         # 日付でソート（古い順）
-        sorted_hotspots = sorted(hotspots, key=lambda x: x.source)
+        sorted_hotspots: list[MSAInputConfig] = sorted(hotspots, key=lambda x: x.source)
 
         # タイプごとに使用された位置を記録
-        used_positions_by_type = {"comb": set(), "gas": set(), "bio": set()}
+        used_positions_by_type: dict[str, set] = {
+            "bio": set(),
+            "gas": set(),
+            "comb": set(),
+        }
         unique_hotspots: list[HotspotData] = []
 
         for spot in sorted_hotspots:
             # 同じタイプのホットスポットとの距離をチェック
-            too_close = False
+            too_close: bool = False
             for used_lat, used_lon in used_positions_by_type[spot.type]:
-                distance = self.__calculate_distance(
+                distance: float = self.__calculate_distance(
                     spot.avg_lat, spot.avg_lon, used_lat, used_lon
                 )
                 if distance < distance_threshold_meter:
@@ -477,7 +502,7 @@ class MobileSpatialAnalyzer:
     def analyze_hotspots(
         self,
         exclude_duplicates_across_days: bool = False,
-        distance_threshold_meter: float = 50,
+        additional_distance_meter: float = 20,
     ) -> list[HotspotData]:
         """
         ホットスポットを検出して分析します。
@@ -490,7 +515,9 @@ class MobileSpatialAnalyzer:
                 True の場合、全期間で重複するホットスポットを除外します。
                 False の場合、日付ごとに独立してホットスポットを検出します。
                 デフォルトは False です。
-            distance_threshold_meter (float): 重複とみなす距離の閾値（メートル）。デフォルトは50。
+            additional_distance_meter (float): hotspot_area_meterに追加する距離（メートル）。
+                重複除外時の距離閾値は hotspot_area_meter + additional_distance_meter となります。
+                デフォルトは20メートルです。
 
         Returns:
             list[HotspotData]: 検出されたホットスポットのリスト。
@@ -513,22 +540,36 @@ class MobileSpatialAnalyzer:
 
         # 全期間での重複除外が有効な場合
         if exclude_duplicates_across_days:
+            distance_threshold: float = (
+                self.__hotspot_area_meter + additional_distance_meter
+            )
             all_hotspots = self.__remove_duplicates_across_days(
-                all_hotspots, distance_threshold_meter=distance_threshold_meter
+                all_hotspots, distance_threshold_meter=distance_threshold
             )
 
         return all_hotspots
 
     def create_hotspots_map(
-        self, hotspots: list[HotspotData], output_path: str | Path
+        self,
+        hotspots: list[HotspotData],
+        output_dir: str | Path,
+        output_filename: str = "hotspots_map",
+        center_marker_label: str = "Center",
+        plot_center_marker: bool = True,
+        radius_meters: float = 3000,
     ) -> None:
         """
         ホットスポットの分布を地図上にプロットして保存
 
         Args:
             hotspots (list[HotspotData]): プロットするホットスポットのリスト
-            output_path (str | Path): 保存先のパス
+            output_dir (str | Path): 保存先のディレクトリパス
+            output_filename (str): 保存するファイル名。デフォルトは"hotspots_map"。
+            center_marker_label (str): 中心を示すマーカーのラベルテキスト。デフォルトは"Center"。
+            plot_center_marker (bool): 中心を示すマーカーの有無。デフォルトはTrue。
+            radius_meters (float): 区画分けを示す線の長さ。デフォルトは3000。
         """
+        output_path: Path = Path(output_dir) / f"{output_filename}.html"
         # 地図の作成
         m = folium.Map(
             location=[self.__center_lat, self.__center_lon],
@@ -552,13 +593,14 @@ class MobileSpatialAnalyzer:
             else:  # invalid type
                 color = "black"
 
-            # HTMLタグを含むテキストを適切にフォーマット
+            # CSSのgrid layoutを使用してHTMLタグを含むテキストをフォーマット
             popup_html = f"""
-            <div style='font-family: Arial; font-size: 12px;'>
-                <b>Type:</b> {spot.type}<br>
-                <b>Date:</b> {spot.source}<br>
-                <b>Ratio:</b> {spot.ratio:.3f}<br>
-                <b>Section:</b> {spot.section}
+            <div style='font-family: Arial; font-size: 12px; display: grid; grid-template-columns: auto auto auto; gap: 5px;'>
+                <b>Date</b>    <span>:</span> <span>{spot.source}</span>
+                <b>Corr</b>    <span>:</span> <span>{spot.correlation:.3f}</span>
+                <b>Ratio</b>   <span>:</span> <span>{spot.ratio:.3f}</span>
+                <b>Type</b>    <span>:</span> <span>{spot.type}</span>
+                <b>Section</b> <span>:</span> <span>{spot.section}</span>
             </div>
             """
 
@@ -577,18 +619,17 @@ class MobileSpatialAnalyzer:
             ).add_to(m)
 
         # 中心点のマーカー
-        folium.Marker(
-            [self.__center_lat, self.__center_lon],
-            popup="Center",
-            icon=folium.Icon(color="green", icon="info-sign"),
-        ).add_to(m)
+        if plot_center_marker:
+            folium.Marker(
+                [self.__center_lat, self.__center_lon],
+                popup=center_marker_label,
+                icon=folium.Icon(color="green", icon="info-sign"),
+            ).add_to(m)
 
         # 区画の境界線を描画
         for section in range(self.__num_sections):
             start_angle = math.radians(-180 + section * self.__section_size)
 
-            # 区画の境界線を描画（5000mの半径で）
-            radius_meters = 5000
             R = 6371000  # 地球の半径（メートル）
 
             # 境界線の座標を計算
@@ -637,26 +678,47 @@ class MobileSpatialAnalyzer:
 
     def plot_scatter_c2h6_ch4(
         self,
-        output_path: str | Path | None = None,
-        figsize: tuple[int, int] = (4, 4),
-        font_size: float = 12,
+        output_dir: str | Path,
+        output_filename: str = "scatter_c2h6_ch4",
         dpi: int = 200,
-    ) -> None:
+        figsize: tuple[int, int] = (4, 4),
+        fontsize: float = 12,
+        ratio_labels: dict[float, tuple[float, float, str]] | None = None,
+        savefig: bool = True,
+    ) -> plt.Figure:
         """
         C2H6とCH4の散布図をプロットします。
 
         Args:
-            output_path (str | Path | None): 出力ファイルパス。Noneの場合は表示のみ。
-            figsize (tuple[int, int]): 図のサイズ。デフォルトは(4, 4)。
-            font_size (float): フォントサイズ。デフォルトは12。
+            output_dir (str | Path): 保存先のディレクトリパス
+            output_filename (str): 保存するファイル名。デフォルトは"scatter_c2h6_ch4"。
             dpi (int): 解像度。デフォルトは200。
+            figsize (tuple[int, int]): 図のサイズ。デフォルトは(4, 4)。
+            fontsize (float): フォントサイズ。デフォルトは12。
+            ratio_labels (dict[float, tuple[float, float, str]] | None): 比率線とラベルの設定。
+                キーは比率値、値は (x位置, y位置, ラベルテキスト) のタプル。
+                Noneの場合はデフォルト設定を使用。デフォルト値:
+                {
+                    0.001: (1.25, 2, "0.001"),
+                    0.005: (1.25, 8, "0.005"),
+                    0.010: (1.25, 15, "0.01"),
+                    0.020: (1.25, 30, "0.02"),
+                    0.030: (1.0, 40, "0.03"),
+                    0.076: (0.20, 42, "0.076 (Osaka)")
+                }
+            savefig (bool): 図の保存を許可するフラグ。デフォルトはTrueで、Falseの場合は`output_dir`の指定に関わらず図を保存しない。
+
+        Returns:
+            plt.Figure: 作成された散布図のFigureオブジェクト
         """
+        output_path: Path = Path(output_dir) / f"{output_filename}.png"
+
         ch4_enhance_threshold: float = self.__ch4_enhance_threshold
         correlation_threshold: float = self.__correlation_threshold
         data = self.__data
 
-        plt.rcParams["font.size"] = font_size
-        plt.figure(figsize=figsize, dpi=dpi)
+        plt.rcParams["font.size"] = fontsize
+        fig = plt.figure(figsize=figsize, dpi=dpi)
 
         # 全データソースに対してプロット
         for source_name, df in data.items():
@@ -700,29 +762,28 @@ class MobileSpatialAnalyzer:
                 label=f"{source_name} (Gas)" if len(data) > 1 else "Gas",
             )
 
+        # デフォルトの比率とラベル設定
+        default_ratio_labels = {
+            0.001: (1.25, 2, "0.001"),
+            0.005: (1.25, 8, "0.005"),
+            0.010: (1.25, 15, "0.01"),
+            0.020: (1.25, 30, "0.02"),
+            0.030: (1.0, 40, "0.03"),
+            0.076: (0.20, 42, "0.076 (Osaka)"),
+        }
+
+        ratio_labels = ratio_labels or default_ratio_labels
+
         # プロット後、軸の設定前に比率の線を追加
+        x = np.array([0, 5])
         base_ch4 = 0.0
         base = 0.0
 
-        # 比率の線を追加
-        x = np.array([0, 5])
-        ratios = [0.001, 0.005, 0.010, 0.020, 0.030, 0.076]
-        labels = {
-            0.001: (3.25 - 2.0, 2, "0.001"),
-            0.005: (3.25 - 2.0, 8, "0.005"),
-            0.010: (3.25 - 2.0, 15, "0.01"),
-            0.020: (3.25 - 2.0, 30, "0.02"),
-            0.030: (3.0 - 2.0, 40, "0.03"),
-            0.076: (2.20 - 2.0, 42, "0.076\n(Osaka)"),
-        }
-
         # 各比率に対して線を引く
-        for ratio in ratios:
+        for ratio, (x_pos, y_pos, label) in ratio_labels.items():
             y = (x - base_ch4) * 1000 * ratio + base
             plt.plot(x, y, "-", c="black", alpha=0.5)
-            # ラベルを追加
-            x_, y_, label = labels[ratio]
-            plt.text(x_, y_, label)
+            plt.text(x_pos, y_pos, label)
 
         # 既存の軸設定を維持
         plt.ylim(0, 50)
@@ -731,8 +792,8 @@ class MobileSpatialAnalyzer:
         plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
 
         # グラフの保存または表示
-        if output_path is None:
-            output_path = "scatter_plot.png"  # デフォルトのファイル名を設定
-        plt.savefig(output_path, bbox_inches="tight")
-        self.logger.info(f"散布図を保存しました: {output_path}")
-        plt.close()
+        if savefig:
+            plt.savefig(output_path, bbox_inches="tight")
+            self.logger.info(f"散布図を保存しました: {output_path}")
+
+        return fig
