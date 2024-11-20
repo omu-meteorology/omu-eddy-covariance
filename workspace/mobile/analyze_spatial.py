@@ -1,4 +1,4 @@
-from omu_eddy_covariance import HotspotData,MobileSpatialAnalyzer, MSAInputConfig
+from omu_eddy_covariance import HotspotData, MobileSpatialAnalyzer, MSAInputConfig
 
 # 設定例：MSAInputConfigによる詳細指定
 inputs = [
@@ -22,6 +22,10 @@ inputs = [
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.18/input/Pico100121_241118_092855+.txt",
         delay=13,
     ),
+    MSAInputConfig(
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.20/input/Pico100121_241120_092932+.txt",
+        delay=13,
+    ),
 ]
 
 analyzer = MobileSpatialAnalyzer(
@@ -36,18 +40,23 @@ analyzer = MobileSpatialAnalyzer(
 )
 
 # ホットスポット検出
-hotspots:list[HotspotData] = analyzer.analyze_hotspots()
+hotspots: list[HotspotData] = analyzer.analyze_hotspots()
 
 # 結果の表示
 bio_spots = [h for h in hotspots if h.type == "bio"]
+comb_spots = [h for h in hotspots if h.type == "comb"]
 gas_spots = [h for h in hotspots if h.type == "gas"]
 
 print("\nResults:")
-print(f"Bio hotspots:{len(bio_spots)},Gas hotspots:{len(gas_spots)}")
+print(
+    f"Bio hotspots:{len(bio_spots)},Comb hotspots:{len(comb_spots)},Gas hotspots:{len(gas_spots)}"
+)
 
 # 区画ごとの分析を追加
 # 各区画のホットスポット数をカウント
-section_counts = {i: {"bio": 0, "gas": 0} for i in range(analyzer.num_sections)}
+section_counts = {
+    i: {"comb": 0, "gas": 0, "bio": 0} for i in range(analyzer.num_sections)
+}
 for spot in hotspots:
     section_counts[spot.section][spot.type] += 1
 
@@ -57,8 +66,9 @@ for section, counts in section_counts.items():
     start_angle = -180 + section * analyzer.section_size
     end_angle = start_angle + analyzer.section_size
     print(f"\n区画 {section} ({start_angle:.1f}° ~ {end_angle:.1f}°):")
-    print(f"  Bio: {counts['bio']}個")
+    print(f"  Comb: {counts['comb']}個")
     print(f"  Gas: {counts['gas']}個")
+    print(f"  Bio: {counts['bio']}個")
 
 # ホットスポットの詳細情報
 # for spot in hotspots:

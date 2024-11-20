@@ -17,7 +17,7 @@ class HotspotData:
     avg_lon: float  # 平均経度
     section: int  # 所属する区画番号
     source: str  # データソース
-    type: str  # ホットスポットの種類 ("bio" or "city")
+    type: str  # ホットスポットの種類 ("bio", "gas", or "comb")
 
 
 @dataclass
@@ -35,11 +35,11 @@ class MobileSpatialAnalyzer:
         center_lon: float,
         inputs: list[MSAInputConfig] | list[tuple[str | Path, int]],
         num_sections: int,
+        ch4_enhance_threshold: float = 0.1,
+        correlation_threshold: float = 0.7,
+        hotspot_area_meter: float = 20,
         sampling_frequency: float = 1.0,  # サンプリング周波数(Hz)
         window_minutes: float = 5.0,  # 移動窓の大きさ（分）
-        # correlation_threshold: float = 0.7,
-        correlation_threshold: float = 0.5,
-        ch4_enhance_threshold: float = 0.1,
         logger: Logger | None = None,
         logging_debug: bool = False,
     ):
@@ -51,21 +51,24 @@ class MobileSpatialAnalyzer:
             center_lon: 中心経度
             inputs: 入力ファイルのリスト
             num_sections: 分割する区画数
+            ch4_enhance_threshold: CH4増加の閾値(ppm)
+            correlation_threshold: 相関係数の閾値
+            hotspot_area_meter (float): ホットスポットの検出に使用するエリアの半径（メートル）。デフォルトは20メートルです。
             sampling_frequency: サンプリング周波数(Hz)
             window_minutes: 移動窓の大きさ（分）
-            correlation_threshold: 相関係数の閾値
-            ch4_enhance_threshold: CH4増加の閾値(ppm)
             logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
             logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
         """
-        self.center_lat = center_lat
-        self.center_lon = center_lon
-        self.num_sections = num_sections
-        self.section_size = 360 / num_sections
-        self.correlation_threshold = correlation_threshold
-        self.ch4_enhance_threshold = ch4_enhance_threshold
-        self.sampling_frequency = sampling_frequency
-        self.window_minutes = window_minutes
+        self.center_lat: float = center_lat
+        self.center_lon: float = center_lon
+        self.num_sections: int = num_sections
+        self.ch4_enhance_threshold: float = ch4_enhance_threshold
+        self.correlation_threshold: float = correlation_threshold
+        self.hotspot_area_meter: float = hotspot_area_meter
+        self.sampling_frequency: float = sampling_frequency
+
+        # セクションの範囲
+        self.section_size: float = 360 / num_sections
 
         # window_sizeをデータポイント数に変換（分→秒→データポイント数）
         self.window_size: int = self.__calculate_window_size(window_minutes)
@@ -232,15 +235,13 @@ class MobileSpatialAnalyzer:
         self,
         df: pd.DataFrame,
         ch4_enhance_threshold: float,
-        correlation_threshold: float,
-        hotspot_areas_meter: float = 10,
+        hotspot_areas_meter: float,
     ) -> list[HotspotData]:
         """シンプル化したホットスポット検出
 
         Args:
             df (pd.DataFrame): 入力データフレーム
             ch4_enhance_threshold (float): CH4増加の閾値
-            correlation_threshold (float): 相関係数の閾値
             hotspot_areas_meter (float): ホットスポット間の最小距離（メートル）
 
         Returns:
@@ -248,7 +249,7 @@ class MobileSpatialAnalyzer:
         """
         hotspots: list[HotspotData] = []
         # タイプごとに使用された位置を記録
-        used_positions_by_type = {"gas": set(), "bio": set()}
+        used_positions_by_type = {"bio": set(), "gas": set(), "comb": set()}
 
         # CH4増加量が閾値を超えるデータポイントを抽出
         enhanced_mask = df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold
@@ -258,7 +259,6 @@ class MobileSpatialAnalyzer:
             lat = df["latitude"][enhanced_mask]
             lon = df["longitude"][enhanced_mask]
             ratios = df["c2h6_ch4_ratio_delta"][enhanced_mask]
-            correlations = df["ch4_c2h6_correlation"][enhanced_mask]
 
             # デバッグ情報の出力
             self.logger.debug(f"{lat};{lon};{ratios}")
@@ -269,13 +269,13 @@ class MobileSpatialAnalyzer:
                     current_lat = lat.iloc[i]
                     current_lon = lon.iloc[i]
 
-                    # 相関係数に基づいてタイプを決定
-                    spot_type = (
-                        "gas"
-                        if correlations.iloc[i] >= correlation_threshold
-                        or ratios.iloc[i] >= 4.0
-                        else "bio"
-                    )
+                    # 比率に基づいてタイプを決定
+                    if ratios.iloc[i] >= 100:
+                        spot_type = "comb"
+                    elif ratios.iloc[i] >= 5:
+                        spot_type = "gas"
+                    else:
+                        spot_type = "bio"
 
                     # 同じタイプのホットスポットとの距離のみをチェック
                     too_close = False
@@ -420,11 +420,14 @@ class MobileSpatialAnalyzer:
 
     def analyze_hotspots(self) -> list[HotspotData]:
         """
-        ホットスポットを検出して分析
-        window_sizeはクラス初期化時に設定した値を使用
+        ホットスポットを検出して分析します。
+
+        このメソッドは、クラス初期化時に設定されたwindow_sizeを使用して、
+        各データソースに対してホットスポットを検出し、分析結果を返します。
 
         Returns:
-            list[HotspotData]: 検出されたホットスポットのリスト
+            list[HotspotData]: 検出されたホットスポットのリスト。
+            各ホットスポットは、位置、比率、タイプなどの情報を含みます。
         """
         all_hotspots: list[HotspotData] = []
 
@@ -436,9 +439,8 @@ class MobileSpatialAnalyzer:
             # ホットスポットの検出
             hotspots = self.__detect_hotspots(
                 df,
-                self.ch4_enhance_threshold,
-                self.correlation_threshold,
-                self.window_size,
+                ch4_enhance_threshold=self.ch4_enhance_threshold,
+                hotspot_areas_meter=self.hotspot_area_meter,
             )
             all_hotspots.extend(hotspots)
 
@@ -467,20 +469,36 @@ class MobileSpatialAnalyzer:
             if math.isnan(spot.avg_lat) or math.isnan(spot.avg_lon):
                 continue
 
-            color = "red" if spot.type == "gas" else "blue"
-            popup_text = f"""
-            Type: {spot.type}<br>
-            Date: {spot.source}<br>
-            Ratio: {spot.ratio:.3f}<br>
-            Section: {spot.section}
+            # タイプに応じて色を設定
+            if spot.type == "comb":
+                color = "green"
+            elif spot.type == "gas":
+                color = "red"
+            else:  # bio
+                color = "blue"
+
+            # HTMLタグを含むテキストを適切にフォーマット
+            popup_html = f"""
+            <div style='font-family: Arial; font-size: 12px;'>
+                <b>Type:</b> {spot.type}<br>
+                <b>Date:</b> {spot.source}<br>
+                <b>Ratio:</b> {spot.ratio:.3f}<br>
+                <b>Section:</b> {spot.section}
+            </div>
             """
+
+            # ポップアップのサイズを指定
+            popup = folium.Popup(
+                folium.Html(popup_html, script=True),
+                max_width=200,  # 最大幅（ピクセル）
+            )
 
             folium.CircleMarker(
                 location=[spot.avg_lat, spot.avg_lon],
                 radius=8,
                 color=color,
                 fill=True,
-                popup=popup_text,
+                popup=popup,
             ).add_to(m)
 
         # 中心点のマーカー
