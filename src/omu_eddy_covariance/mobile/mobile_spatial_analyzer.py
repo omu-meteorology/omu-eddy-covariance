@@ -47,29 +47,28 @@ class MobileSpatialAnalyzer:
         測定データ解析クラスの初期化
 
         Args:
-            center_lat: 中心緯度
-            center_lon: 中心経度
-            inputs: 入力ファイルのリスト
-            num_sections: 分割する区画数
-            ch4_enhance_threshold: CH4増加の閾値(ppm)
-            correlation_threshold: 相関係数の閾値
-            hotspot_area_meter (float): ホットスポットの検出に使用するエリアの半径（メートル）。デフォルトは20メートルです。
-            window_minutes: 移動窓の大きさ（分）
+            center_lat (float): 中心緯度
+            center_lon (float): 中心経度
+            inputs (list[MSAInputConfig] | list[tuple[str | Path, int]]): 入力ファイルのリスト
+            num_sections (int): 分割する区画数
+            ch4_enhance_threshold (float): CH4増加の閾値(ppm)。デフォルトは0.1。
+            correlation_threshold (float): 相関係数の閾値。デフォルトは0.7。
+            hotspot_area_meter (float): ホットスポットの検出に使用するエリアの半径（メートル）。デフォルトは30メートル。
+            window_minutes (float): 移動窓の大きさ（分）。デフォルトは5.0分。
             logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
             logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
         """
-        self.__ch4_enhance_threshold: float = ch4_enhance_threshold
-        self.__correlation_threshold: float = correlation_threshold
-        self.__hotspot_area_meter: float = hotspot_area_meter
         # ロガー
         log_level: int = INFO
         if logging_debug:
             log_level = DEBUG
         self.logger: Logger = self.__setup_logger(logger, log_level)
-
         # プライベートなプロパティ
         self.__center_lat: float = center_lat
         self.__center_lon: float = center_lon
+        self.__ch4_enhance_threshold: float = ch4_enhance_threshold
+        self.__correlation_threshold: float = correlation_threshold
+        self.__hotspot_area_meter: float = hotspot_area_meter
         self.__num_sections: int = num_sections
         # セクションの範囲
         section_size: float = 360 / num_sections
@@ -246,7 +245,7 @@ class MobileSpatialAnalyzer:
         """
         hotspots: list[HotspotData] = []
         # タイプごとに使用された位置を記録
-        used_positions_by_type = {"bio": set(), "gas": set(), "comb": set()}
+        used_positions_by_type = {"comb": set(), "gas": set(), "bio": set()}
 
         # CH4増加量が閾値を超えるデータポイントを抽出
         enhanced_mask = df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold
@@ -700,23 +699,23 @@ class MobileSpatialAnalyzer:
         # プロット後、軸の設定前に比率の線を追加
         base_ch4 = 0.0
         base = 0.0
-        
+
         # 比率の線を追加
         x = np.array([0, 5])
         ratios = [0.001, 0.005, 0.010, 0.020, 0.030, 0.076]
         labels = {
-            0.001: (3.25-2.0, 2, "0.001"),
-            0.005: (3.25-2.0, 8, "0.005"),
-            0.010: (3.25-2.0, 15, "0.01"),
-            0.020: (3.25-2.0, 30, "0.02"),
-            0.030: (3.0-2.0, 40, "0.03"),
-            0.076: (2.20-2.0, 42, "0.076\n(Osaka)")
+            0.001: (3.25 - 2.0, 2, "0.001"),
+            0.005: (3.25 - 2.0, 8, "0.005"),
+            0.010: (3.25 - 2.0, 15, "0.01"),
+            0.020: (3.25 - 2.0, 30, "0.02"),
+            0.030: (3.0 - 2.0, 40, "0.03"),
+            0.076: (2.20 - 2.0, 42, "0.076\n(Osaka)"),
         }
-        
+
         # 各比率に対して線を引く
         for ratio in ratios:
             y = (x - base_ch4) * 1000 * ratio + base
-            plt.plot(x, y, '-', c='black', alpha=0.5)
+            plt.plot(x, y, "-", c="black", alpha=0.5)
             # ラベルを追加
             x_, y_, label = labels[ratio]
             plt.text(x_, y_, label)
@@ -726,10 +725,6 @@ class MobileSpatialAnalyzer:
         plt.xlim(0, 2.0)
         plt.ylabel("Δ$\\mathregular{C_{2}H_{6}}$ (ppb)")
         plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
-
-        # # 複数のデータソースがある場合は凡例を表示
-        # if len(data) > 1:
-        #     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
 
         # グラフの保存または表示
         if output_path is None:
