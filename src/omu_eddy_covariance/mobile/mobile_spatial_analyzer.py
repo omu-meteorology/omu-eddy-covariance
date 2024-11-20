@@ -2,6 +2,7 @@ import math
 import folium
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 from pathlib import Path
@@ -38,7 +39,6 @@ class MobileSpatialAnalyzer:
         ch4_enhance_threshold: float = 0.1,
         correlation_threshold: float = 0.7,
         hotspot_area_meter: float = 30,
-        sampling_frequency: float = 1.0,  # サンプリング周波数(Hz)
         window_minutes: float = 5.0,  # 移動窓の大きさ（分）
         logger: Logger | None = None,
         logging_debug: bool = False,
@@ -54,36 +54,33 @@ class MobileSpatialAnalyzer:
             ch4_enhance_threshold: CH4増加の閾値(ppm)
             correlation_threshold: 相関係数の閾値
             hotspot_area_meter (float): ホットスポットの検出に使用するエリアの半径（メートル）。デフォルトは20メートルです。
-            sampling_frequency: サンプリング周波数(Hz)
             window_minutes: 移動窓の大きさ（分）
             logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
             logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
         """
-        self.center_lat: float = center_lat
-        self.center_lon: float = center_lon
-        self.num_sections: int = num_sections
-        self.ch4_enhance_threshold: float = ch4_enhance_threshold
-        self.correlation_threshold: float = correlation_threshold
-        self.hotspot_area_meter: float = hotspot_area_meter
-        self.sampling_frequency: float = sampling_frequency
-
-        # セクションの範囲
-        self.section_size: float = 360 / num_sections
-
-        # window_sizeをデータポイント数に変換（分→秒→データポイント数）
-        self.window_size: int = self.__calculate_window_size(window_minutes)
-
-        # 入力設定の標準化
-        self.__input_configs = self.__normalize_inputs(inputs)
-        # 複数ファイルのデータを読み込み
-        self.__data = self.__load_all_data()
-        self.__sections = self.__initialize_sections()
-
+        self.__ch4_enhance_threshold: float = ch4_enhance_threshold
+        self.__correlation_threshold: float = correlation_threshold
+        self.__hotspot_area_meter: float = hotspot_area_meter
         # ロガー
         log_level: int = INFO
         if logging_debug:
             log_level = DEBUG
         self.logger: Logger = self.__setup_logger(logger, log_level)
+
+        # プライベートなプロパティ
+        self.__center_lat: float = center_lat
+        self.__center_lon: float = center_lon
+        self.__num_sections: int = num_sections
+        # セクションの範囲
+        section_size: float = 360 / num_sections
+        self.__section_size: float = section_size
+        self.__sections = self.__initialize_sections(num_sections, section_size)
+        # window_sizeをデータポイント数に変換（分→秒→データポイント数）
+        self.__window_size: int = self.__calculate_window_size(window_minutes)
+        # 入力設定の標準化
+        normalized_input_configs: list[MSAInputConfig] = self.__normalize_inputs(inputs)
+        # 複数ファイルのデータを読み込み
+        self.__data = self.__load_all_data(normalized_input_configs)
 
     def __setup_logger(self, logger: Logger | None, log_level: int = INFO):
         """
@@ -125,8 +122,8 @@ class MobileSpatialAnalyzer:
         Returns:
             float: 真北を0°として時計回りの角度（-180°から180°）
         """
-        d_lat = lat - self.center_lat
-        d_lon = lon - self.center_lon
+        d_lat = lat - self.__center_lat
+        d_lon = lon - self.__center_lon
 
         # arctanを使用して角度を計算（ラジアン）
         angle_rad = math.atan2(d_lon, d_lat)
@@ -324,30 +321,44 @@ class MobileSpatialAnalyzer:
             if start <= angle < end:
                 return section_num
         # -180度の場合は最後の区画に含める
-        return self.num_sections - 1
+        return self.__num_sections - 1
 
-    def __initialize_sections(self) -> dict[int, tuple[float, float]]:
-        """区画の初期化
+    def __initialize_sections(
+        self, num_sections: int, section_size: float
+    ) -> dict[int, tuple[float, float]]:
+        """指定された区画数と区画サイズに基づいて、区画の範囲を初期化します。
+
+        Args:
+            num_sections (int): 初期化する区画の数。
+            section_size (float): 各区画の角度範囲のサイズ。
 
         Returns:
-            dict[int, tuple[float, float]]: 区画番号とその範囲の辞書
+            dict[int, tuple[float, float]]: 区画番号とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
         """
         sections = {}
-        for i in range(self.num_sections):
+        for i in range(num_sections):
             # -180から180の範囲で区画を設定
-            start_angle = -180 + i * self.section_size
-            end_angle = -180 + (i + 1) * self.section_size
+            start_angle = -180 + i * section_size
+            end_angle = -180 + (i + 1) * section_size
             sections[i] = (start_angle, end_angle)
         return sections
 
-    def __load_all_data(self) -> dict[str, pd.DataFrame]:
-        """全入力ファイルのデータを読み込む
+    def __load_all_data(
+        self, input_configs: list[MSAInputConfig]
+    ) -> dict[str, pd.DataFrame]:
+        """全入力ファイルのデータを読み込み、データフレームの辞書を返します。
+
+        このメソッドは、指定された入力設定に基づいてすべてのデータファイルを読み込み、
+        各ファイルのデータをデータフレームとして格納した辞書を生成します。
+
+        Args:
+            input_configs (list[MSAInputConfig]): 読み込むファイルの設定リスト。
 
         Returns:
-            dict[str, pd.DataFrame]: 読み込まれたデータフレームの辞書
+            dict[str, pd.DataFrame]: 読み込まれたデータフレームの辞書。キーはファイル名、値はデータフレーム。
         """
         all_data = {}
-        for config in self.__input_configs:
+        for config in input_configs:
             df = self.__load_data(config)
             source_name = Path(config.path).stem
             all_data[source_name] = df
@@ -489,20 +500,20 @@ class MobileSpatialAnalyzer:
         # 各データソースに対して解析を実行
         for _, df in self.__data.items():
             # パラメータの計算
-            df = self.__calculate_hotspots_parameters(df, self.window_size)
+            df = self.__calculate_hotspots_parameters(df, self.__window_size)
 
             # ホットスポットの検出
             hotspots: list[HotspotData] = self.__detect_hotspots(
                 df,
-                ch4_enhance_threshold=self.ch4_enhance_threshold,
-                hotspot_areas_meter=self.hotspot_area_meter,
+                ch4_enhance_threshold=self.__ch4_enhance_threshold,
+                hotspot_areas_meter=self.__hotspot_area_meter,
             )
             all_hotspots.extend(hotspots)
 
         # 全期間での重複除外が有効な場合
         if exclude_duplicates_across_days:
             all_hotspots = self.__remove_duplicates_across_days(
-                all_hotspots, distance_threshold=self.hotspot_area_meter
+                all_hotspots, distance_threshold=self.__hotspot_area_meter
             )
 
         return all_hotspots
@@ -519,7 +530,7 @@ class MobileSpatialAnalyzer:
         """
         # 地図の作成
         m = folium.Map(
-            location=[self.center_lat, self.center_lon],
+            location=[self.__center_lat, self.__center_lon],
             zoom_start=15,
             tiles="OpenStreetMap",
         )
@@ -564,22 +575,22 @@ class MobileSpatialAnalyzer:
 
         # 中心点のマーカー
         folium.Marker(
-            [self.center_lat, self.center_lon],
+            [self.__center_lat, self.__center_lon],
             popup="Center",
             icon=folium.Icon(color="green", icon="info-sign"),
         ).add_to(m)
 
         # 区画の境界線を描画
-        for section in range(self.num_sections):
-            start_angle = math.radians(-180 + section * self.section_size)
+        for section in range(self.__num_sections):
+            start_angle = math.radians(-180 + section * self.__section_size)
 
             # 区画の境界線を描画（3000mの半径で）
             radius_meters = 3000
             R = 6371000  # 地球の半径（メートル）
 
             # 境界線の座標を計算
-            lat1 = self.center_lat
-            lon1 = self.center_lon
+            lat1 = self.__center_lat
+            lon1 = self.__center_lon
             lat2 = math.degrees(
                 math.asin(
                     math.sin(math.radians(lat1)) * math.cos(radius_meters / R)
@@ -588,7 +599,7 @@ class MobileSpatialAnalyzer:
                     * math.cos(start_angle)
                 )
             )
-            lon2 = self.center_lon + math.degrees(
+            lon2 = self.__center_lon + math.degrees(
                 math.atan2(
                     math.sin(start_angle)
                     * math.sin(radius_meters / R)
@@ -609,3 +620,120 @@ class MobileSpatialAnalyzer:
         # 地図を保存
         m.save(str(output_path))
         self.logger.info(f"地図を保存しました: {output_path}")
+
+    def get_section_size(self) -> float:
+        """
+        セクションのサイズを取得するメソッド。
+        このメソッドは、解析対象のデータを区画に分割する際の
+        各区画の角度範囲を示すサイズを返します。
+
+        戻り値:
+            float: 1セクションのサイズ（度単位）
+        """
+        return self.__section_size
+
+    def plot_scatter_c2h6_ch4(
+        self,
+        output_path: str | Path | None = None,
+        figsize: tuple[int, int] = (4, 4),
+        font_size: float = 12,
+        dpi: int = 200,
+    ) -> None:
+        """
+        C2H6とCH4の散布図をプロットします。
+
+        Args:
+            output_path (str | Path | None): 出力ファイルパス。Noneの場合は表示のみ。
+            figsize (tuple[int, int]): 図のサイズ。デフォルトは(4, 4)。
+            font_size (float): フォントサイズ。デフォルトは12。
+            dpi (int): 解像度。デフォルトは200。
+        """
+        ch4_enhance_threshold: float = self.__ch4_enhance_threshold
+        correlation_threshold: float = self.__correlation_threshold
+        data = self.__data
+
+        plt.rcParams["font.size"] = font_size
+        plt.figure(figsize=figsize, dpi=dpi)
+
+        # 全データソースに対してプロット
+        for source_name, df in data.items():
+            # CH4増加量が閾値未満のデータ
+            mask_low = df["ch4_ppm"] - df["ch4_ppm_mv"] < ch4_enhance_threshold
+            plt.plot(
+                df["ch4_ppm_delta"][mask_low],
+                df["c2h6_ppb_delta"][mask_low],
+                "o",
+                c="gray",
+                alpha=0.05,
+                ms=2,
+                label=f"{source_name} (Low CH4)" if len(data) > 1 else "Low CH4",
+            )
+
+            # CH4増加量が閾値以上で、相関が低いデータ
+            mask_high_low_corr = (
+                df["ch4_c2h6_correlation"] < correlation_threshold
+            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
+            plt.plot(
+                df["ch4_ppm_delta"][mask_high_low_corr],
+                df["c2h6_ppb_delta"][mask_high_low_corr],
+                "o",
+                c="blue",
+                alpha=0.5,
+                ms=2,
+                label=f"{source_name} (Bio)" if len(data) > 1 else "Bio",
+            )
+
+            # CH4増加量が閾値以上で、相関が高いデータ
+            mask_high_high_corr = (
+                df["ch4_c2h6_correlation"] >= correlation_threshold
+            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
+            plt.plot(
+                df["ch4_ppm_delta"][mask_high_high_corr],
+                df["c2h6_ppb_delta"][mask_high_high_corr],
+                "o",
+                c="red",
+                alpha=0.5,
+                ms=2,
+                label=f"{source_name} (Gas)" if len(data) > 1 else "Gas",
+            )
+
+        # プロット後、軸の設定前に比率の線を追加
+        base_ch4 = 0.0
+        base = 0.0
+        
+        # 比率の線を追加
+        x = np.array([0, 5])
+        ratios = [0.001, 0.005, 0.010, 0.020, 0.030, 0.076]
+        labels = {
+            0.001: (3.25-2.0, 2, "0.001"),
+            0.005: (3.25-2.0, 8, "0.005"),
+            0.010: (3.25-2.0, 15, "0.01"),
+            0.020: (3.25-2.0, 30, "0.02"),
+            0.030: (3.0-2.0, 40, "0.03"),
+            0.076: (2.20-2.0, 42, "0.076\n(Osaka)")
+        }
+        
+        # 各比率に対して線を引く
+        for ratio in ratios:
+            y = (x - base_ch4) * 1000 * ratio + base
+            plt.plot(x, y, '-', c='black', alpha=0.5)
+            # ラベルを追加
+            x_, y_, label = labels[ratio]
+            plt.text(x_, y_, label)
+
+        # 既存の軸設定を維持
+        plt.ylim(0, 50)
+        plt.xlim(0, 2.0)
+        plt.ylabel("Δ$\\mathregular{C_{2}H_{6}}$ (ppb)")
+        plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
+
+        # # 複数のデータソースがある場合は凡例を表示
+        # if len(data) > 1:
+        #     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+
+        # グラフの保存または表示
+        if output_path is None:
+            output_path = "scatter_plot.png"  # デフォルトのファイル名を設定
+        plt.savefig(output_path, bbox_inches="tight")
+        self.logger.info(f"散布図を保存しました: {output_path}")
+        plt.close()
