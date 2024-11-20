@@ -37,7 +37,7 @@ class MobileSpatialAnalyzer:
         num_sections: int,
         ch4_enhance_threshold: float = 0.1,
         correlation_threshold: float = 0.7,
-        hotspot_area_meter: float = 20,
+        hotspot_area_meter: float = 30,
         sampling_frequency: float = 1.0,  # サンプリング周波数(Hz)
         window_minutes: float = 5.0,  # 移動窓の大きさ（分）
         logger: Logger | None = None,
