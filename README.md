@@ -37,6 +37,14 @@ uv add omu-eddy-covariance
 - [パッケージのデプロイ](./storage/docs/deployment.md)
 - [コマンド集](./storage/docs/cmd.md)
 
+## 更新履歴
+
+主要な更新履歴を掲載しています。
+
+| Date | Version | Description |
+| :--- | :--- | :--- |
+| 2024-11-20 | `v0.2.0` | `MobileSpatialAnalyzer`を追加 |
+
 ## コントリビュータ
 
 - [connect0459](https://github.com/connect0459)
