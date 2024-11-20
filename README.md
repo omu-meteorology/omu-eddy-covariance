@@ -44,6 +44,7 @@ uv add omu-eddy-covariance
 | Date | Version | Description |
 | :--- | :--- | :--- |
 | 2024-11-20 | `v0.2.0` | `MobileSpatialAnalyzer`を追加 |
+| 2024-11-20 | `v0.3.0` | `MobileSpatialAnalyzer.plot_scatter_c2h6_ch4`を追加 |
 
 ## コントリビュータ
 
