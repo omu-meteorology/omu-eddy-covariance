@@ -33,13 +33,16 @@ analyzer = MobileSpatialAnalyzer(
     center_lon=135.48288773915024,
     inputs=inputs,
     num_sections=4,
+    # hotspot_area_meter=30,
     sampling_frequency=1,
     window_minutes=5.0,
     logging_debug=False,
 )
 
 # ホットスポット検出
-hotspots: list[HotspotData] = analyzer.analyze_hotspots()
+hotspots: list[HotspotData] = analyzer.analyze_hotspots(
+    exclude_duplicates_across_days=True
+)
 
 # 結果の表示
 comb_spots = [h for h in hotspots if h.type == "comb"]

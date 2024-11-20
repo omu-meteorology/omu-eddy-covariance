@@ -418,12 +418,67 @@ class MobileSpatialAnalyzer:
                 normalized.append(MSAInputConfig(path=path, delay=delay))
         return normalized
 
-    def analyze_hotspots(self) -> list[HotspotData]:
+    def __remove_duplicates_across_days(
+        self,
+        hotspots: list[HotspotData],
+        distance_threshold: float,
+    ) -> list[HotspotData]:
+        """
+        全期間での重複するホットスポットを除外します。
+
+        Args:
+            hotspots (list[HotspotData]): 元のホットスポットのリスト
+            distance_threshold (float): 重複とみなす距離の閾値（メートル）
+
+        Returns:
+            list[HotspotData]: 重複を除外したホットスポットのリスト
+        """
+        # 日付でソート（古い順）
+        sorted_hotspots = sorted(hotspots, key=lambda x: x.source)
+
+        # タイプごとに使用された位置を記録
+        used_positions_by_type = {"comb": set(), "gas": set(), "bio": set()}
+        unique_hotspots: list[HotspotData] = []
+
+        for spot in sorted_hotspots:
+            # 同じタイプのホットスポットとの距離をチェック
+            too_close = False
+            for used_lat, used_lon in used_positions_by_type[spot.type]:
+                distance = self.__calculate_distance(
+                    spot.avg_lat, spot.avg_lon, used_lat, used_lon
+                )
+                if distance < distance_threshold:
+                    too_close = True
+                    self.logger.debug(
+                        f"重複を検出: {spot.source} ({spot.avg_lat}, {spot.avg_lon})"
+                        f" - タイプ: {spot.type}, 距離: {distance:.1f}m"
+                    )
+                    break
+
+            if not too_close:
+                unique_hotspots.append(spot)
+                used_positions_by_type[spot.type].add((spot.avg_lat, spot.avg_lon))
+
+        self.logger.info(
+            f"重複除外: {len(hotspots)} → {len(unique_hotspots)} ホットスポット"
+        )
+        return unique_hotspots
+
+    def analyze_hotspots(
+        self,
+        exclude_duplicates_across_days: bool = False,
+    ) -> list[HotspotData]:
         """
         ホットスポットを検出して分析します。
 
         このメソッドは、クラス初期化時に設定されたwindow_sizeを使用して、
         各データソースに対してホットスポットを検出し、分析結果を返します。
+
+        Args:
+            exclude_duplicates_across_days (bool): 異なる日付間での重複を除外するかどうか。
+                True の場合、全期間で重複するホットスポットを除外します。
+                False の場合、日付ごとに独立してホットスポットを検出します。
+                デフォルトは False です。
 
         Returns:
             list[HotspotData]: 検出されたホットスポットのリスト。
@@ -437,12 +492,18 @@ class MobileSpatialAnalyzer:
             df = self.__calculate_hotspots_parameters(df, self.window_size)
 
             # ホットスポットの検出
-            hotspots = self.__detect_hotspots(
+            hotspots: list[HotspotData] = self.__detect_hotspots(
                 df,
                 ch4_enhance_threshold=self.ch4_enhance_threshold,
                 hotspot_areas_meter=self.hotspot_area_meter,
             )
             all_hotspots.extend(hotspots)
+
+        # 全期間での重複除外が有効な場合
+        if exclude_duplicates_across_days:
+            all_hotspots = self.__remove_duplicates_across_days(
+                all_hotspots, distance_threshold=self.hotspot_area_meter
+            )
 
         return all_hotspots
 
