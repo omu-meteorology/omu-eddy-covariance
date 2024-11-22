@@ -34,46 +34,6 @@ class SpectrumCalculator:
         self.window_type: str = "hamming"
         self.dimensionless: bool = dimensionless
 
-    def __detrend(self, data: np.ndarray, deg: int) -> np.ndarray:
-        """
-        データの線形トレンドを除去する
-
-        Args:
-            data (np.ndarray): 入力データ
-
-        Returns:
-            np.ndarray: トレンド除去後のデータ
-        """
-        time = np.arange(len(data))
-        coeffs = np.polyfit(time, data, deg)
-        trend = np.polyval(coeffs, time)
-        return data - trend
-
-    def __generate_window_function(self, type: str, data_length: int) -> np.ndarray:
-        """
-        指定された種類の窓関数を適用する
-
-        Args:
-            type (str): 窓関数の種類 ('hanning', 'hamming', 'blackman')
-            data_length (int): データ長
-
-        Returns:
-            np.ndarray: 適用された窓関数
-
-        Notes:
-            - 指定された種類の窓関数を適用し、numpy配列として返す
-            - 無効な種類が指定された場合、警告を表示しHann窓を適用する
-        """
-        if type == "hanning":
-            return np.hanning(data_length)
-        elif type == "hamming":
-            return np.hamming(data_length)
-        elif type == "blackman":
-            return np.blackman(data_length)
-        else:
-            print('Warning: Invalid argument "type". Return hanning window.')
-            return np.hanning(data_length)
-
     def __correct_time_lag(
         self, lag_index: int, data1: np.ndarray, data2: np.ndarray
     ) -> tuple:
@@ -100,6 +60,68 @@ class SpectrumCalculator:
             data2 = data2[-lag_index:]
         return data1, data2
 
+    def __detrend(
+        self, data: np.ndarray, linear: bool = True, quadratic: bool = False
+    ) -> np.ndarray:
+        """
+        データから一次トレンドおよび二次トレンドを除去します。
+
+        Args:
+            data (np.ndarray): 入力データ
+            linear (bool, optional): 一次トレンドを除去するかどうか. デフォルトはTrue.
+            quadratic (bool, optional): 二次トレンドを除去するかどうか. デフォルトはFalse.
+
+        Returns:
+            np.ndarray: トレンド除去後のデータ
+
+        Raises:
+            ValueError: linear と quadratic の両方がFalseの場合
+        """
+        if not (linear or quadratic):
+            raise ValueError("少なくとも一次または二次トレンドの除去を指定してください")
+
+        time = np.arange(len(data))
+        detrended_data = data.copy()  # 元データを保護
+
+        # 一次トレンドの除去
+        if linear:
+            coeffs_linear = np.polyfit(time, detrended_data, 1)
+            trend_linear = np.polyval(coeffs_linear, time)
+            detrended_data = detrended_data - trend_linear
+
+        # 二次トレンドの除去
+        if quadratic:
+            coeffs_quad = np.polyfit(time, detrended_data, 2)
+            trend_quad = np.polyval(coeffs_quad, time)
+            detrended_data = detrended_data - trend_quad
+
+        return detrended_data
+
+    def __generate_window_function(self, type: str, data_length: int) -> np.ndarray:
+        """
+        指定された種類の窓関数を適用する
+
+        Args:
+            type (str): 窓関数の種類 ('hanning', 'hamming', 'blackman')
+            data_length (int): データ長
+
+        Returns:
+            np.ndarray: 適用された窓関数
+
+        Notes:
+            - 指定された種類の窓関数を適用し、numpy配列として返す
+            - 無効な種類が指定された場合、警告を表示しHann窓を適用する
+        """
+        if type == "hanning":
+            return np.hanning(data_length)
+        elif type == "hamming":
+            return np.hamming(data_length)
+        elif type == "blackman":
+            return np.blackman(data_length)
+        else:
+            print('Warning: Invalid argument "type". Return hanning window.')
+            return np.hanning(data_length)
+
     def __moving_average(self, data: np.ndarray, window_size: int) -> np.ndarray:
         """
         指定されたウィンドウサイズでデータの移動平均を計算します。
@@ -118,7 +140,6 @@ class SpectrumCalculator:
         self,
         key: str,
         frequency_weighted: bool = True,
-        weight_type: int = 0,
         smooth: bool = False,
         window_size: int = 30,
     ) -> tuple:
@@ -128,7 +149,6 @@ class SpectrumCalculator:
         Args:
             key (str): データの列名
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            weight_type (int, optional): 重みづけの種類。0は加法的、1は乗法的な重みづけを行う。デフォルトは0。
             smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
             window_size (int, optional): 平滑化のための移動平均ウィンドウサイズ。デフォルトは30。
 
@@ -144,7 +164,7 @@ class SpectrumCalculator:
         data_length: int = len(column_data)
 
         # トレンド除去
-        column_data = self.__detrend(column_data, 1)
+        column_data = self.__detrend(column_data, True)
 
         # 窓関数適用前データの分散を計算
         variance = np.var(column_data)
@@ -177,17 +197,12 @@ class SpectrumCalculator:
         nonzero_freqs: np.ndarray = rfft_freq[nonzero_mask]
         nonzero_power_spectrum: np.ndarray = power_spectrum[nonzero_mask]
 
-        # 周波数の加法的重みづけ
-        if frequency_weighted and weight_type == 0:
-            nonzero_power_spectrum *= nonzero_freqs  # 各周波数に対応する値をかける
+        # 周波数の重みづけ
+        nonzero_power_spectrum *= nonzero_freqs  # 各周波数に対応する値をかける
 
         # 周波数軸とパワースペクトルの対数を取る
         log_freqs: np.ndarray = np.log10(nonzero_freqs)
         log_power_spectrum: np.ndarray = np.log10(nonzero_power_spectrum)
-
-        # 周波数の乗法的重みづけ
-        if frequency_weighted and weight_type == 1:
-            log_power_spectrum *= log_freqs  # 各周波数に対応する値をかける
 
         if smooth:
             # データ端の処理のため、端点を複製
@@ -221,7 +236,6 @@ class SpectrumCalculator:
         key1: str,
         key2: str,
         frequency_weighted: bool = True,
-        weight_type: int = 0,
         smooth: bool = False,
         window_size: int = 30,
     ) -> tuple:
@@ -232,7 +246,6 @@ class SpectrumCalculator:
             key1 (str): データの列名1
             key2 (str): データの列名2
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            weight_type (int, optional): 重みづけの種類。0は加法的、1は乗法的な重みづけを行う。デフォルトは0。
             smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
             window_size (int, optional): 平滑化のための移動平均ウィンドウサイズ。デフォルトは30。
 
@@ -249,6 +262,10 @@ class SpectrumCalculator:
         # 遅れ時間の補正
         if key2 in self.apply_lag_keys:
             data1, data2 = self.__correct_time_lag(self.lag_index, data1, data2)
+
+        # トレンド除去
+        data1 = self.__detrend(data1, True)
+        data2 = self.__detrend(data2, True)
 
         data_length: int = len(data1)
 
@@ -290,17 +307,12 @@ class SpectrumCalculator:
         nonzero_freqs: np.ndarray = freqs[nonzero_mask]
         nonzero_cospectrum: np.ndarray = cospectrum[nonzero_mask]
 
-        # 周波数の加法的重みづけ
-        if frequency_weighted and weight_type == 0:
-            nonzero_cospectrum *= nonzero_freqs  # 各周波数に対応する値をかける
+        # 周波数の重みづけ
+        nonzero_cospectrum *= nonzero_freqs  # 各周波数に対応する値をかける
 
         # 周波数軸と正規化コスペクトルの対数を取る
         log_freqs: np.ndarray = np.log10(nonzero_freqs)
         log_cospectrum: np.ndarray = np.log10(np.abs(nonzero_cospectrum))
-
-        # 周波数の乗法的重みづけ
-        if frequency_weighted and weight_type == 1:
-            log_cospectrum *= log_freqs  # 各周波数に対応する値をかける
 
         if smooth:
             # データ端の処理のため、端点を複製

@@ -6,14 +6,11 @@ from omu_eddy_covariance import (
 )
 
 # プロジェクトルートや作業ディレクトリのパスを定義
-project_root: str = "/home/connect0459/workspace/labo/omu-eddy-covariance"
+project_root: str = "/home/connect0459/labo/omu-eddy-covariance"
 base_path: str = f"{project_root}/workspace/footprint"
 # I/O 用ディレクトリのパス
 csv_dir_path: str = f"{base_path}/private/csv_files"
 output_dir_path: str = f"{base_path}/private/outputs"
-
-# 土台となる航空写真のパス
-base_image_path: str = f"{project_root}/storage/assets/images/SAC(height8000).jpg"
 
 # ローカルフォントを読み込む場合はコメントアウトを解除して適切なパスを入力
 font_path = f"{project_root}/storage/assets/fonts/Arial/arial.ttf"
@@ -33,7 +30,7 @@ if __name__ == "__main__":
     df: pd.DataFrame = analyzer.combine_all_csv(csv_dir_path)
 
     # 月ごとにデータをフィルタリング
-    months: list[int] = [7]
+    months: list[int] = [6, 7, 8]
     df = analyzer.filter_data(df, months=months)
 
     # フットプリントの計算（既存のメソッド）
@@ -59,3 +56,4 @@ if __name__ == "__main__":
         radius=1000,
         output_path=f"{output_dir_path}/footprint_static.png",
     )
+    

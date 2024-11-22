@@ -1,8 +1,9 @@
 import os
+import matplotlib.pyplot as plt
 from omu_eddy_covariance import TransferFunctionCalculator
 
 # 変数定義
-base_path = "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
+base_path = "/home/connect0459/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
 tf_dir_name: str = "tf"
 
 # tf_file_name: str = "TF_Ultra.2024.08.06.csv"
@@ -25,21 +26,7 @@ try:
 
     # コスペクトルのプロット
     if show_cospectra_plot:
-        # calculator.plot_cospectra(
-        #     key_wt,
-        #     key_wch4,
-        #     label1=r"$fC_{wTv}$ / $\\overline{w^\\prime Tv^\\prime}$",
-        #     label2=r"$fC_{wCH_{4}}$ / $\\overline{w^\\prime CH_{4}^\\prime}$",
-        #     color2="red",
-        # )
-        # calculator.plot_cospectra(
-        #     key_wt,
-        #     key_wc2h6,
-        #     label1=r"$fC_{wTv}$ / $\\overline{w^\\prime Tv^\\prime}$",
-        #     label2=r"$fC_{wC_{2}H_{6}}$ / $\\overline{w^\\prime C_{2}H_{6}^\\prime}$",
-        #     color2="orange",
-        # )
-        calculator.plot_cospectra(
+        fig = calculator.create_plot_cospectra(
             key_wt,
             key_wch4,
             label1=r"$fC_{wTv}$ / $\overline{w^\prime Tv^\prime}$",
@@ -47,7 +34,9 @@ try:
             color2="red",
             subplot_label="(a)"
         )
-        calculator.plot_cospectra(
+        plt.show()  # GUIで表示する場合
+        plt.close(fig)  # メモリ解放
+        fig = calculator.create_plot_cospectra(
             key_wt,
             key_wc2h6,
             label1=r"$fC_{wTv}$ / $\overline{w^\prime Tv^\prime}$",
@@ -55,6 +44,8 @@ try:
             color2="orange",
             subplot_label="(b)"
         )
+        plt.show()  # GUIで表示する場合
+        plt.close(fig)  # メモリ解放
 
     # 伝達関数の計算
     print("伝達関数を分析中...")

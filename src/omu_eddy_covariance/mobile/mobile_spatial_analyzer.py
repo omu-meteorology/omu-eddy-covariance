@@ -1,11 +1,13 @@
 import math
-import folium
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import folium
+from folium import plugins
 from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 from pathlib import Path
+from omu_eddy_covariance import HotspotData
 
 """
 堺市役所の位置情報
@@ -13,20 +15,6 @@ from pathlib import Path
 center_lat=34.573904320329724,
 center_lon=135.4829511120712,
 """
-
-
-@dataclass
-class HotspotData:
-    """ホットスポットの情報を保持するデータクラス"""
-
-    angle: float  # 中心からの角度
-    avg_lat: float  # 平均緯度
-    avg_lon: float  # 平均経度
-    correlation: float  # ΔC2H6/ΔCH4相関係数
-    ratio: float  # ΔC2H6/ΔCH4の比率
-    section: int  # 所属する区画番号
-    source: str  # データソース
-    type: str  # ホットスポットの種類 ("bio", "gas", or "comb")
 
 
 @dataclass
@@ -158,7 +146,7 @@ class MobileSpatialAnalyzer:
             lon2 (float): 地点2の経度
 
         Returns:
-            float: 2���間の距離（メートル）
+            float: 2地点間の距離（メートル）
         """
         R = 6371000  # 地球の半径（メートル）
 
@@ -242,6 +230,40 @@ class MobileSpatialAnalyzer:
             int: データポイント数
         """
         return int(60 * window_minutes)
+
+    def __correct_h2o_interference_pico(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        水蒸気干渉の補正を行います。
+        CH4濃度に対する水蒸気の干渉を補正する2次関数を適用します。
+
+        Args:
+            df (pd.DataFrame): 入力データフレーム
+
+        Returns:
+            pd.DataFrame: 水蒸気干渉が補正されたデータフレーム
+        """
+        # 補正式の係数（実験的に求められた値）
+        a: float = 2.0631  # 切片
+        b: float = 1.0111e-06  # 1次の係数
+        c: float = -1.8683e-10  # 2次の係数
+
+        # 元のデータを保護するためコピーを作成
+        df: pd.DataFrame = df.copy()
+        # 水蒸気濃度の配列を取得
+        h2o: np.ndarray = np.array(df["h2o_ppm"])
+
+        # 補正項の計算
+        correction_curve = a + b * h2o + c * h2o * h2o
+        max_correction = np.max(correction_curve)
+        correction_term = -(correction_curve - max_correction)
+
+        # CH4濃度の補正
+        df["ch4_ppm"] = df["ch4_ppm"] + correction_term
+        # 極端に低い水蒸気濃度のデータは信頼性が低いため除外
+        df.loc[df["h2o_ppm"] < 2000, "ch4_ppm"] = np.nan
+        df = df.dropna(subset=["ch4_ppm"])
+
+        return df
 
     def __detect_hotspots(
         self,
@@ -419,9 +441,8 @@ class MobileSpatialAnalyzer:
 
             df = df.dropna(subset=columns_to_shift)
 
-        # 水蒸気フィルタリング
-        df[df["h2o_ppm"] < 2000] = np.nan
-        df.dropna(subset=["ch4_ppm"], inplace=True)
+        # 水蒸気干渉の補正を適用
+        df = self.__correct_h2o_interference_pico(df)
 
         return df
 
@@ -797,3 +818,224 @@ class MobileSpatialAnalyzer:
             self.logger.info(f"散布図を保存しました: {output_path}")
 
         return fig
+
+    def create_footprint_map(
+        self,
+        x_list: list[float],
+        y_list: list[float],
+        c_list: list[float],
+        hotspots: list[HotspotData],
+        output_dir: str | Path,
+        output_filename: str = "footprint_map",
+        center_marker_label: str = "Center",
+        plot_center_marker: bool = True,
+        radius_meters: float = 3000,
+        opacity: float = 0.6,
+        grid_size: int = 200,
+    ) -> None:
+        """
+        フラックスフットプリントとホットスポットを統合した地図を作成します。
+        距離による極端な値の変化を抑制し、より自然な分布を表現します。
+        """
+        from branca.colormap import LinearColormap
+        import numpy as np
+        from scipy.stats import binned_statistic_2d
+        from scipy.ndimage import gaussian_filter
+
+        output_path: Path = Path(output_dir) / f"{output_filename}.html"
+
+        # 地図の作成
+        m = folium.Map(
+            location=[self.__center_lat, self.__center_lon],
+            zoom_start=15,
+            tiles="OpenStreetMap",
+        )
+
+        # メートル座標を緯度経度に変換
+        R = 6371000
+        lat_list = []
+        lon_list = []
+
+        # 中心からの距離を計算
+        distances = []
+        center_x, center_y = 0, 0
+
+        for x, y in zip(x_list, y_list):
+            # 距離の計算
+            distance = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+            distances.append(distance)
+
+            # 緯度経度への変換
+            dlat = (y / R) * (180 / math.pi)
+            dlon = (x / R) * (180 / math.pi) / math.cos(math.radians(self.__center_lat))
+
+            lat = self.__center_lat + dlat
+            lon = self.__center_lon + dlon
+
+            lat_list.append(lat)
+            lon_list.append(lon)
+
+        # 距離による重み付けの計算
+        max_distance = max(distances)
+        # distance_weights = np.exp(-np.array(distances) / (max_distance * 0.5))
+        distance_weights = np.exp(-np.array(distances) / (max_distance * 1000))
+
+        # 値の調整（距離による重み付け）
+        adjusted_values = np.array(c_list) * distance_weights
+
+        # フラックスデータを2次元ヒストグラムに変換
+        ret = binned_statistic_2d(
+            lon_list,
+            lat_list,
+            adjusted_values,
+            statistic="mean",
+            bins=grid_size,
+            range=[[min(lon_list), max(lon_list)], [min(lat_list), max(lat_list)]],
+        )
+
+        # statisticをコピーして新しい配列を作成
+        statistic_data = np.copy(ret.statistic)
+
+        # データの正規化（0-100の範囲に）
+        valid_data = statistic_data[~np.isnan(statistic_data)]
+        if len(valid_data) > 0:
+            min_val = np.percentile(valid_data, 2)
+            max_val = np.percentile(valid_data, 98)
+            statistic_data = np.clip(statistic_data, min_val, max_val)
+            statistic_data = ((statistic_data - min_val) / (max_val - min_val)) * 100
+
+        # ガウシアンフィルターでスムージング
+        smoothed_data = gaussian_filter(statistic_data, sigma=2.0)
+
+        # カラーマップの定義
+        colors = [
+            "#313695",  # 濃い青
+            "#4575b4",  # 青
+            "#74add1",  # 明るい青
+            "#abd9e9",  # さらに明るい青
+            "#e0f3f8",  # 最も明るい青
+            "#ffffbf",  # 黄色
+            "#fee090",  # 明るいオレンジ
+            "#fdae61",  # オレンジ
+            "#f46d43",  # 暗いオレンジ
+            "#d73027",  # 赤
+            "#a50026",  # 濃い赤
+        ]
+
+        # ヒートマップデータの生成
+        heatmap_data = []
+        lon_edges = ret.x_edge
+        lat_edges = ret.y_edge
+
+        for i in range(len(lon_edges) - 1):
+            for j in range(len(lat_edges) - 1):
+                if not np.isnan(smoothed_data[i, j]):
+                    lon = (lon_edges[i] + lon_edges[i + 1]) / 2
+                    lat = (lat_edges[j] + lat_edges[j + 1]) / 2
+                    weight = smoothed_data[i, j]
+                    if weight > 0:  # 0以上の値のみ表示
+                        heatmap_data.append([lat, lon, weight])
+
+        # ヒートマップの追加
+        plugins.HeatMap(
+            heatmap_data,
+            min_opacity=opacity * 0.5,
+            max_opacity=opacity,
+            radius=15,
+            blur=20,
+            gradient={
+                0.0: colors[0],
+                0.1: colors[1],
+                0.2: colors[2],
+                0.3: colors[3],
+                0.4: colors[4],
+                0.5: colors[5],
+                0.6: colors[6],
+                0.7: colors[7],
+                0.8: colors[8],
+                0.9: colors[9],
+                1.0: colors[10],
+            },
+        ).add_to(m)
+
+        # ホットスポットの追加
+        for spot in hotspots:
+            if math.isnan(spot.avg_lat) or math.isnan(spot.avg_lon):
+                continue
+
+            color = {"comb": "green", "gas": "red", "bio": "blue"}.get(
+                spot.type, "black"
+            )
+
+            popup_html = f"""
+            <div style='font-family: Arial; font-size: 12px; display: grid; grid-template-columns: auto auto auto; gap: 5px;'>
+                <b>Date</b>    <span>:</span> <span>{spot.source}</span>
+                <b>Corr</b>    <span>:</span> <span>{spot.correlation:.3f}</span>
+                <b>Ratio</b>   <span>:</span> <span>{spot.ratio:.3f}</span>
+                <b>Type</b>    <span>:</span> <span>{spot.type}</span>
+                <b>Section</b> <span>:</span> <span>{spot.section}</span>
+            </div>
+            """
+
+            popup = folium.Popup(
+                folium.Html(popup_html, script=True),
+                max_width=200,
+            )
+
+            folium.CircleMarker(
+                location=[spot.avg_lat, spot.avg_lon],
+                radius=8,
+                color=color,
+                fill=True,
+                popup=popup,
+                weight=2,
+            ).add_to(m)
+
+        # 中心点のマーカー
+        if plot_center_marker:
+            folium.Marker(
+                [self.__center_lat, self.__center_lon],
+                popup=center_marker_label,
+                icon=folium.Icon(color="green", icon="info-sign"),
+            ).add_to(m)
+
+        # 区画の境界線を描画
+        for section in range(self.__num_sections):
+            start_angle = math.radians(-180 + section * self.__section_size)
+
+            lat1 = self.__center_lat
+            lon1 = self.__center_lon
+            lat2 = math.degrees(
+                math.asin(
+                    math.sin(math.radians(lat1)) * math.cos(radius_meters / R)
+                    + math.cos(math.radians(lat1))
+                    * math.sin(radius_meters / R)
+                    * math.cos(start_angle)
+                )
+            )
+            lon2 = self.__center_lon + math.degrees(
+                math.atan2(
+                    math.sin(start_angle)
+                    * math.sin(radius_meters / R)
+                    * math.cos(math.radians(lat1)),
+                    math.cos(radius_meters / R)
+                    - math.sin(math.radians(lat1)) * math.sin(math.radians(lat2)),
+                )
+            )
+
+            folium.PolyLine(
+                locations=[[lat1, lon1], [lat2, lon2]],
+                color="black",
+                weight=1,
+                opacity=0.5,
+            ).add_to(m)
+
+        # カラーバーの追加
+        colormap = LinearColormap(
+            colors=colors, vmin=0, vmax=100, caption="Footprint contribution (%)"
+        )
+        colormap.add_to(m)
+
+        # 地図を保存
+        m.save(str(output_path))
+        self.logger.info(f"フットプリント地図を保存しました: {output_path}")

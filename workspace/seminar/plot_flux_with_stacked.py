@@ -32,9 +32,9 @@ plt.rcParams.update(
     }
 )
 
-project_home_dir: str = (
-    "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/seminar"
-)
+tag: str = "06_10"
+
+project_home_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/seminar"
 
 # データの読み込み
 df: pd.DataFrame = pd.read_csv(
@@ -105,7 +105,7 @@ fig.text(
 
 # グラフの保存
 plt.savefig(
-    f"{project_home_dir}/private/ch4_flux_stacked_bar_directions.png",
+    f"{project_home_dir}/private/ch4_flux_stacked_bar_directions-{tag}.png",
     dpi=300,
     bbox_inches="tight",
 )

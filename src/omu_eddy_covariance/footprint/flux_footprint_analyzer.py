@@ -8,6 +8,11 @@ from datetime import datetime
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 from PIL import Image
 from tqdm import tqdm
+from omu_eddy_covariance import HotspotData
+
+import io
+import requests
+from typing import Optional
 
 
 class FluxFootprintAnalyzer:
@@ -549,7 +554,7 @@ class FluxFootprintAnalyzer:
         self,
         df: pd.DataFrame,
         flux_key: str,
-        plot_count: int = 50000,
+        plot_count: int = 10000,
         start_time: str = "10:00",
         end_time: str = "16:00",
     ) -> tuple[list[float], list[float], list[float]]:
@@ -559,7 +564,7 @@ class FluxFootprintAnalyzer:
         引数:
             df (pd.DataFrame): 分析対象のデータフレーム。フラックスデータを含む。
             flux_key (str): フラックスデータの列名。計算に使用される。
-            plot_count (int, optional): 生成するプロットの数。デフォルトは50000。
+            plot_count (int, optional): 生成するプロットの数。デフォルトは10000。
             start_time (str, optional): フットプリント計算に使用する開始時間。デフォルトは"10:00"。
             end_time (str, optional): フットプリント計算に使用する終了時間。デフォルトは"16:00"。
 
@@ -790,3 +795,546 @@ class FluxFootprintAnalyzer:
                     )
 
         return fig
+
+    def __convert_latlon_to_xy(
+        self, lat: float, lon: float, center_lat: float, center_lon: float
+    ) -> tuple[float, float]:
+        """
+        緯度経度をメートル単位のx-y座標に変換します。
+        中心からの相対距離を計算します。
+
+        Args:
+            lat (float): 緯度
+            lon (float): 経度
+
+        Returns:
+            tuple[float, float]: (x, y) x: 東西方向の距離(m), y: 南北方向の距離(m)
+        """
+        # 地球の半径 (メートル)
+        R = 6371000
+
+        # 緯度の差をメートルに変換
+        d_lat = lat - center_lat
+        y = R * math.radians(d_lat)
+
+        # 経度の差をメートルに変換（緯度による補正あり）
+        d_lon = lon - center_lon
+        x = R * math.radians(d_lon) * math.cos(math.radians(center_lat))
+
+        return x, y
+
+    def plot_flux_footprint_with_hotspots(
+        self,
+        x_list: list[float],
+        y_list: list[float],
+        c_list: list[float],
+        hotspots: list[HotspotData],  # MobileSpatialAnalyzerのHotspotDataクラスのリスト
+        base_image_path: str,
+        cmap: str,
+        vmin: float,
+        vmax: float,
+        center_lat: float,
+        center_lon: float,
+        xy_min: float = -4000,
+        xy_max: float = 4000,
+        function: callable = np.mean,
+        cbar_label: str = "",
+        cbar_labelpad: int = 20,
+        output_path: str = "",
+        hotspot_colors: dict[str, str] | None = None,
+    ) -> plt.Figure | None:
+        """
+        フラックスフットプリントとホットスポットを組み合わせた図を作成します。
+
+        Args:
+            x_list (list[float]): プロットするデータのx座標リスト
+            y_list (list[float]): プロットするデータのy座標リスト
+            c_list (list[float]): プロットするデータの値リスト
+            hotspots (list[HotspotData]): ホットスポットのリスト
+            base_image_path (str): 使用する衛星画像ファイルのパス
+            cmap (str): カラーマップ名
+            vmin (float): カラーマップの最小値
+            vmax (float): カラーマップの最大値
+            xy_min (float): プロットのx軸とy軸の最小値 (メートル)。デフォルトは-4000。
+            xy_max (float): プロットのx軸とy軸の最大値 (メートル)。デフォルトは4000。
+            function (callable): データに適用する関数。デフォルトはnp.mean。
+            cbar_label (str): カラーバーのラベル。デフォルトは空文字列。
+            cbar_labelpad (int): カラーバーとラベルの間のpadding。デフォルトは20。
+            output_path (str): 作成した図の保存先の絶対パス。デフォルトは空文字列。
+            hotspot_colors (dict[str, str] | None): ホットスポットの種類ごとの色設定。
+                デフォルトは None で、その場合は {"bio": "blue", "gas": "red", "comb": "green"} を使用。
+
+        Returns:
+            plt.Figure | None: 作成されたプロットのFigureオブジェクト、または何も返さない
+        """
+        if base_image_path == "":
+            raise ValueError(f"base_image_path の値が不正です: '{base_image_path}'")
+
+        # デフォルトのホットスポットカラー設定
+        default_colors = {"bio": "blue", "gas": "red", "comb": "green"}
+        spot_colors = hotspot_colors or default_colors
+
+        base_image = Image.open(base_image_path)
+        img_crop = base_image.crop((0, 0, 2160, 2160))
+
+        plt.rcParams["axes.edgecolor"] = "None"
+        fig: plt.Figure = plt.figure(figsize=(10, 8), dpi=300)
+
+        # メインの図の位置とサイズを調整
+        ax_data: plt.Axes = fig.add_axes([0.05, 0.1, 0.8, 0.8])
+
+        self.logger.info("プロットを作成中...")
+        # フラックスの空間変動の可視化
+        hexbin = ax_data.hexbin(
+            x_list,
+            y_list,
+            c_list,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            alpha=0.3,
+            gridsize=100,
+            linewidths=0,
+            mincnt=100,
+            extent=[xy_min, xy_max, xy_min, xy_max],
+            reduce_C_function=function,
+        )
+
+        # ホットスポットの追加
+        # 種類ごとにマーカーをまとめて描画（凡例用）
+        spot_handles = []  # 凡例用のハンドルを保存
+        for spot_type, color in spot_colors.items():
+            spots_x = []
+            spots_y = []
+
+            # 該当する種類のホットスポットの座標を収集
+            for spot in hotspots:
+                if spot.type == spot_type:
+                    x, y = self.__convert_latlon_to_xy(
+                        spot.avg_lat, spot.avg_lon, center_lat, center_lon
+                    )
+                    # プロット範囲内のものだけを追加
+                    if xy_min <= x <= xy_max and xy_min <= y <= xy_max:
+                        spots_x.append(x)
+                        spots_y.append(y)
+
+            if spots_x:  # データがある場合のみプロット
+                handle = ax_data.scatter(
+                    spots_x,
+                    spots_y,
+                    c=color,
+                    marker="o",
+                    s=100,
+                    alpha=0.7,
+                    label=spot_type.capitalize(),
+                    edgecolor="black",
+                    linewidth=1,
+                )
+                spot_handles.append(handle)
+
+        ax_data.set_xlim(xy_min, xy_max)
+        ax_data.set_xticks([])
+        ax_data.set_ylim(xy_min, xy_max)
+        ax_data.set_yticks([])
+        ax_data.set_zorder(2)  # 前面に
+        ax_data.patch.set_alpha(0)  # 背景を透明化
+        ax_data.tick_params(axis="both", length=0, labelcolor="None")
+        ax_data.grid(None)
+
+        # 航空写真の画像の表示
+        ax_img = ax_data.twiny().twinx()
+        ax_img.imshow(img_crop, alpha=1, extent=[xy_min, xy_max, xy_max, xy_min])
+        ax_img.set_xlim(xy_min, xy_max)
+        ax_img.set_xticks([])
+        ax_img.set_ylim(xy_max, xy_min)
+        ax_img.set_yticks([])
+        ax_img.tick_params(axis="both", length=0, labelcolor="None")
+        ax_img.set_zorder(1)
+        ax_img.grid(None)
+
+        # カラーバーの追加（位置とサイズを調整）
+        cbar_ax: plt.Axes = fig.add_axes([0.88, 0.1, 0.03, 0.8])
+        cbar = fig.colorbar(hexbin, cax=cbar_ax)
+        if cbar_label != "":
+            cbar.set_label(
+                cbar_label,
+                rotation=270,
+                labelpad=cbar_labelpad,
+            )
+
+        # ホットスポットの凡例を追加
+        if spot_handles:
+            legend = ax_data.legend(
+                handles=spot_handles,
+                loc="upper left",
+                bbox_to_anchor=(1.15, 1.0),
+                title="Hotspots",
+            )
+            legend.get_frame().set_alpha(0.8)
+
+        self.logger.info("プロットが正常に作成されました")
+
+        # 出力パスが指定されている場合、図を保存
+        if output_path != "":
+            valid_extensions: list[str] = [".png", ".jpg", ".jpeg", ".pdf", ".svg"]
+            _, file_extension = os.path.splitext(output_path)
+
+            if file_extension.lower() not in valid_extensions:
+                quoted_extensions: list[str] = [f'"{ext}"' for ext in valid_extensions]
+                self.logger.error(
+                    f"`output_path`は有効な拡張子ではありません。プロットを保存するには、次のいずれかを指定してください: {','.join(quoted_extensions)}"
+                )
+                return
+
+            try:
+                self.logger.info("プロットを保存中...")
+                fig.savefig(output_path)
+                self.logger.info(f"プロットが正常に保存されました: {output_path}")
+            except Exception as e:
+                self.logger.error(f"プロットの保存中にエラーが発生しました: {str(e)}")
+
+        return fig
+
+    def get_satellite_image(
+        self,
+        api_key: str,
+        center_lat: float,
+        center_lon: float,
+        zoom: int = 15,
+        size: tuple[int, int] = (2160, 2160),
+        scale: int = 1,
+        output_path: Optional[str] = None,
+    ) -> Image.Image:
+        """
+        Google Maps Static APIを使用して衛星画像を取得します。
+
+        Args:
+            api_key (str): Google Maps Static APIのキー
+            center_lat (float): 中心の緯度
+            center_lon (float): 中心の経度
+            zoom (int, optional): ズームレベル（0-21）。デフォルトは15。
+            size (tuple[int, int], optional): 画像サイズ (幅, 高さ)。デフォルトは(2160, 2160)。
+            scale (int, optional): 画像の解像度スケール（1か2）。デフォルトは1。
+            output_path (Optional[str], optional): 画像の保存パス。デフォルトはNone。
+
+        Returns:
+            Image.Image: 取得した衛星画像
+        """
+        base_url = "https://maps.googleapis.com/maps/api/staticmap"
+
+        params = {
+            "center": f"{center_lat},{center_lon}",
+            "zoom": zoom,
+            "size": f"{size[0]}x{size[1]}",
+            "maptype": "satellite",
+            "scale": scale,
+            "key": api_key,
+        }
+
+        try:
+            response = requests.get(base_url, params=params)
+            response.raise_for_status()
+
+            image = Image.open(io.BytesIO(response.content))
+
+            if output_path:
+                image.save(output_path)
+                self.logger.info(f"衛星画像を保存しました: {output_path}")
+
+            return image
+
+        except requests.RequestException as e:
+            self.logger.error(f"衛星画像の取得に失敗しました: {str(e)}")
+            raise
+
+    def plot_flux_footprint_with_hotspots_on_api(
+        self,
+        x_list: list[float],
+        y_list: list[float],
+        c_list: list[float],
+        hotspots: list[HotspotData],
+        center_lat: float,
+        center_lon: float,
+        api_key: str,
+        cmap: str,
+        vmin: float,
+        vmax: float,
+        xy_max: float = 4000,
+        function: callable = np.mean,
+        cbar_label: str = "",
+        cbar_labelpad: int = 20,
+        output_path: str = "",
+        hotspot_colors: dict[str, str] | None = None,
+        auto_zoom: bool = False,
+        lon_correction: float = 0.8,  # 経度方向の補正係数
+        lat_correction: float = 0.8,  # 緯度方向の補正係数
+    ) -> plt.Figure | None:
+        """
+        Args:
+        lat_offset (float): 緯度方向の位置補正値（度）。正の値で北にシフト。
+        lon_offset (float): 経度方向の位置補正値（度）。正の値で東にシフト。
+        """
+        # 1. ズームレベルの設定
+        zoom = 13
+        if auto_zoom:
+            display_range_meters = abs(xy_max)
+            zoom = self.__calculate_zoom_level(display_range_meters, center_lat)
+        self.logger.info(f"Using zoom level: {zoom}")
+
+        # 2. 衛星画像の取得
+        try:
+            base_image = self.get_satellite_image(
+                api_key=api_key, center_lat=center_lat, center_lon=center_lon, zoom=zoom
+            )
+        except Exception as e:
+            self.logger.error(f"衛星画像の取得に失敗しました: {str(e)}")
+            base_image = Image.new("RGB", (2160, 2160), "lightgray")
+
+        # 3. 座標変換のための定数
+        EARTH_RADIUS = 6371000  # 地球の半径（メートル）
+        meters_per_lat = EARTH_RADIUS * (math.pi / 180)  # 緯度1度あたりのメートル
+        meters_per_lon = meters_per_lat * math.cos(
+            math.radians(center_lat)
+        )  # 経度1度あたりのメートル
+
+        # 4. フットプリントデータの座標変換
+        # メートル単位からの緯度経度への変換
+        x_deg = np.array(x_list) / meters_per_lon
+        y_deg = np.array(y_list) / meters_per_lat
+
+        # 4. フットプリントデータの座標変換
+        # 補正係数を適用した座標変換
+        EARTH_RADIUS = 6371000
+        meters_per_lat = EARTH_RADIUS * (math.pi / 180)
+        meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
+
+        x_deg = np.array(x_list) / meters_per_lon * lon_correction
+        y_deg = np.array(y_list) / meters_per_lat * lat_correction
+
+        lons = center_lon + x_deg
+        lats = center_lat + y_deg
+
+        # 5. 表示範囲の計算
+        x_range = xy_max / meters_per_lon
+        y_range = xy_max / meters_per_lat
+
+        map_boundaries = (
+            center_lon - x_range,  # left_lon
+            center_lon + x_range,  # right_lon
+            center_lat - y_range,  # bottom_lat
+            center_lat + y_range,  # top_lat
+        )
+        left_lon, right_lon, bottom_lat, top_lat = map_boundaries
+
+        # 6. プロットの作成
+        plt.rcParams["axes.edgecolor"] = "None"
+        fig: plt.Figure = plt.figure(figsize=(10, 8), dpi=300)
+        ax_data: plt.Axes = fig.add_axes([0.05, 0.1, 0.8, 0.8])
+
+        # 7. フットプリントの描画
+        hexbin = ax_data.hexbin(
+            lons,
+            lats,
+            C=c_list,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            alpha=0.3,
+            gridsize=100,
+            linewidths=0,
+            mincnt=100,
+            extent=[left_lon, right_lon, bottom_lat, top_lat],
+            reduce_C_function=function,
+        )
+
+        # 8. ホットスポットの描画
+        spot_handles = []
+        default_colors = {"bio": "blue", "gas": "red", "comb": "green"}
+
+        # 座標変換のための定数
+        meters_per_lat = EARTH_RADIUS * (math.pi / 180)
+        meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
+
+        for spot_type, color in (hotspot_colors or default_colors).items():
+            spots_lon = []
+            spots_lat = []
+
+            for spot in hotspots:
+                if spot.type == spot_type:
+                    # 変換前の緯度経度をログ出力
+                    self.logger.debug(
+                        f"Before - Type: {spot_type}, Lat: {spot.avg_lat:.6f}, Lon: {spot.avg_lon:.6f}"
+                    )
+                    
+                    # 中心からの相対距離を計算
+                    dx = (spot.avg_lon - center_lon) * meters_per_lon
+                    dy = (spot.avg_lat - center_lat) * meters_per_lat
+
+                    # 補正前の相対座標をログ出力
+                    self.logger.debug(
+                        f"Relative - Type: {spot_type}, X: {dx:.2f}m, Y: {dy:.2f}m"
+                    )
+
+                    # 補正を適用
+                    corrected_dx = dx * lon_correction
+                    corrected_dy = dy * lat_correction
+
+                    # 補正後の緯度経度を計算
+                    adjusted_lon = center_lon + corrected_dx / meters_per_lon
+                    adjusted_lat = center_lat + corrected_dy / meters_per_lat
+
+                    # 変換後の緯度経度をログ出力
+                    self.logger.debug(
+                        f"After - Type: {spot_type}, Lat: {adjusted_lat:.6f}, Lon: {adjusted_lon:.6f}\n"
+                    )
+
+                    if (
+                        left_lon <= adjusted_lon <= right_lon
+                        and bottom_lat <= adjusted_lat <= top_lat
+                    ):
+                        spots_lon.append(adjusted_lon)
+                        spots_lat.append(adjusted_lat)
+
+            if spots_lon:
+                handle = ax_data.scatter(
+                    spots_lon,
+                    spots_lat,
+                    c=color,
+                    marker="o",
+                    s=100,
+                    alpha=0.7,
+                    label=spot_type.capitalize(),
+                    edgecolor="black",
+                    linewidth=1,
+                )
+                spot_handles.append(handle)
+
+        # 9. 背景画像の設定
+        ax_img = ax_data.twiny().twinx()
+        ax_img.imshow(
+            base_image,
+            extent=[left_lon, right_lon, bottom_lat, top_lat],
+            aspect="equal",
+        )
+
+        # 10. 軸の設定
+        for ax in [ax_data, ax_img]:
+            ax.set_xlim(left_lon, right_lon)
+            ax.set_ylim(bottom_lat, top_lat)
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        ax_data.set_zorder(2)
+        ax_data.patch.set_alpha(0)
+        ax_img.set_zorder(1)
+
+        # 11. カラーバーの追加
+        cbar_ax: plt.Axes = fig.add_axes([0.88, 0.1, 0.03, 0.8])
+        cbar = fig.colorbar(hexbin, cax=cbar_ax)
+        if cbar_label:
+            cbar.set_label(cbar_label, rotation=270, labelpad=cbar_labelpad)
+
+        # 12. ホットスポットの凡例追加
+        if spot_handles:
+            legend = ax_data.legend(
+                handles=spot_handles,
+                loc="upper left",
+                bbox_to_anchor=(1.15, 1.0),
+                title="Hotspots",
+            )
+            legend.get_frame().set_alpha(0.8)
+
+        # 13. 画像の保存
+        if output_path:
+            valid_extensions = [".png", ".jpg", ".jpeg", ".pdf", ".svg"]
+            _, file_extension = os.path.splitext(output_path)
+
+            if file_extension.lower() not in valid_extensions:
+                quoted_extensions = [f'"{ext}"' for ext in valid_extensions]
+                self.logger.error(
+                    f"`output_path`は有効な拡張子ではありません。プロットを保存するには、次のいずれかを指定してください: {','.join(quoted_extensions)}"
+                )
+                return
+
+            try:
+                self.logger.info("プロットを保存中...")
+                fig.savefig(output_path, bbox_inches="tight")
+                self.logger.info(f"プロットが正常に保存されました: {output_path}")
+            except Exception as e:
+                self.logger.error(f"プロットの保存中にエラーが発生しました: {str(e)}")
+
+        return fig
+
+    def calculate_position_correction(
+        self,
+        reference_x: float,
+        reference_y: float,
+        actual_lat: float,
+        actual_lon: float,
+        center_lat: float,
+        center_lon: float,
+    ) -> tuple[float, float]:
+        """
+        相対座標から緯度経度への変換の補正係数を計算します。
+
+        実際の位置との差分に基づいて補正係数を算出します。
+        """
+        EARTH_RADIUS = 6371000
+        meters_per_lat = EARTH_RADIUS * (math.pi / 180)
+        meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
+
+        # 現在の変換方法での位置を計算
+        current_lat_offset = reference_y / meters_per_lat
+        current_lon_offset = reference_x / meters_per_lon
+
+        current_lat = center_lat + current_lat_offset
+        current_lon = center_lon + current_lon_offset
+
+        # 実際の位置との差を計算（メートル単位）
+        lat_diff_meters = (actual_lat - current_lat) * meters_per_lat
+        lon_diff_meters = (actual_lon - current_lon) * meters_per_lon
+
+        # 差分に基づく補正係数を計算
+        lat_correction = (
+            (reference_y + lat_diff_meters) / reference_y if reference_y != 0 else 1.0
+        )
+        lon_correction = (
+            (reference_x + lon_diff_meters) / reference_x if reference_x != 0 else 1.0
+        )
+
+        return lon_correction, lat_correction
+
+    def __calculate_zoom_level(
+        self,
+        desired_range_meters: float,
+        center_lat: float,
+        image_width_pixels: int = 2160,
+    ) -> int:
+        """
+        指定された範囲（メートル）を表示するのに適切なズームレベルを計算します。
+
+        Args:
+            desired_range_meters (float): 表示したい範囲（メートル）
+            center_lat (float): 中心の緯度
+            image_width_pixels (int): 画像の幅（ピクセル）。デフォルトは2160。
+
+        Returns:
+            int: 適切なズームレベル（0-21）
+        """
+        # 地球の赤道周囲長（メートル）
+        EARTH_CIRCUMFERENCE = 40075016.686
+
+        # 緯度による距離の補正係数
+        lat_correction = math.cos(math.radians(abs(center_lat)))
+
+        # ズームレベル0での1ピクセルあたりの距離（メートル）
+        meters_per_pixel_zoom0 = EARTH_CIRCUMFERENCE / (256 * lat_correction)
+
+        # 必要な1ピクセルあたりの距離（メートル）
+        desired_meters_per_pixel = (2 * desired_range_meters) / image_width_pixels
+
+        # ズームレベルの計算
+        zoom_level = math.log2(meters_per_pixel_zoom0 / desired_meters_per_pixel)
+
+        # 整数値に丸めて、有効範囲（0-21）に収める
+        return max(0, min(21, round(zoom_level)))

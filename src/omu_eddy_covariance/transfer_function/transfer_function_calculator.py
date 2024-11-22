@@ -159,41 +159,22 @@ class TransferFunctionCalculator:
         array_x = np.array(df_cutoff.index)
         array_y = np.array(df_cutoff["target"] / df_cutoff["reference"])
 
-        param, _ = curve_fit(self.transfer_function, array_x, array_y)
+        param, _ = curve_fit(
+            TransferFunctionCalculator.transfer_function, array_x, array_y
+        )
         return param[0]
 
-    def plot_ratio(
-        self, df_processed: pd.DataFrame, target_name: str, reference_name: str
-    ) -> None:
-        """
-        ターゲットと参照の比率をプロットする。
-
-        Args:
-            df_processed (pd.DataFrame): 処理されたデータフレーム。
-            target_name (str): ターゲットの名前。
-            reference_name (str): 参照の名前。
-        """
-        plt.figure(figsize=(10, 6))
-        plt.plot(
-            df_processed.index, df_processed["target"] / df_processed["reference"], "o"
-        )
-        ax = plt.gca()
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        plt.xlabel("f (Hz)")
-        plt.ylabel(f"{target_name} / {reference_name}")
-        plt.title(f"{target_name}と{reference_name}の比")
-        plt.show()
-
-    def plot_cospectra(
+    def create_plot_cospectra(
         self,
         key1: str,
         key2: str,
-        label1: str = "データ1",
-        label2: str = "データ2",
         color1: str = "gray",
         color2: str = "red",
+        figsize: tuple[int, int] = (10, 8),
+        label1: str = "データ1",
+        label2: str = "データ2",
         subplot_label: str | None = "(a)",
+        window_size: int = 5,  # 移動平均の窓サイズ
     ) -> None:
         """
         2種類のコスペクトルをプロットする。
@@ -201,34 +182,34 @@ class TransferFunctionCalculator:
         Args:
             key1 (str): 1つ目のコスペクトルデータのカラム名。
             key2 (str): 2つ目のコスペクトルデータのカラム名。
-            label1 (str, optional): 1つ目のデータのラベル名。デフォルトは"データ1"。
-            label2 (str, optional): 2つ目のデータのラベル名。デフォルトは"データ2"。
             color1 (str, optional): 1つ目のデータの色。デフォルトは'gray'。
             color2 (str, optional): 2つ目のデータの色。デフォルトは'red'。
+            figsize (tuple[int, int], optional): プロットのサイズ。デフォルトは(10, 8)。
+            label1 (str, optional): 1つ目のデータのラベル名。デフォルトは"データ1"。
+            label2 (str, optional): 2つ目のデータのラベル名。デフォルトは"データ2"。
             subplot_label (str | None, optional): 左上に表示するサブプロットラベル。デフォルトは"(a)"。
+            window_size (int, optional): 移動平均の窓サイズ。デフォルトは5。
         """
+        # データの取得と移動平均の適用
         data1 = self.df[self.df[key1] > 0].groupby(self.freq_key)[key1].median()
         data2 = self.df[self.df[key2] > 0].groupby(self.freq_key)[key2].median()
 
-        plt.figure(figsize=(10, 6))
+        data1 = data1.rolling(window=window_size, center=True, min_periods=1).mean()
+        data2 = data2.rolling(window=window_size, center=True, min_periods=1).mean()
 
-        # データ1のプロット
-        plt.plot(data1.index, data1, "o", color=color1, label=label1)
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
 
-        # データ2のプロット
-        plt.plot(data2.index, data2, "o", color=color2, label=label2)
+        ax.plot(data1.index, data1, "o", color=color1, label=label1)
+        ax.plot(data2.index, data2, "o", color=color2, label=label2)
+        ax.plot([0.01, 10], [10, 0.001], "-", color="black")
 
-        # -4/3 勾配の参照線
-        plt.plot([0.01, 10], [10, 0.001], "-", color="black")
-
-        ax = plt.gca()
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_xlim(0.0001, 10)
         ax.set_ylim(0.0001, 10)
         ax.set_xlabel("f (Hz)", size=16)
         ax.set_ylabel("無次元コスペクトル", size=16)
-        ax.grid(color="gray", linestyle="--")
 
         ax.legend(
             bbox_to_anchor=(0.05, 1),
@@ -241,16 +222,17 @@ class TransferFunctionCalculator:
             ax.text(0.00015, 3, subplot_label, fontsize=18)
         ax.text(0.25, 0.4, "-4/3", fontsize=18)
 
-        plt.tight_layout()
-        plt.show()
+        fig.tight_layout()
+        return fig
 
-    def plot_transfer_function(
+    def create_plot_transfer_function(
         self,
         df_processed: pd.DataFrame,
         a: float,
         target_name: str,
         reference_name: str,
-    ) -> None:
+        figsize: tuple[int, int] = (10, 6),
+    ) -> plt.Figure:
         """
         伝達関数とそのフィットをプロットする。
 
@@ -259,13 +241,17 @@ class TransferFunctionCalculator:
             a (float): 伝達関数の係数。
             target_name (str): ターゲットの名前。
             reference_name (str): 参照の名前。
-            f_low (float, optional): 下限周波数。デフォルトは0.001。
-            f_high (float, optional): 上限周波数。デフォルトは10。
+            figsize (tuple[int, int], optional): プロットのサイズ。デフォルトは(10, 6)。
+
+        Returns:
+            plt.Figure: プロットのFigureオブジェクト
         """
         df_cutoff: pd.DataFrame = self.__cutoff_df(df_processed)
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
+
+        ax.plot(
             df_cutoff.index,
             df_cutoff["target"] / df_cutoff["reference"],
             "o",
@@ -276,14 +262,47 @@ class TransferFunctionCalculator:
             np.log10(self.cutoff_freq_low), np.log10(self.cutoff_freq_high), 1000
         )
         y_fit = self.transfer_function(x_fit, a)
-        plt.plot(x_fit, y_fit, "-", label=f"フィット (a = {a:.4f})")
+        ax.plot(x_fit, y_fit, "-", label=f"フィット (a = {a:.4f})")
 
-        ax = plt.gca()
         ax.set_xscale("log")
-        plt.xlabel("f (Hz)")
-        plt.ylabel("コスペクトル比")
-        plt.legend()
-        plt.show()
+        ax.set_xlabel("f (Hz)")
+        ax.set_ylabel("コスペクトル比")
+        ax.legend()
+
+        return fig
+
+    def create_plot_ratio(
+        self,
+        df_processed: pd.DataFrame,
+        target_name: str,
+        reference_name: str,
+        figsize: tuple[int, int] = (10, 6),
+    ) -> plt.Figure:
+        """
+        ターゲットと参照の比率をプロットする。
+
+        Args:
+            df_processed (pd.DataFrame): 処理されたデータフレーム。
+            target_name (str): ターゲットの名前。
+            reference_name (str): 参照の名前。
+            figsize (tuple[int, int], optional): プロットのサイズ。デフォルトは(10, 6)。
+
+        Returns:
+            plt.Figure: プロットのFigureオブジェクト
+        """
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
+
+        ax.plot(
+            df_processed.index, df_processed["target"] / df_processed["reference"], "o"
+        )
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel("f (Hz)")
+        ax.set_ylabel(f"{target_name} / {reference_name}")
+        ax.set_title(f"{target_name}と{reference_name}の比")
+
+        return fig
 
     def analyze_transfer_function(
         self,
@@ -313,5 +332,7 @@ class TransferFunctionCalculator:
         # self.plot_ratio(df_processed, target_name, reference_name)
         a: float = self.calculate_transfer_function(df_processed)
         if show_tf_plot:
-            self.plot_transfer_function(df_processed, a, target_name, reference_name)
+            self.create_plot_transfer_function(
+                df_processed, a, target_name, reference_name
+            )
         return a

@@ -1,7 +1,7 @@
+from .commons.hotspot_data import HotspotData
 from .footprint.geo_flux_footprint_analyzer import GeoFluxFootprintAnalyzer
 from .footprint.flux_footprint_analyzer import FluxFootprintAnalyzer
 from .mobile.mobile_spatial_analyzer import (
-    HotspotData,
     MobileSpatialAnalyzer,
     MSAInputConfig,
 )
@@ -13,9 +13,9 @@ from .ultra.spectrum_calculator import SpectrumCalculator
 
 # モジュールを __all__ にセット
 __all__ = [
+    "HotspotData",
     "GeoFluxFootprintAnalyzer",
     "FluxFootprintAnalyzer",
-    "HotspotData",
     "MobileSpatialAnalyzer",
     "MSAInputConfig",
     "FftFileReorganizer",
