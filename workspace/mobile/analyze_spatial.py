@@ -27,6 +27,14 @@ inputs: list[MSAInputConfig] = [
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.20/input/Pico100121_241120_092932+.txt",
         delay=13,
     ),
+    MSAInputConfig(
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.24/input/Pico100121_241124_092712+.txt",
+        delay=13,
+    ),
+    MSAInputConfig(
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.25/input/Pico100121_241125_090721+.txt",
+        delay=13,
+    ),
 ]
 
 num_sections: int = 4

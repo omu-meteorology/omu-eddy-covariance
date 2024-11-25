@@ -91,16 +91,6 @@ if __name__ == "__main__":
         df, "Fratio", plot_count=30000
     )
 
-    # 補正係数を計算（例：ある基準点について）
-    lon_correction, lat_correction = analyzer_footprint.calculate_position_correction(
-        reference_x=1000,  # 基準点の相対x座標(m)
-        reference_y=500,  # 基準点の相対y座標(m)
-        actual_lat=35.1234,  # 基準点の実際の緯度
-        actual_lon=139.5678,  # 基準点の実際の経度
-        center_lat=35.1200,  # 中心点の緯度
-        center_lon=139.5600,  # 中心点の経度
-    )
-
     api_key = get_api_key()
 
     # フットプリントとホットスポットの可視化

@@ -141,94 +141,108 @@ class SpectrumCalculator:
         key: str,
         frequency_weighted: bool = True,
         smooth: bool = False,
-        window_size: int = 30,
     ) -> tuple:
         """
         DataFrameから指定されたkeyのパワースペクトルと周波数軸を計算する
+        fft.cと同様のロジックで実装
 
         Args:
             key (str): データの列名
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
             smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
-            window_size (int, optional): 平滑化のための移動平均ウィンドウサイズ。デフォルトは30。
 
         Returns:
-            tuple: (interp_power_spectrum, interp_freqs)
+            tuple: (interp_freqs, interp_power_spectrum)
                 - interp_freqs (np.ndarray): 補間された周波数軸
                 - interp_power_spectrum (np.ndarray): 補間されたパワースペクトル
         """
         # keyに一致するデータを取得
         column_data: np.ndarray = np.array(self.df[key].values)
-
+        
         # データ長
         data_length: int = len(column_data)
-
+        
         # トレンド除去
         column_data = self.__detrend(column_data, True)
-
-        # 窓関数適用前データの分散を計算
+        
+        # データの分散を計算（窓関数適用前）
         variance = np.var(column_data)
-
-        window: np.ndarray = np.array([])
+        
+        # 窓関数の適用
         if self.apply_window:
-            # ハニング窓を生成
             window = self.__generate_window_function(
                 type=self.window_type, data_length=data_length
             )
-            # ハニング窓を適用
             column_data *= window
-
-        # パワースペクトルを計算
-        power_spectrum: np.ndarray = np.abs(np.fft.rfft(column_data)) ** 2 / data_length
-
-        # 窓関数の平均二乗値で割ることでスケーリングを行う
-        if self.apply_window:
-            power_spectrum /= np.mean(window**2)
-
-        # 無次元化を行う
+            window_scale = np.mean(window**2)
+        else:
+            window_scale = 1.0
+            
+        # FFTの計算
+        fft_result = np.fft.rfft(column_data)
+        
+        # 周波数軸の作成
+        freqs: np.ndarray = np.fft.rfftfreq(data_length, 1.0 / self.fs)
+        
+        # fft.cと同様のスペクトル計算ロジック
+        power_spectrum = np.zeros(len(freqs))
+        for i in range(1, len(freqs)):  # 0Hz成分を除外
+            # z と z* (複素共役) の計算
+            z = fft_result[i]
+            z_star = np.conj(fft_result[data_length - i]) if i < data_length//2 else np.conj(z)
+            
+            # x = z + z*, y = z - z* の計算
+            x = z + z_star
+            y = z - z_star
+            y = complex(y.imag, -y.real)  # 虚部と実部を入れ替え
+            
+            # パワースペクトルの計算 (sc = 0.5)
+            power_spectrum[i] = (x.real * x.real + x.imag * x.imag) * 0.5 / (data_length * window_scale)
+        
+        # 無次元化
         if self.dimensionless:
             power_spectrum /= variance
-
-        # 周波数軸
-        rfft_freq: np.ndarray = np.fft.rfftfreq(data_length, 1.0 / self.fs)
-
-        # 周波数が0でない要素のみを選択
-        nonzero_mask: np.ndarray = rfft_freq != 0
-        nonzero_freqs: np.ndarray = rfft_freq[nonzero_mask]
-        nonzero_power_spectrum: np.ndarray = power_spectrum[nonzero_mask]
-
+            
         # 周波数の重みづけ
-        nonzero_power_spectrum *= nonzero_freqs  # 各周波数に対応する値をかける
-
-        # 周波数軸とパワースペクトルの対数を取る
-        log_freqs: np.ndarray = np.log10(nonzero_freqs)
-        log_power_spectrum: np.ndarray = np.log10(nonzero_power_spectrum)
-
+        if frequency_weighted:
+            power_spectrum[1:] *= freqs[1:]  # 0Hz成分を除外
+            
+        # 3点移動平均によるスペクトルの平滑化
         if smooth:
-            # データ端の処理のため、端点を複製
-            padded_data = np.pad(
-                log_power_spectrum, (window_size // 2, window_size // 2), mode="edge"
-            )
-            # 移動平均を適用
-            log_power_spectrum = self.__moving_average(padded_data, window_size)
-            # 元の長さにトリミング
-            if window_size % 2 == 0:
-                log_power_spectrum = log_power_spectrum[:-1]
-
+            smoothed_spectrum = np.zeros_like(power_spectrum)
+            # 端点の処理
+            smoothed_spectrum[0] = 0.5 * (power_spectrum[0] + power_spectrum[1])
+            smoothed_spectrum[-1] = 0.5 * (power_spectrum[-2] + power_spectrum[-1])
+            # 中間点の平滑化
+            for i in range(1, len(power_spectrum)-1):
+                smoothed_spectrum[i] = (0.25 * power_spectrum[i-1] + 
+                                    0.5 * power_spectrum[i] + 
+                                    0.25 * power_spectrum[i+1])
+            power_spectrum = smoothed_spectrum
+        
+        # 0Hz成分を除外して対数変換
+        nonzero_mask = freqs != 0
+        nonzero_freqs = freqs[nonzero_mask]
+        nonzero_power = power_spectrum[nonzero_mask]
+        
+        # 対数変換
+        log_freqs = np.log10(nonzero_freqs)
+        log_power = np.log10(nonzero_power)
+        
         # 周波数軸の最小値と最大値を取得
-        min_freq: float = np.min(log_freqs)
-        max_freq: float = np.max(log_freqs)
-
+        min_freq = np.min(log_freqs)
+        max_freq = np.max(log_freqs)
+        
         # 等間隔なplots個の点を生成（対数軸上で等間隔）
-        interp_log_freqs: np.ndarray = np.linspace(min_freq, max_freq, self.plots)
-        interp_freqs: np.ndarray = 10**interp_log_freqs
-
+        interp_log_freqs = np.linspace(min_freq, max_freq, self.plots)
+        interp_freqs = 10**interp_log_freqs
+        
         # 生成した周波数に対応するパワースペクトルの値を対数軸上で線形補間
-        interp_log_power_spectrum: np.ndarray = np.interp(
-            interp_log_freqs, log_freqs, log_power_spectrum
+        interp_log_power = np.interp(
+            interp_log_freqs, log_freqs, log_power
         )
-        interp_power_spectrum: np.ndarray = 10**interp_log_power_spectrum
-
+        interp_power_spectrum = 10**interp_log_power
+        
         return interp_freqs, interp_power_spectrum
 
     def calculate_cospectrum(
