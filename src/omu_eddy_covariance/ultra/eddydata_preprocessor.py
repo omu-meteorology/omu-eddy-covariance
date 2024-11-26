@@ -1,13 +1,18 @@
+import os
+import re
+import glob
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from scipy import stats
+from datetime import datetime
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 
 
 class EddyDataPreprocessor:
     def __init__(
         self,
-        filepath: str,
-        debug: bool = False,
         fs: float = 10,
         logger: Logger | None = None,
         logging_debug: bool = False,
@@ -16,14 +21,10 @@ class EddyDataPreprocessor:
         渦相関法によって記録されたデータファイルを処理するクラス
 
         Args:
-            filepath (str): 読み込むCSVファイルのパス
-            debug (bool): デバッグフラグ
             fs (float): サンプリング周波数
             logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
             logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
         """
-        self.filepath: str = filepath
-        self.debug: bool = debug
         self.fs: float = fs
 
         # ロガー
@@ -105,10 +106,116 @@ class EddyDataPreprocessor:
 
         return processed_df
 
+    def analyze_time_delays(
+        self,
+        input_dir: str,
+        figsize: tuple[float, float] = (10, 8),
+        input_files_patterns: str = r"Eddy_(\d+)",
+        input_files_suffix: str = ".dat",
+        key1: str = "wind_w",
+        key2_list: list[str] = ["Tv"],
+        median_range: float = 20,
+        output_dir: str | None = None,
+        output_filename: str = "delays_histogram",
+        plot_range_tuple: tuple = (-50, 200),
+        print_results: bool = True,
+    ) -> dict[str, float]:
+        """
+        遅れ時間（ラグ）の統計分析を行う
+
+        Args:
+            delays_indices_df (pd.DataFrame): 遅れ時間が格納されたDataFrame
+            median_range (float): 中央値を中心とした範囲
+            plot_range_tuple (tuple): ヒストグラムの表示範囲
+            output_dir (str | None): 出力ディレクトリのパス。Noneの場合はプロットを表示
+            output_filename (str): 出力ファイル名。デフォルトは"delays_histogram.png"
+
+        Returns:
+            dict[str, float]: 各変数の遅れ時間（平均値を採用）
+        """
+        all_delays_indices: list[list[int]] = []
+        results: dict[str, dict[str, float]] = {}
+
+        # メイン処理
+        csv_files: list[str] = glob.glob(
+            os.path.join(input_dir, f"*{input_files_suffix}"), recursive=True
+        )
+        if not csv_files:
+            self.logger.error(
+                f"There is no CSV file to process. Target directory: {input_dir}"
+            )
+            return
+
+        # ファイル名に含まれる数字に基づいてソート
+        csv_files = [f for f in csv_files if re.search(input_files_patterns, f)]
+        # 正規表現のマッチング結果がNoneでない場合のみ数値変換を行う
+        csv_files.sort(
+            key=lambda x: int(re.search(input_files_patterns, x).group(1))
+            if re.search(input_files_patterns, x)
+            else float("inf")
+        )  # type: ignore
+
+        for file in tqdm(csv_files, desc="Calculating"):
+            path: str = os.path.join(input_dir, file)
+            df: pd.DataFrame = self.get_resampled_df(filepath=path)
+            df = self.add_uvw_columns(df)
+            delays_list = self.__calculate_time_delay(
+                df,
+                key1,
+                key2_list,
+            )
+            all_delays_indices.append(delays_list)
+        self.logger.info("すべてのCSVファイルにおける遅れ時間が計算されました。")
+
+        # Convert all_delays_indices to a DataFrame
+        delays_indices_df: pd.DataFrame = pd.DataFrame(
+            all_delays_indices, columns=key2_list
+        )
+
+        # フォーマット用のキーの最大の長さ
+        max_key_length: int = max(len(column) for column in delays_indices_df.columns)
+
+        if print_results:
+            self.logger.info(f"カラム`{key1}`に対する遅れ時間を表示します。")
+
+        for column in delays_indices_df.columns:
+            data: pd.Series = delays_indices_df[column]
+
+            # ヒストグラムの作成
+            plt.figure(figsize=figsize)
+            plt.hist(data, bins=20, range=plot_range_tuple)
+            plt.title(f"Delays of {column}")
+            plt.xlabel("Seconds")
+            plt.ylabel("Frequency")
+            plt.xlim(plot_range_tuple)
+
+            # ファイルとして保存するか、表示するか
+            if output_dir is not None:
+                os.makedirs(output_dir, exist_ok=True)
+                filename = f"{output_filename}-{column}.png"
+                filepath = os.path.join(output_dir, filename)
+                plt.savefig(filepath, dpi=300, bbox_inches="tight")
+                plt.close()
+
+            # 中央値を計算し、その周辺のデータのみを使用
+            median_value = np.median(data)
+            filtered_data: pd.Series = data[
+                (data >= median_value - median_range)
+                & (data <= median_value + median_range)
+            ]
+
+            # 平均値を計算
+            mean_value = np.mean(filtered_data)
+            mean_seconds = mean_value / self.fs  # 統計値を秒に変換
+            results[column] = mean_seconds
+
+            if print_results:
+                print(f"{column:<{max_key_length}} : {mean_seconds:.2f} seconds")
+        return results
+
     def get_resampled_df(
         self,
-        skiprows: int = 1,
-        drop_row: list[int] | None = [3, 4],
+        filepath: str,
         index_column: str = "TIMESTAMP",
         index_format: str = "%Y-%m-%d %H:%M:%S.%f",
         interpolate: bool = True,
@@ -129,6 +236,7 @@ class EddyDataPreprocessor:
             "Ultra_CH4_ppm_C",
             "Ultra_C2H6_ppb_C",
         ],
+        skiprows: list[int] | None = [0, 2, 3],
     ) -> pd.DataFrame:
         """
         CSVファイルを読み込み、前処理を行う
@@ -143,25 +251,19 @@ class EddyDataPreprocessor:
         7. DateTimeインデックスを削除する
 
         Args:
-            error_values (list[float], optional): エラー値のリスト。デフォルトは[-99999]。
-            skiprows (int, optional): スキップする行数。デフォルトは1。
+            filepath (str): 読み込むCSVファイルのパス
             index_column (str, optional): インデックスに使用する列名。デフォルトは'TIMESTAMP'。
             index_format (str, optional): インデックスの日付形式。デフォルトは'%Y-%m-%d %H:%M:%S.%f'。
+            interpolate (bool, optional): 欠損値の補完を適用するフラグ。デフォルトはTrue。
             numeric_columns (list[str], optional): 数値型に変換する列名のリスト。
                 デフォルトは["Ux", "Uy", "Uz", "Tv", "diag_sonic", "CO2_new", "H2O", "diag_irga", "cell_tmpr", "cell_press", "Ultra_CH4_ppm", "Ultra_C2H6_ppb", "Ultra_H2O_ppm", "Ultra_CH4_ppm_C", "Ultra_C2H6_ppb_C"]。
+            skiprows (list[int], optional): スキップする行インデックスのリスト。デフォルトは[0, 2, 3]のため、1, 3, 4行目がスキップされる。
 
         Returns:
             df (pd.DataFrame): 前処理済みのデータフレーム
         """
         # CSVファイルを読み込む
-        df: pd.DataFrame = pd.read_csv(self.filepath, skiprows=skiprows)
-
-        if drop_row is not None and len(drop_row) > 0:
-            # 削除するインデックスのリストに変換
-            subtraction: int = skiprows + 2
-            drop_index_list: list[int] = [row - subtraction for row in drop_row]
-            # 不要な行を削除する
-            df = df.drop(index=drop_index_list)
+        df: pd.DataFrame = pd.read_csv(filepath, skiprows=skiprows)
 
         # 数値データをfloat型に変換する
         df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
@@ -189,6 +291,163 @@ class EddyDataPreprocessor:
         # DateTimeインデックスを削除する
         df = df_resampled.reset_index()
         return df
+
+    def output_resampled_data(
+        self,
+        input_dir: str,
+        resampled_dir: str,
+        calc_py_dir: str,
+        input_files_suffix: str = ".dat",
+        key_datetime: str = "TIMESTAMP",
+        key_ch4_concentration: str = "Ultra_CH4_ppm_C",
+        key_c2h6_concentration: str = "Ultra_C2H6_ppb",
+        ratio_csv_prefix: str = "SAC.Ultra",
+        output_ratio: bool = True,
+        output_resampled: bool = True,
+    ) -> None:
+        """
+        指定されたディレクトリ内のCSVファイルを処理し、リサンプリングと欠損値補間を行います。
+
+        このメソッドは、指定されたディレクトリ内のCSVファイルを読み込み、リサンプリングを行い、
+        欠損値を補完します。処理結果として、リサンプリングされたCSVファイルを出力し、
+        相関係数やC2H6/CH4比を計算してDataFrameに保存します。
+
+        Args:
+            input_dir (str): 入力CSVファイルが格納されているディレクトリのパス。
+            resampled_dir (str): リサンプリングされたCSVファイルを出力するディレクトリのパス。
+            calc_py_dir (str): 計算結果を保存するディレクトリのパス。
+            input_files_suffix (str): 入力ファイルの拡張子（.datや.csvなど）。デフォルトは".dat"。
+            key_datetime (str): 日時情報を含む列名。デフォルトは'TIMESTAMP'。
+            key_ch4_concentration (str): CH4濃度を含む列名。デフォルトは'Ultra_CH4_ppm_C'。
+            key_c2h6_concentration (str): C2H6濃度を含む列名。デフォルトは'Ultra_C2H6_ppb'。
+            output_ratio (bool, optional): 線形回帰を行うかどうか。デフォルトはTrue。
+            output_resampled (bool, optional): リサンプリングされたCSVファイルを出力するかどうか。デフォルトはTrue。
+            ratio_csv_prefix (str): 出力ファイルの接頭辞。デフォルトは'SAC.Ultra'で、出力時は'SAC.Ultra.2024.09.21.ratio.csv'のような形式となる。
+
+        Returns:
+            None
+
+        Raises:
+            OSError: ディレクトリの作成に失敗した場合。
+            FileNotFoundError: 入力ファイルが見つからない場合。
+            ValueError: データの処理中にエラーが発生した場合。
+        """
+        os.makedirs(resampled_dir, exist_ok=True)
+        os.makedirs(calc_py_dir, exist_ok=True)
+
+        ratio_data: list[dict[str, str | float]] = []
+        latest_date: datetime = datetime.min
+
+        csv_files: list[str] = [
+            f for f in os.listdir(input_dir) if f.endswith(input_files_suffix)
+        ]
+        csv_files.sort(
+            key=lambda x: int(re.search(r"Eddy_(\d+)", x).group(1))
+            if re.search(r"Eddy_(\d+)", x)
+            else float("inf")
+        )  # type: ignore
+
+        for filename in tqdm(csv_files, desc="Processing files"):
+            input_filepath: str = os.path.join(input_dir, filename)
+            # リサンプリング＆欠損値補間
+            df: pd.DataFrame = self.get_resampled_df(filepath=input_filepath)
+
+            # 開始時間を取得
+            start_time: datetime = df[key_datetime].iloc[0]
+            # 処理したファイルの中で最も最新の日付
+            latest_date = max(latest_date, start_time)
+
+            # リサンプリング＆欠損値補間したCSVを出力
+            if output_resampled:
+                base_filename: str = re.sub(r"\.dat$", "", filename)
+                output_csv_path: str = os.path.join(
+                    resampled_dir, f"{base_filename}-resampled.csv"
+                )
+                df.to_csv(output_csv_path, index=False)
+
+            # 相関係数とC2H6/CH4比を計算
+            if output_ratio:
+                ch4_data: pd.Series = df[key_ch4_concentration]
+                c2h6_data: pd.Series = df[key_c2h6_concentration]
+
+                # 近似直線の傾き、切片、相関係数を計算
+                ratio_row: dict[str, str | float] = {
+                    "Date": start_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                    "Slope": f"{np.nan}",
+                    "Intercept": f"{np.nan}",
+                    "R": f"{np.nan}",
+                }
+                try:
+                    slope, intercept, r_value, _, _ = stats.linregress(
+                        ch4_data, c2h6_data
+                    )
+                    ratio_row = {
+                        "Date": start_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                        "Slope": f"{slope:.6f}",
+                        "Intercept": f"{intercept:.6f}",
+                        "R": f"{r_value:.6f}",
+                    }
+                except Exception:
+                    # 何もせず、デフォルトの ratio_row を使用する
+                    pass
+
+                # 結果をリストに追加
+                ratio_data.append(ratio_row)
+
+        if output_ratio:
+            # DataFrameを作成し、Dateカラムで昇順ソート
+            ratio_df: pd.DataFrame = pd.DataFrame(ratio_data)
+            ratio_df["Date"] = pd.to_datetime(
+                ratio_df["Date"]
+            )  # Dateカラムをdatetime型に変換
+            ratio_df = ratio_df.sort_values("Date")  # Dateカラムで昇順ソート
+
+            # CSVとして保存
+            ratio_filename: str = (
+                f"{ratio_csv_prefix}.{latest_date.strftime('%Y.%m.%d')}.ratio.csv"
+            )
+            ratio_path: str = os.path.join(calc_py_dir, ratio_filename)
+            ratio_df.to_csv(ratio_path, index=False)
+
+    def __calculate_time_delay(
+        self,
+        df: pd.DataFrame,
+        key1: str,
+        key2_list: list[str],
+    ) -> list[int]:
+        """
+        指定された基準変数（key1）と比較変数のリスト（key2_list）の間の遅れ時間（ディレイ）を計算する。
+        key1がkey2より10.0秒遅れている場合は、+100がインデックスとして取得される
+
+        Args:
+            df (pd.DataFrame): 遅れ時間の計算に使用するデータフレーム
+            key1 (str): 基準変数の列名
+            key2_list (list[str]): 比較変数の列名のリスト
+
+        Returns:
+            list[int]: 各比較変数に対する遅れ時間（ディレイ）のリスト
+        """
+        delays_list: list[int] = []
+        for key2 in key2_list:
+            data1: np.ndarray = np.array(df[key1].values)
+            data2: np.ndarray = np.array(df[key2].values)
+
+            # 平均を0に調整
+            data1 = data1 - data1.mean()
+            data2 = data2 - data2.mean()
+
+            data_length: int = len(data1)
+
+            # 相互相関の計算
+            correlation: np.ndarray = np.correlate(
+                data1, data2, mode="full"
+            )  # data2とdata1の順序を入れ替え
+
+            # 相互相関のピークのインデックスを取得
+            delay: int = (data_length - 1) - correlation.argmax()  # 符号を反転
+
+            delays_list.append(delay)
+        return delays_list
 
     def __horizontal_wind_speed(
         self, x_array: np.ndarray, y_array: np.ndarray, wind_dir: float

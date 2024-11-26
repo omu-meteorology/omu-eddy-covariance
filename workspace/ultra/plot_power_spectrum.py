@@ -81,8 +81,8 @@ path = (
     + r"\2024.06.21\Ultra_Eddy\eddy_csv-20240514_20240621\TOA5_37477.SAC_Ultra.Eddy_3_2024_06_01_1500.dat"  # きれい
 )
 # path = r"C:\Users\nakao\workspace\sac\tmp\20240601-10_14.dat"
-pre: EddyDataPreprocessor = EddyDataPreprocessor(path)
-df: pd.DataFrame = pre.get_resampled_df()
+edp: EddyDataPreprocessor = EddyDataPreprocessor()
+df: pd.DataFrame = edp.get_resampled_df(filepath=path)
 calculator = SpectrumCalculator(
     df=df,
     fs=100,  # サンプリング周波数を適切に設定

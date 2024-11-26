@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from omu_eddy_covariance import EddyDataPreprocessor
 
 
-def calculate_lags(key1: str, key2_list: list[str], df: pd.DataFrame) -> list[int]:
+def calculate_delays(key1: str, key2_list: list[str], df: pd.DataFrame) -> list[int]:
     """
     指定された基準変数（key1）と比較変数のリスト（key2_list）の間の遅れ時間（ラグ）を計算する。
 
@@ -21,7 +21,7 @@ def calculate_lags(key1: str, key2_list: list[str], df: pd.DataFrame) -> list[in
     Returns:
         list[int]: 各比較変数に対する遅れ時間（ラグ）のリスト。
     """
-    lags_list: list[int] = []
+    delays_list: list[int] = []
     for _, key2 in enumerate(key2_list):
         # key1とkey2に一致するデータを取得
         data1: np.ndarray = np.array(df[key1].values)
@@ -41,14 +41,14 @@ def calculate_lags(key1: str, key2_list: list[str], df: pd.DataFrame) -> list[in
         correlation: np.ndarray = np.correlate(data1, data2, mode="full")
 
         # 相互相関のピークのインデックスを取得
-        lag: int = int(correlation.argmax()) - (data_length - 1)
+        delay: int = int(correlation.argmax()) - (data_length - 1)
 
-        lags_list.append(lag)
-    return lags_list
+        delays_list.append(delay)
+    return delays_list
 
 
-def determine_time_lag(
-    df: pd.DataFrame,
+def determine_time_delay(
+    all_delays: list[list[int]],
     median_range: float = 20,
     plot_range_tuple: tuple = (-200, 200),
     show_histogram: bool = False,
@@ -62,12 +62,12 @@ def determine_time_lag(
         plot_range_tuple (tuple, optional): ヒストグラムの表示範囲。デフォルトは(-200, 200)。
         show_histogram (bool, optional): ヒストグラムを表示するかどうか。デフォルトはFalse。
     """
-    # Read the lags CSV file
-    lags_df: pd.DataFrame = df
+    # Read the delays CSV file
+    delays_df = pd.DataFrame(all_delays, columns=key2_list)
 
     print(f"Calculate within the range of ±{median_range} from the median.")
-    for column in lags_df.columns:
-        data: pd.Series = lags_df[column]
+    for column in delays_df.columns:
+        data: pd.Series = delays_df[column]
 
         # Method 1: Histogram
         if show_histogram:
@@ -102,10 +102,12 @@ def determine_time_lag(
 
 
 if __name__ == "__main__":
-    target_home: str = "C:\\Users\\nakao\\workspace\\sac\\ultra\\2024.07.04\\Ultra_Eddy"
+    target_home: str = (
+        "/home/z23641k/labo/omu-eddy-covariance/workspace/ultra/private/data"
+    )
     # input_dir: str = f"{target_home}/eddy_csv"
     input_dir: str = f"{target_home}/eddy_csv-resampled"
-    output_dir = f"{target_home}/eddy_lag"
+    output_dir = f"{target_home}/eddy_delay"
     save_as_csv: bool = True
 
     # メイン処理
@@ -125,36 +127,36 @@ if __name__ == "__main__":
 
     key1: str = "wind_w"
     key2_list: list[str] = ["Tv", "Ultra_CH4_ppm_C", "Ultra_C2H6_ppb"]
-    flag_once: bool = True
-    all_lags: list[list[int]] = []
+    fdelay_once: bool = True
+    all_delays: list[list[int]] = []
     try:
         for file in tqdm(csv_files, desc="Calculating"):
-            if flag_once:
+            if fdelay_once:
                 tqdm.write("Delays: w-Tv, w-Ultra_CH4_ppm_C, w-Ultra_C2H6_ppb")
-                flag_once = False
+                fdelay_once = False
             path: str = os.path.join(input_dir, file)
-            pre: EddyDataPreprocessor = EddyDataPreprocessor(path)
-            df: pd.DataFrame = pre.get_resampled_df(skiprows=0, drop_row=[])
-            df = pre.add_uvw_columns(df)
-            lags_list = calculate_lags(key1, key2_list, df)
-            all_lags.append(lags_list)
-            # tqdm.write(str(lags_list))
+            edp: EddyDataPreprocessor = EddyDataPreprocessor(fs=10)
+            df: pd.DataFrame = edp.get_resampled_df(filepath=path, skiprows=None)
+            df = edp.add_uvw_columns(df)
+            delays_list = calculate_delays(key1, key2_list, df)
+            all_delays.append(delays_list)
+            # tqdm.write(str(delays_list))
         print("Completed.")
 
-        # Convert all_lags to a DataFrame
-        lags_df = pd.DataFrame(all_lags, columns=key2_list)
+        # Convert all_delays to a DataFrame
+        delays_df = pd.DataFrame(all_delays, columns=key2_list)
 
-        # Save lags_df to a CSV file
+        # Save delays_df to a CSV file
         if save_as_csv:
             os.makedirs(output_dir, exist_ok=True)
-            output_file = os.path.join(output_dir, "lags.csv")
-            lags_df.to_csv(output_file, index=False)
+            output_file = os.path.join(output_dir, "delays.csv")
+            delays_df.to_csv(output_file, index=False)
             print(f"Lags saved to {output_file}")
 
         # Calculate the median of each column
         median_values = {}
-        for column in lags_df.columns:
-            median_value = np.median(lags_df[column])
+        for column in delays_df.columns:
+            median_value = np.median(delays_df[column])
             median_values[column] = median_value
 
         # Print the median values
@@ -162,9 +164,9 @@ if __name__ == "__main__":
         for column, median_value in median_values.items():
             print(f"{column}: {median_value}")
 
-        # Determine time lag
-        determine_time_lag(
-            lags_df,
+        # Determine time delay
+        determine_time_delay(
+            delays_df,
             median_range=20,
             # plot_range_tuple=(-100, 100),
             plot_range_tuple=(-150, 50),
