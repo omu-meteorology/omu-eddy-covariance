@@ -29,9 +29,10 @@ class UltraMonthlyAnalyzer:
         log_level: int = INFO
         if logging_debug:
             log_level = DEBUG
-        self.logger: Logger = self.__setup_logger(logger, log_level)
+        self.logger: Logger = UltraMonthlyAnalyzer.setup_logger(logger, log_level)
 
-    def __setup_logger(self, logger: Logger | None, log_level: int = INFO):
+    @staticmethod
+    def setup_logger(logger: Logger | None, log_level: int = INFO):
         """
         ロガーを設定します。
 
@@ -59,101 +60,6 @@ class UltraMonthlyAnalyzer:
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
         logger.addHandler(ch)  # StreamHandlerの追加
         return logger
-
-    def load_monthly_data(
-        self, year: int, month: int
-    ) -> tuple[pd.DataFrame, pd.DataFrame, dict, dict]:
-        """
-        指定された年月のExcelファイルを読み込む
-
-        Parameters
-        ----------
-        year : int
-            年
-        month : int
-            月
-
-        Returns
-        -------
-        tuple[pd.DataFrame, pd.DataFrame, dict, dict]
-            (Finalシートのデータ, Final.SAシートのデータ, Finalシートの単位情報, Final.SAシートの単位情報)
-        """
-        filename: str = f"SA.Ultra.{year}.{month:02d}.xlsx"
-        filepath: Path = self.data_dir / filename
-
-        self.logger.info(f"Loading {filename}")
-
-        try:
-            # ヘッダー行（1行目）の読み込み
-            final_headers: pd.DataFrame = pd.read_excel(
-                filepath, sheet_name="Final", nrows=1
-            )
-            final_sa_headers: pd.DataFrame = pd.read_excel(
-                filepath, sheet_name="Final.SA", nrows=1
-            )
-            final_columns: pd.Index = final_headers.columns
-            final_sa_columns: pd.Index = final_sa_headers.columns
-
-            # 単位行（2行目）を直接読み込み
-            # header=Noneを指定して列名を自動生成させない
-            final_units_df: pd.DataFrame = pd.read_excel(
-                filepath,
-                sheet_name="Final",
-                skiprows=1,  # 1行目をスキップ
-                nrows=1,  # 1行（単位行）のみ読み込み
-                header=None,  # 列名を自動生成させない
-            )
-            final_sa_units_df: pd.DataFrame = pd.read_excel(
-                filepath, sheet_name="Final.SA", skiprows=1, nrows=1, header=None
-            )
-
-            # カラム名と単位を対応付け
-            final_units_dict: dict = dict(
-                zip(final_columns, final_units_df.iloc[0].values)
-            )
-            final_sa_units_dict: dict = dict(
-                zip(final_sa_columns, final_sa_units_df.iloc[0].values)
-            )
-
-            # データの読み込み（2行目をスキップ）
-            final_df: pd.DataFrame = pd.read_excel(
-                filepath, sheet_name="Final", skiprows=[1]
-            )
-            final_sa_df: pd.DataFrame = pd.read_excel(
-                filepath, sheet_name="Final.SA", skiprows=[1]
-            )
-
-            # カラム名を設定
-            final_df.columns = final_columns
-            final_sa_df.columns = final_sa_columns
-
-            # 日付カラムをdatetime型に変換
-            final_df["Date"] = pd.to_datetime(
-                final_df["Date"], format="%Y/%m/%d %H:%M:%S"
-            )
-            final_sa_df["Date"] = pd.to_datetime(
-                final_sa_df["Date"], format="%Y/%m/%d %H:%M:%S"
-            )
-
-            # 単位の文字列変換とnull値の処理
-            for units_dict in [final_units_dict, final_sa_units_dict]:
-                for key in units_dict:
-                    if pd.isna(units_dict[key]) or units_dict[key] == "":
-                        units_dict[key] = "--"
-                    else:
-                        # 文字列に変換して空白をアンダーバーに置換
-                        units_dict[key] = str(units_dict[key]).strip().replace(" ", "_")
-
-            # self.logger.info(
-            #     f"Units found in Final sheet: CH4 ultra = {final_units_dict['CH4 ultra']}"
-            # )
-            # self.logger.info(f"All units from Final sheet: {final_units_dict}")
-
-            return final_df, final_sa_df, final_units_dict, final_sa_units_dict
-
-        except Exception as e:
-            self.logger.error(f"Error loading Excel file: {str(e)}")
-            raise
 
     def calculate_daily_average(self, year: int, month: int) -> None:
         """
@@ -365,4 +271,99 @@ class UltraMonthlyAnalyzer:
 
         except Exception as e:
             self.logger.error(f"Error in calculate_diurnal_pattern: {str(e)}")
+            raise
+
+    def load_monthly_data(
+        self, year: int, month: int
+    ) -> tuple[pd.DataFrame, pd.DataFrame, dict, dict]:
+        """
+        指定された年月のExcelファイルを読み込む
+
+        Parameters
+        ----------
+        year : int
+            年
+        month : int
+            月
+
+        Returns
+        -------
+        tuple[pd.DataFrame, pd.DataFrame, dict, dict]
+            (Finalシートのデータ, Final.SAシートのデータ, Finalシートの単位情報, Final.SAシートの単位情報)
+        """
+        filename: str = f"SA.Ultra.{year}.{month:02d}.xlsx"
+        filepath: Path = self.data_dir / filename
+
+        self.logger.info(f"Loading {filename}")
+
+        try:
+            # ヘッダー行（1行目）の読み込み
+            final_headers: pd.DataFrame = pd.read_excel(
+                filepath, sheet_name="Final", nrows=1
+            )
+            final_sa_headers: pd.DataFrame = pd.read_excel(
+                filepath, sheet_name="Final.SA", nrows=1
+            )
+            final_columns: pd.Index = final_headers.columns
+            final_sa_columns: pd.Index = final_sa_headers.columns
+
+            # 単位行（2行目）を直接読み込み
+            # header=Noneを指定して列名を自動生成させない
+            final_units_df: pd.DataFrame = pd.read_excel(
+                filepath,
+                sheet_name="Final",
+                skiprows=1,  # 1行目をスキップ
+                nrows=1,  # 1行（単位行）のみ読み込み
+                header=None,  # 列名を自動生成させない
+            )
+            final_sa_units_df: pd.DataFrame = pd.read_excel(
+                filepath, sheet_name="Final.SA", skiprows=1, nrows=1, header=None
+            )
+
+            # カラム名と単位を対応付け
+            final_units_dict: dict = dict(
+                zip(final_columns, final_units_df.iloc[0].values)
+            )
+            final_sa_units_dict: dict = dict(
+                zip(final_sa_columns, final_sa_units_df.iloc[0].values)
+            )
+
+            # データの読み込み（2行目をスキップ）
+            final_df: pd.DataFrame = pd.read_excel(
+                filepath, sheet_name="Final", skiprows=[1]
+            )
+            final_sa_df: pd.DataFrame = pd.read_excel(
+                filepath, sheet_name="Final.SA", skiprows=[1]
+            )
+
+            # カラム名を設定
+            final_df.columns = final_columns
+            final_sa_df.columns = final_sa_columns
+
+            # 日付カラムをdatetime型に変換
+            final_df["Date"] = pd.to_datetime(
+                final_df["Date"], format="%Y/%m/%d %H:%M:%S"
+            )
+            final_sa_df["Date"] = pd.to_datetime(
+                final_sa_df["Date"], format="%Y/%m/%d %H:%M:%S"
+            )
+
+            # 単位の文字列変換とnull値の処理
+            for units_dict in [final_units_dict, final_sa_units_dict]:
+                for key in units_dict:
+                    if pd.isna(units_dict[key]) or units_dict[key] == "":
+                        units_dict[key] = "--"
+                    else:
+                        # 文字列に変換して空白をアンダーバーに置換
+                        units_dict[key] = str(units_dict[key]).strip().replace(" ", "_")
+
+            # self.logger.info(
+            #     f"Units found in Final sheet: CH4 ultra = {final_units_dict['CH4 ultra']}"
+            # )
+            # self.logger.info(f"All units from Final sheet: {final_units_dict}")
+
+            return final_df, final_sa_df, final_units_dict, final_sa_units_dict
+
+        except Exception as e:
+            self.logger.error(f"Error loading Excel file: {str(e)}")
             raise

@@ -34,46 +34,8 @@ class TransferFunctionCalculator:
         self.df: pd.DataFrame = self.__load_data(file_path)
         self.setup_plot_params()
 
-    @classmethod
-    def transfer_function(cls, x: np.ndarray, a: float) -> np.ndarray:
-        """
-        伝達関数を計算する。
-
-        Args:
-            x (np.ndarray): 周波数の配列。
-            a (float): 伝達関数の係数。
-
-        Returns:
-            np.ndarray: 伝達関数の値。
-        """
-        return np.exp(-np.log(np.sqrt(2)) * np.power(x / a, 2))
-
-    def __load_data(self, file_path: str) -> pd.DataFrame:
-        """
-        CSVファイルからデータを読み込む。
-
-        Args:
-            filepath (str): csvファイルのパス。
-
-        Returns:
-            pd.DataFrame: 読み込まれたデータフレーム。
-        """
-        tmp = pd.read_csv(file_path, header=None, nrows=1, skiprows=0)
-        header = tmp.loc[tmp.index[0]]
-        df = pd.read_csv(file_path, header=None, skiprows=1)
-        df.columns = header
-        return df
-
-    def __cutoff_df(self, df) -> pd.DataFrame:
-        """
-        カットオフ周波数に基づいてDataFrameを加工するメソッド
-        """
-        df_cutoff: pd.DataFrame = df.loc[
-            (self.cutoff_freq_low <= df.index) & (df.index <= self.cutoff_freq_high)
-        ]
-        return df_cutoff
-
-    def setup_plot_params(self) -> None:
+    @staticmethod
+    def setup_plot_params() -> None:
         """
         Matplotlibのプロットパラメータを設定する。
 
@@ -101,46 +63,52 @@ class TransferFunctionCalculator:
             }
         )
 
-    def process_data(self, reference_key: str, target_key: str) -> pd.DataFrame:
+    @classmethod
+    def transfer_function(cls, x: np.ndarray, a: float) -> np.ndarray:
         """
-        指定されたキーに基づいてデータを処理する。
+        伝達関数を計算する。
+
+        Args:
+            x (np.ndarray): 周波数の配列。
+            a (float): 伝達関数の係数。
+
+        Returns:
+            np.ndarray: 伝達関数の値。
+        """
+        return np.exp(-np.log(np.sqrt(2)) * np.power(x / a, 2))
+
+    def analyze_transfer_function(
+        self,
+        reference_key: str,
+        reference_name: str,
+        target_key: str,
+        target_name: str,
+        show_tf_plot: bool = True,
+    ) -> float:
+        """
+        指定されたターゲットの伝達関数を分析する。
+
+        この方法は、データの処理、比率のプロット、伝達関数の計算、
+        およびフィットのプロットを含む完全な分析プロセスを実行する。
 
         Args:
             reference_key (str): 参照データのカラム名。
+            reference_name (str): 参照の名前（例：'Tv'）。
             target_key (str): ターゲットデータのカラム名。
+            target_name (str): ターゲットの名前（例：'CH4', 'C2H6'）。
+            show_tf_plot (bool): 伝達関数のグラフの表示オプション。
 
-        Returns:
-            pd.DataFrame: 処理されたデータフレーム。
+        Return:
+            a (float): 伝達関数の係数'a'。
         """
-        freq_key: str = self.freq_key
-
-        # データ型の確認と変換
-        self.df[freq_key] = pd.to_numeric(self.df[freq_key], errors="coerce")
-        self.df[reference_key] = pd.to_numeric(self.df[reference_key], errors="coerce")
-        self.df[target_key] = pd.to_numeric(self.df[target_key], errors="coerce")
-
-        # NaNを含む行を削除
-        self.df = self.df.dropna(subset=[freq_key, reference_key, target_key])
-
-        # グループ化と中央値の計算
-        grouped = self.df.groupby(freq_key)
-        reference_data = grouped[reference_key].median()
-        target_data = grouped[target_key].median()
-
-        df_processed = pd.DataFrame(
-            {"reference": reference_data, "target": target_data}
-        )
-
-        # 異常な比率を除去
-        df_processed.loc[
-            (
-                (df_processed["target"] / df_processed["reference"] > 1)
-                | (df_processed["target"] / df_processed["reference"] < 0)
+        df_processed = self.process_data(reference_key, target_key)
+        # self.plot_ratio(df_processed, target_name, reference_name)
+        a: float = self.calculate_transfer_function(df_processed)
+        if show_tf_plot:
+            self.create_plot_transfer_function(
+                df_processed, a, target_name, reference_name
             )
-        ] = np.nan
-        df_processed = df_processed.dropna()
-
-        return df_processed
+        return a
 
     def calculate_transfer_function(self, df_processed: pd.DataFrame) -> float:
         """
@@ -225,6 +193,39 @@ class TransferFunctionCalculator:
         fig.tight_layout()
         return fig
 
+    def create_plot_ratio(
+        self,
+        df_processed: pd.DataFrame,
+        target_name: str,
+        reference_name: str,
+        figsize: tuple[int, int] = (10, 6),
+    ) -> plt.Figure:
+        """
+        ターゲットと参照の比率をプロットする。
+
+        Args:
+            df_processed (pd.DataFrame): 処理されたデータフレーム。
+            target_name (str): ターゲットの名前。
+            reference_name (str): 参照の名前。
+            figsize (tuple[int, int], optional): プロットのサイズ。デフォルトは(10, 6)。
+
+        Returns:
+            plt.Figure: プロットのFigureオブジェクト
+        """
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
+
+        ax.plot(
+            df_processed.index, df_processed["target"] / df_processed["reference"], "o"
+        )
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel("f (Hz)")
+        ax.set_ylabel(f"{target_name} / {reference_name}")
+        ax.set_title(f"{target_name}と{reference_name}の比")
+
+        return fig
+
     def create_plot_transfer_function(
         self,
         df_processed: pd.DataFrame,
@@ -271,68 +272,68 @@ class TransferFunctionCalculator:
 
         return fig
 
-    def create_plot_ratio(
-        self,
-        df_processed: pd.DataFrame,
-        target_name: str,
-        reference_name: str,
-        figsize: tuple[int, int] = (10, 6),
-    ) -> plt.Figure:
+    def process_data(self, reference_key: str, target_key: str) -> pd.DataFrame:
         """
-        ターゲットと参照の比率をプロットする。
-
-        Args:
-            df_processed (pd.DataFrame): 処理されたデータフレーム。
-            target_name (str): ターゲットの名前。
-            reference_name (str): 参照の名前。
-            figsize (tuple[int, int], optional): プロットのサイズ。デフォルトは(10, 6)。
-
-        Returns:
-            plt.Figure: プロットのFigureオブジェクト
-        """
-        fig = plt.figure(figsize=figsize)
-        ax = fig.add_subplot(111)
-
-        ax.plot(
-            df_processed.index, df_processed["target"] / df_processed["reference"], "o"
-        )
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlabel("f (Hz)")
-        ax.set_ylabel(f"{target_name} / {reference_name}")
-        ax.set_title(f"{target_name}と{reference_name}の比")
-
-        return fig
-
-    def analyze_transfer_function(
-        self,
-        reference_key: str,
-        reference_name: str,
-        target_key: str,
-        target_name: str,
-        show_tf_plot: bool = True,
-    ) -> float:
-        """
-        指定されたターゲットの伝達関数を分析する。
-
-        この方法は、データの処理、比率のプロット、伝達関数の計算、
-        およびフィットのプロットを含む完全な分析プロセスを実行する。
+        指定されたキーに基づいてデータを処理する。
 
         Args:
             reference_key (str): 参照データのカラム名。
-            reference_name (str): 参照の名前（例：'Tv'）。
             target_key (str): ターゲットデータのカラム名。
-            target_name (str): ターゲットの名前（例：'CH4', 'C2H6'）。
-            show_tf_plot (bool): 伝達関数のグラフの表示オプション。
 
-        Return:
-            a (float): 伝達関数の係数'a'。
+        Returns:
+            pd.DataFrame: 処理されたデータフレーム。
         """
-        df_processed = self.process_data(reference_key, target_key)
-        # self.plot_ratio(df_processed, target_name, reference_name)
-        a: float = self.calculate_transfer_function(df_processed)
-        if show_tf_plot:
-            self.create_plot_transfer_function(
-                df_processed, a, target_name, reference_name
+        freq_key: str = self.freq_key
+
+        # データ型の確認と変換
+        self.df[freq_key] = pd.to_numeric(self.df[freq_key], errors="coerce")
+        self.df[reference_key] = pd.to_numeric(self.df[reference_key], errors="coerce")
+        self.df[target_key] = pd.to_numeric(self.df[target_key], errors="coerce")
+
+        # NaNを含む行を削除
+        self.df = self.df.dropna(subset=[freq_key, reference_key, target_key])
+
+        # グループ化と中央値の計算
+        grouped = self.df.groupby(freq_key)
+        reference_data = grouped[reference_key].median()
+        target_data = grouped[target_key].median()
+
+        df_processed = pd.DataFrame(
+            {"reference": reference_data, "target": target_data}
+        )
+
+        # 異常な比率を除去
+        df_processed.loc[
+            (
+                (df_processed["target"] / df_processed["reference"] > 1)
+                | (df_processed["target"] / df_processed["reference"] < 0)
             )
-        return a
+        ] = np.nan
+        df_processed = df_processed.dropna()
+
+        return df_processed
+
+    def __cutoff_df(self, df) -> pd.DataFrame:
+        """
+        カットオフ周波数に基づいてDataFrameを加工するメソッド
+        """
+        df_cutoff: pd.DataFrame = df.loc[
+            (self.cutoff_freq_low <= df.index) & (df.index <= self.cutoff_freq_high)
+        ]
+        return df_cutoff
+
+    def __load_data(self, file_path: str) -> pd.DataFrame:
+        """
+        CSVファイルからデータを読み込む。
+
+        Args:
+            filepath (str): csvファイルのパス。
+
+        Returns:
+            pd.DataFrame: 読み込まれたデータフレーム。
+        """
+        tmp = pd.read_csv(file_path, header=None, nrows=1, skiprows=0)
+        header = tmp.loc[tmp.index[0]]
+        df = pd.read_csv(file_path, header=None, skiprows=1)
+        df.columns = header
+        return df

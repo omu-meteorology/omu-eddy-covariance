@@ -1,12 +1,11 @@
 import math
+import folium
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import folium
-from folium import plugins
+from pathlib import Path
 from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
-from pathlib import Path
 from omu_eddy_covariance import HotspotData
 
 """
@@ -62,7 +61,7 @@ class MobileSpatialAnalyzer:
         log_level: int = INFO
         if logging_debug:
             log_level = DEBUG
-        self.logger: Logger = self.__setup_logger(logger, log_level)
+        self.logger: Logger = MobileSpatialAnalyzer.setup_logger(logger, log_level)
         # プライベートなプロパティ
         self.__center_lat: float = center_lat
         self.__center_lon: float = center_lon
@@ -83,7 +82,8 @@ class MobileSpatialAnalyzer:
             normalized_input_configs
         )
 
-    def __setup_logger(self, logger: Logger | None, log_level: int = INFO):
+    @staticmethod
+    def setup_logger(logger: Logger | None, log_level: int = INFO):
         """
         ロガーを設定します。
 
@@ -111,6 +111,305 @@ class MobileSpatialAnalyzer:
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
         logger.addHandler(ch)  # StreamHandlerの追加
         return logger
+
+    def analyze_hotspots(
+        self,
+        exclude_duplicates_across_days: bool = False,
+        additional_distance_meter: float = 20,
+    ) -> list[HotspotData]:
+        """
+        ホットスポットを検出して分析します。
+
+        このメソッドは、クラス初期化時に設定されたwindow_sizeを使用して、
+        各データソースに対してホットスポットを検出し、分析結果を返します。
+
+        Args:
+            exclude_duplicates_across_days (bool): 異なる日付間での重複を除外するかどうか。
+                True の場合、全期間で重複するホットスポットを除外します。
+                False の場合、日付ごとに独立してホットスポットを検出します。
+                デフォルトは False です。
+            additional_distance_meter (float): hotspot_area_meterに追加する距離（メートル）。
+                重複除外時の距離閾値は hotspot_area_meter + additional_distance_meter となります。
+                デフォルトは20メートルです。
+
+        Returns:
+            list[HotspotData]: 検出されたホットスポットのリスト。
+            各ホットスポットは、位置、比率、タイプなどの情報を含みます。
+        """
+        all_hotspots: list[HotspotData] = []
+
+        # 各データソースに対して解析を実行
+        for _, df in self.__data.items():
+            # パラメータの計算
+            df = self.__calculate_hotspots_parameters(df, self.__window_size)
+
+            # ホットスポットの検出
+            hotspots: list[HotspotData] = self.__detect_hotspots(
+                df,
+                ch4_enhance_threshold=self.__ch4_enhance_threshold,
+                hotspot_areas_meter=self.__hotspot_area_meter,
+            )
+            all_hotspots.extend(hotspots)
+
+        # 全期間での重複除外が有効な場合
+        if exclude_duplicates_across_days:
+            distance_threshold: float = (
+                self.__hotspot_area_meter + additional_distance_meter
+            )
+            all_hotspots = self.__remove_duplicates_across_days(
+                all_hotspots, distance_threshold_meter=distance_threshold
+            )
+
+        return all_hotspots
+
+    def create_hotspots_map(
+        self,
+        hotspots: list[HotspotData],
+        output_dir: str | Path,
+        output_filename: str = "hotspots_map",
+        center_marker_label: str = "Center",
+        plot_center_marker: bool = True,
+        radius_meters: float = 3000,
+    ) -> None:
+        """
+        ホットスポットの分布を地図上にプロットして保存
+
+        Args:
+            hotspots (list[HotspotData]): プロットするホットスポットのリスト
+            output_dir (str | Path): 保存先のディレクトリパス
+            output_filename (str): 保存するファイル名。デフォルトは"hotspots_map"。
+            center_marker_label (str): 中心を示すマーカーのラベルテキスト。デフォルトは"Center"。
+            plot_center_marker (bool): 中心を示すマーカーの有無。デフォルトはTrue。
+            radius_meters (float): 区画分けを示す線の長さ。デフォルトは3000。
+        """
+        output_path: Path = Path(output_dir) / f"{output_filename}.html"
+        # 地図の作成
+        m = folium.Map(
+            location=[self.__center_lat, self.__center_lon],
+            zoom_start=15,
+            tiles="OpenStreetMap",
+        )
+
+        # ホットスポットの種類ごとに異なる色でプロット
+        for spot in hotspots:
+            # NaN値チェックを追加
+            if math.isnan(spot.avg_lat) or math.isnan(spot.avg_lon):
+                continue
+
+            # タイプに応じて色を設定
+            if spot.type == "comb":
+                color = "green"
+            elif spot.type == "gas":
+                color = "red"
+            elif spot.type == "bio":
+                color = "blue"
+            else:  # invalid type
+                color = "black"
+
+            # CSSのgrid layoutを使用してHTMLタグを含むテキストをフォーマット
+            popup_html = f"""
+            <div style='font-family: Arial; font-size: 12px; display: grid; grid-template-columns: auto auto auto; gap: 5px;'>
+                <b>Date</b>    <span>:</span> <span>{spot.source}</span>
+                <b>Corr</b>    <span>:</span> <span>{spot.correlation:.3f}</span>
+                <b>Ratio</b>   <span>:</span> <span>{spot.ratio:.3f}</span>
+                <b>Type</b>    <span>:</span> <span>{spot.type}</span>
+                <b>Section</b> <span>:</span> <span>{spot.section}</span>
+            </div>
+            """
+
+            # ポップアップのサイズを指定
+            popup = folium.Popup(
+                folium.Html(popup_html, script=True),
+                max_width=200,  # 最大幅（ピクセル）
+            )
+
+            folium.CircleMarker(
+                location=[spot.avg_lat, spot.avg_lon],
+                radius=8,
+                color=color,
+                fill=True,
+                popup=popup,
+            ).add_to(m)
+
+        # 中心点のマーカー
+        if plot_center_marker:
+            folium.Marker(
+                [self.__center_lat, self.__center_lon],
+                popup=center_marker_label,
+                icon=folium.Icon(color="green", icon="info-sign"),
+            ).add_to(m)
+
+        # 区画の境界線を描画
+        for section in range(self.__num_sections):
+            start_angle = math.radians(-180 + section * self.__section_size)
+
+            R = 6371000  # 地球の半径（メートル）
+
+            # 境界線の座標を計算
+            lat1 = self.__center_lat
+            lon1 = self.__center_lon
+            lat2 = math.degrees(
+                math.asin(
+                    math.sin(math.radians(lat1)) * math.cos(radius_meters / R)
+                    + math.cos(math.radians(lat1))
+                    * math.sin(radius_meters / R)
+                    * math.cos(start_angle)
+                )
+            )
+            lon2 = self.__center_lon + math.degrees(
+                math.atan2(
+                    math.sin(start_angle)
+                    * math.sin(radius_meters / R)
+                    * math.cos(math.radians(lat1)),
+                    math.cos(radius_meters / R)
+                    - math.sin(math.radians(lat1)) * math.sin(math.radians(lat2)),
+                )
+            )
+
+            # 境界線を描画
+            folium.PolyLine(
+                locations=[[lat1, lon1], [lat2, lon2]],
+                color="black",
+                weight=1,
+                opacity=0.5,
+            ).add_to(m)
+
+        # 地図を保存
+        m.save(str(output_path))
+        self.logger.info(f"地図を保存しました: {output_path}")
+
+    def get_section_size(self) -> float:
+        """
+        セクションのサイズを取得するメソッド。
+        このメソッドは、解析対象のデータを区画に分割する際の
+        各区画の角度範囲を示すサイズを返します。
+
+        戻り値:
+            float: 1セクションのサイズ（度単位）
+        """
+        return self.__section_size
+
+    def plot_scatter_c2h6_ch4(
+        self,
+        output_dir: str | Path,
+        output_filename: str = "scatter_c2h6_ch4",
+        dpi: int = 200,
+        figsize: tuple[int, int] = (4, 4),
+        fontsize: float = 12,
+        ratio_labels: dict[float, tuple[float, float, str]] | None = None,
+        savefig: bool = True,
+    ) -> plt.Figure:
+        """
+        C2H6とCH4の散布図をプロットします。
+
+        Args:
+            output_dir (str | Path): 保存先のディレクトリパス
+            output_filename (str): 保存するファイル名。デフォルトは"scatter_c2h6_ch4"。
+            dpi (int): 解像度。デフォルトは200。
+            figsize (tuple[int, int]): 図のサイズ。デフォルトは(4, 4)。
+            fontsize (float): フォントサイズ。デフォルトは12。
+            ratio_labels (dict[float, tuple[float, float, str]] | None): 比率線とラベルの設定。
+                キーは比率値、値は (x位置, y位置, ラベルテキスト) のタプル。
+                Noneの場合はデフォルト設定を使用。デフォルト値:
+                {
+                    0.001: (1.25, 2, "0.001"),
+                    0.005: (1.25, 8, "0.005"),
+                    0.010: (1.25, 15, "0.01"),
+                    0.020: (1.25, 30, "0.02"),
+                    0.030: (1.0, 40, "0.03"),
+                    0.076: (0.20, 42, "0.076 (Osaka)")
+                }
+            savefig (bool): 図の保存を許可するフラグ。デフォルトはTrueで、Falseの場合は`output_dir`の指定に関わらず図を保存しない。
+
+        Returns:
+            plt.Figure: 作成された散布図のFigureオブジェクト
+        """
+        output_path: Path = Path(output_dir) / f"{output_filename}.png"
+
+        ch4_enhance_threshold: float = self.__ch4_enhance_threshold
+        correlation_threshold: float = self.__correlation_threshold
+        data = self.__data
+
+        plt.rcParams["font.size"] = fontsize
+        fig = plt.figure(figsize=figsize, dpi=dpi)
+
+        # 全データソースに対してプロット
+        for source_name, df in data.items():
+            # CH4増加量が閾値未満のデータ
+            mask_low = df["ch4_ppm"] - df["ch4_ppm_mv"] < ch4_enhance_threshold
+            plt.plot(
+                df["ch4_ppm_delta"][mask_low],
+                df["c2h6_ppb_delta"][mask_low],
+                "o",
+                c="gray",
+                alpha=0.05,
+                ms=2,
+                label=f"{source_name} (Low CH4)" if len(data) > 1 else "Low CH4",
+            )
+
+            # CH4増加量が閾値以上で、相関が低いデータ
+            mask_high_low_corr = (
+                df["ch4_c2h6_correlation"] < correlation_threshold
+            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
+            plt.plot(
+                df["ch4_ppm_delta"][mask_high_low_corr],
+                df["c2h6_ppb_delta"][mask_high_low_corr],
+                "o",
+                c="blue",
+                alpha=0.5,
+                ms=2,
+                label=f"{source_name} (Bio)" if len(data) > 1 else "Bio",
+            )
+
+            # CH4増加量が閾値以上で、相関が高いデータ
+            mask_high_high_corr = (
+                df["ch4_c2h6_correlation"] >= correlation_threshold
+            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
+            plt.plot(
+                df["ch4_ppm_delta"][mask_high_high_corr],
+                df["c2h6_ppb_delta"][mask_high_high_corr],
+                "o",
+                c="red",
+                alpha=0.5,
+                ms=2,
+                label=f"{source_name} (Gas)" if len(data) > 1 else "Gas",
+            )
+
+        # デフォルトの比率とラベル設定
+        default_ratio_labels = {
+            0.001: (1.25, 2, "0.001"),
+            0.005: (1.25, 8, "0.005"),
+            0.010: (1.25, 15, "0.01"),
+            0.020: (1.25, 30, "0.02"),
+            0.030: (1.0, 40, "0.03"),
+            0.076: (0.20, 42, "0.076 (Osaka)"),
+        }
+
+        ratio_labels = ratio_labels or default_ratio_labels
+
+        # プロット後、軸の設定前に比率の線を追加
+        x = np.array([0, 5])
+        base_ch4 = 0.0
+        base = 0.0
+
+        # 各比率に対して線を引く
+        for ratio, (x_pos, y_pos, label) in ratio_labels.items():
+            y = (x - base_ch4) * 1000 * ratio + base
+            plt.plot(x, y, "-", c="black", alpha=0.5)
+            plt.text(x_pos, y_pos, label)
+
+        # 既存の軸設定を維持
+        plt.ylim(0, 50)
+        plt.xlim(0, 2.0)
+        plt.ylabel("Δ$\\mathregular{C_{2}H_{6}}$ (ppb)")
+        plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
+
+        # グラフの保存または表示
+        if savefig:
+            plt.savefig(output_path, bbox_inches="tight")
+            self.logger.info(f"散布図を保存しました: {output_path}")
+
+        return fig
 
     def __calculate_angle(self, lat: float, lon: float) -> float:
         """
@@ -519,523 +818,3 @@ class MobileSpatialAnalyzer:
             f"重複除外: {len(hotspots)} → {len(unique_hotspots)} ホットスポット"
         )
         return unique_hotspots
-
-    def analyze_hotspots(
-        self,
-        exclude_duplicates_across_days: bool = False,
-        additional_distance_meter: float = 20,
-    ) -> list[HotspotData]:
-        """
-        ホットスポットを検出して分析します。
-
-        このメソッドは、クラス初期化時に設定されたwindow_sizeを使用して、
-        各データソースに対してホットスポットを検出し、分析結果を返します。
-
-        Args:
-            exclude_duplicates_across_days (bool): 異なる日付間での重複を除外するかどうか。
-                True の場合、全期間で重複するホットスポットを除外します。
-                False の場合、日付ごとに独立してホットスポットを検出します。
-                デフォルトは False です。
-            additional_distance_meter (float): hotspot_area_meterに追加する距離（メートル）。
-                重複除外時の距離閾値は hotspot_area_meter + additional_distance_meter となります。
-                デフォルトは20メートルです。
-
-        Returns:
-            list[HotspotData]: 検出されたホットスポットのリスト。
-            各ホットスポットは、位置、比率、タイプなどの情報を含みます。
-        """
-        all_hotspots: list[HotspotData] = []
-
-        # 各データソースに対して解析を実行
-        for _, df in self.__data.items():
-            # パラメータの計算
-            df = self.__calculate_hotspots_parameters(df, self.__window_size)
-
-            # ホットスポットの検出
-            hotspots: list[HotspotData] = self.__detect_hotspots(
-                df,
-                ch4_enhance_threshold=self.__ch4_enhance_threshold,
-                hotspot_areas_meter=self.__hotspot_area_meter,
-            )
-            all_hotspots.extend(hotspots)
-
-        # 全期間での重複除外が有効な場合
-        if exclude_duplicates_across_days:
-            distance_threshold: float = (
-                self.__hotspot_area_meter + additional_distance_meter
-            )
-            all_hotspots = self.__remove_duplicates_across_days(
-                all_hotspots, distance_threshold_meter=distance_threshold
-            )
-
-        return all_hotspots
-
-    def create_hotspots_map(
-        self,
-        hotspots: list[HotspotData],
-        output_dir: str | Path,
-        output_filename: str = "hotspots_map",
-        center_marker_label: str = "Center",
-        plot_center_marker: bool = True,
-        radius_meters: float = 3000,
-    ) -> None:
-        """
-        ホットスポットの分布を地図上にプロットして保存
-
-        Args:
-            hotspots (list[HotspotData]): プロットするホットスポットのリスト
-            output_dir (str | Path): 保存先のディレクトリパス
-            output_filename (str): 保存するファイル名。デフォルトは"hotspots_map"。
-            center_marker_label (str): 中心を示すマーカーのラベルテキスト。デフォルトは"Center"。
-            plot_center_marker (bool): 中心を示すマーカーの有無。デフォルトはTrue。
-            radius_meters (float): 区画分けを示す線の長さ。デフォルトは3000。
-        """
-        output_path: Path = Path(output_dir) / f"{output_filename}.html"
-        # 地図の作成
-        m = folium.Map(
-            location=[self.__center_lat, self.__center_lon],
-            zoom_start=15,
-            tiles="OpenStreetMap",
-        )
-
-        # ホットスポットの種類ごとに異なる色でプロット
-        for spot in hotspots:
-            # NaN値チェックを追加
-            if math.isnan(spot.avg_lat) or math.isnan(spot.avg_lon):
-                continue
-
-            # タイプに応じて色を設定
-            if spot.type == "comb":
-                color = "green"
-            elif spot.type == "gas":
-                color = "red"
-            elif spot.type == "bio":
-                color = "blue"
-            else:  # invalid type
-                color = "black"
-
-            # CSSのgrid layoutを使用してHTMLタグを含むテキストをフォーマット
-            popup_html = f"""
-            <div style='font-family: Arial; font-size: 12px; display: grid; grid-template-columns: auto auto auto; gap: 5px;'>
-                <b>Date</b>    <span>:</span> <span>{spot.source}</span>
-                <b>Corr</b>    <span>:</span> <span>{spot.correlation:.3f}</span>
-                <b>Ratio</b>   <span>:</span> <span>{spot.ratio:.3f}</span>
-                <b>Type</b>    <span>:</span> <span>{spot.type}</span>
-                <b>Section</b> <span>:</span> <span>{spot.section}</span>
-            </div>
-            """
-
-            # ポップアップのサイズを指定
-            popup = folium.Popup(
-                folium.Html(popup_html, script=True),
-                max_width=200,  # 最大幅（ピクセル）
-            )
-
-            folium.CircleMarker(
-                location=[spot.avg_lat, spot.avg_lon],
-                radius=8,
-                color=color,
-                fill=True,
-                popup=popup,
-            ).add_to(m)
-
-        # 中心点のマーカー
-        if plot_center_marker:
-            folium.Marker(
-                [self.__center_lat, self.__center_lon],
-                popup=center_marker_label,
-                icon=folium.Icon(color="green", icon="info-sign"),
-            ).add_to(m)
-
-        # 区画の境界線を描画
-        for section in range(self.__num_sections):
-            start_angle = math.radians(-180 + section * self.__section_size)
-
-            R = 6371000  # 地球の半径（メートル）
-
-            # 境界線の座標を計算
-            lat1 = self.__center_lat
-            lon1 = self.__center_lon
-            lat2 = math.degrees(
-                math.asin(
-                    math.sin(math.radians(lat1)) * math.cos(radius_meters / R)
-                    + math.cos(math.radians(lat1))
-                    * math.sin(radius_meters / R)
-                    * math.cos(start_angle)
-                )
-            )
-            lon2 = self.__center_lon + math.degrees(
-                math.atan2(
-                    math.sin(start_angle)
-                    * math.sin(radius_meters / R)
-                    * math.cos(math.radians(lat1)),
-                    math.cos(radius_meters / R)
-                    - math.sin(math.radians(lat1)) * math.sin(math.radians(lat2)),
-                )
-            )
-
-            # 境界線を描画
-            folium.PolyLine(
-                locations=[[lat1, lon1], [lat2, lon2]],
-                color="black",
-                weight=1,
-                opacity=0.5,
-            ).add_to(m)
-
-        # 地図を保存
-        m.save(str(output_path))
-        self.logger.info(f"地図を保存しました: {output_path}")
-
-    def get_section_size(self) -> float:
-        """
-        セクションのサイズを取得するメソッド。
-        このメソッドは、解析対象のデータを区画に分割する際の
-        各区画の角度範囲を示すサイズを返します。
-
-        戻り値:
-            float: 1セクションのサイズ（度単位）
-        """
-        return self.__section_size
-
-    def plot_scatter_c2h6_ch4(
-        self,
-        output_dir: str | Path,
-        output_filename: str = "scatter_c2h6_ch4",
-        dpi: int = 200,
-        figsize: tuple[int, int] = (4, 4),
-        fontsize: float = 12,
-        ratio_labels: dict[float, tuple[float, float, str]] | None = None,
-        savefig: bool = True,
-    ) -> plt.Figure:
-        """
-        C2H6とCH4の散布図をプロットします。
-
-        Args:
-            output_dir (str | Path): 保存先のディレクトリパス
-            output_filename (str): 保存するファイル名。デフォルトは"scatter_c2h6_ch4"。
-            dpi (int): 解像度。デフォルトは200。
-            figsize (tuple[int, int]): 図のサイズ。デフォルトは(4, 4)。
-            fontsize (float): フォントサイズ。デフォルトは12。
-            ratio_labels (dict[float, tuple[float, float, str]] | None): 比率線とラベルの設定。
-                キーは比率値、値は (x位置, y位置, ラベルテキスト) のタプル。
-                Noneの場合はデフォルト設定を使用。デフォルト値:
-                {
-                    0.001: (1.25, 2, "0.001"),
-                    0.005: (1.25, 8, "0.005"),
-                    0.010: (1.25, 15, "0.01"),
-                    0.020: (1.25, 30, "0.02"),
-                    0.030: (1.0, 40, "0.03"),
-                    0.076: (0.20, 42, "0.076 (Osaka)")
-                }
-            savefig (bool): 図の保存を許可するフラグ。デフォルトはTrueで、Falseの場合は`output_dir`の指定に関わらず図を保存しない。
-
-        Returns:
-            plt.Figure: 作成された散布図のFigureオブジェクト
-        """
-        output_path: Path = Path(output_dir) / f"{output_filename}.png"
-
-        ch4_enhance_threshold: float = self.__ch4_enhance_threshold
-        correlation_threshold: float = self.__correlation_threshold
-        data = self.__data
-
-        plt.rcParams["font.size"] = fontsize
-        fig = plt.figure(figsize=figsize, dpi=dpi)
-
-        # 全データソースに対してプロット
-        for source_name, df in data.items():
-            # CH4増加量が閾値未満のデータ
-            mask_low = df["ch4_ppm"] - df["ch4_ppm_mv"] < ch4_enhance_threshold
-            plt.plot(
-                df["ch4_ppm_delta"][mask_low],
-                df["c2h6_ppb_delta"][mask_low],
-                "o",
-                c="gray",
-                alpha=0.05,
-                ms=2,
-                label=f"{source_name} (Low CH4)" if len(data) > 1 else "Low CH4",
-            )
-
-            # CH4増加量が閾値以上で、相関が低いデータ
-            mask_high_low_corr = (
-                df["ch4_c2h6_correlation"] < correlation_threshold
-            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
-            plt.plot(
-                df["ch4_ppm_delta"][mask_high_low_corr],
-                df["c2h6_ppb_delta"][mask_high_low_corr],
-                "o",
-                c="blue",
-                alpha=0.5,
-                ms=2,
-                label=f"{source_name} (Bio)" if len(data) > 1 else "Bio",
-            )
-
-            # CH4増加量が閾値以上で、相関が高いデータ
-            mask_high_high_corr = (
-                df["ch4_c2h6_correlation"] >= correlation_threshold
-            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
-            plt.plot(
-                df["ch4_ppm_delta"][mask_high_high_corr],
-                df["c2h6_ppb_delta"][mask_high_high_corr],
-                "o",
-                c="red",
-                alpha=0.5,
-                ms=2,
-                label=f"{source_name} (Gas)" if len(data) > 1 else "Gas",
-            )
-
-        # デフォルトの比率とラベル設定
-        default_ratio_labels = {
-            0.001: (1.25, 2, "0.001"),
-            0.005: (1.25, 8, "0.005"),
-            0.010: (1.25, 15, "0.01"),
-            0.020: (1.25, 30, "0.02"),
-            0.030: (1.0, 40, "0.03"),
-            0.076: (0.20, 42, "0.076 (Osaka)"),
-        }
-
-        ratio_labels = ratio_labels or default_ratio_labels
-
-        # プロット後、軸の設定前に比率の線を追加
-        x = np.array([0, 5])
-        base_ch4 = 0.0
-        base = 0.0
-
-        # 各比率に対して線を引く
-        for ratio, (x_pos, y_pos, label) in ratio_labels.items():
-            y = (x - base_ch4) * 1000 * ratio + base
-            plt.plot(x, y, "-", c="black", alpha=0.5)
-            plt.text(x_pos, y_pos, label)
-
-        # 既存の軸設定を維持
-        plt.ylim(0, 50)
-        plt.xlim(0, 2.0)
-        plt.ylabel("Δ$\\mathregular{C_{2}H_{6}}$ (ppb)")
-        plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
-
-        # グラフの保存または表示
-        if savefig:
-            plt.savefig(output_path, bbox_inches="tight")
-            self.logger.info(f"散布図を保存しました: {output_path}")
-
-        return fig
-
-    def create_footprint_map(
-        self,
-        x_list: list[float],
-        y_list: list[float],
-        c_list: list[float],
-        hotspots: list[HotspotData],
-        output_dir: str | Path,
-        output_filename: str = "footprint_map",
-        center_marker_label: str = "Center",
-        plot_center_marker: bool = True,
-        radius_meters: float = 3000,
-        opacity: float = 0.6,
-        grid_size: int = 200,
-    ) -> None:
-        """
-        フラックスフットプリントとホットスポットを統合した地図を作成します。
-        距離による極端な値の変化を抑制し、より自然な分布を表現します。
-        """
-        from branca.colormap import LinearColormap
-        import numpy as np
-        from scipy.stats import binned_statistic_2d
-        from scipy.ndimage import gaussian_filter
-
-        output_path: Path = Path(output_dir) / f"{output_filename}.html"
-
-        # 地図の作成
-        m = folium.Map(
-            location=[self.__center_lat, self.__center_lon],
-            zoom_start=15,
-            tiles="OpenStreetMap",
-        )
-
-        # メートル座標を緯度経度に変換
-        R = 6371000
-        lat_list = []
-        lon_list = []
-
-        # 中心からの距離を計算
-        distances = []
-        center_x, center_y = 0, 0
-
-        for x, y in zip(x_list, y_list):
-            # 距離の計算
-            distance = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
-            distances.append(distance)
-
-            # 緯度経度への変換
-            dlat = (y / R) * (180 / math.pi)
-            dlon = (x / R) * (180 / math.pi) / math.cos(math.radians(self.__center_lat))
-
-            lat = self.__center_lat + dlat
-            lon = self.__center_lon + dlon
-
-            lat_list.append(lat)
-            lon_list.append(lon)
-
-        # 距離による重み付けの計算
-        max_distance = max(distances)
-        # distance_weights = np.exp(-np.array(distances) / (max_distance * 0.5))
-        distance_weights = np.exp(-np.array(distances) / (max_distance * 1000))
-
-        # 値の調整（距離による重み付け）
-        adjusted_values = np.array(c_list) * distance_weights
-
-        # フラックスデータを2次元ヒストグラムに変換
-        ret = binned_statistic_2d(
-            lon_list,
-            lat_list,
-            adjusted_values,
-            statistic="mean",
-            bins=grid_size,
-            range=[[min(lon_list), max(lon_list)], [min(lat_list), max(lat_list)]],
-        )
-
-        # statisticをコピーして新しい配列を作成
-        statistic_data = np.copy(ret.statistic)
-
-        # データの正規化（0-100の範囲に）
-        valid_data = statistic_data[~np.isnan(statistic_data)]
-        if len(valid_data) > 0:
-            min_val = np.percentile(valid_data, 2)
-            max_val = np.percentile(valid_data, 98)
-            statistic_data = np.clip(statistic_data, min_val, max_val)
-            statistic_data = ((statistic_data - min_val) / (max_val - min_val)) * 100
-
-        # ガウシアンフィルターでスムージング
-        smoothed_data = gaussian_filter(statistic_data, sigma=2.0)
-
-        # カラーマップの定義
-        colors = [
-            "#313695",  # 濃い青
-            "#4575b4",  # 青
-            "#74add1",  # 明るい青
-            "#abd9e9",  # さらに明るい青
-            "#e0f3f8",  # 最も明るい青
-            "#ffffbf",  # 黄色
-            "#fee090",  # 明るいオレンジ
-            "#fdae61",  # オレンジ
-            "#f46d43",  # 暗いオレンジ
-            "#d73027",  # 赤
-            "#a50026",  # 濃い赤
-        ]
-
-        # ヒートマップデータの生成
-        heatmap_data = []
-        lon_edges = ret.x_edge
-        lat_edges = ret.y_edge
-
-        for i in range(len(lon_edges) - 1):
-            for j in range(len(lat_edges) - 1):
-                if not np.isnan(smoothed_data[i, j]):
-                    lon = (lon_edges[i] + lon_edges[i + 1]) / 2
-                    lat = (lat_edges[j] + lat_edges[j + 1]) / 2
-                    weight = smoothed_data[i, j]
-                    if weight > 0:  # 0以上の値のみ表示
-                        heatmap_data.append([lat, lon, weight])
-
-        # ヒートマップの追加
-        plugins.HeatMap(
-            heatmap_data,
-            min_opacity=opacity * 0.5,
-            max_opacity=opacity,
-            radius=15,
-            blur=20,
-            gradient={
-                0.0: colors[0],
-                0.1: colors[1],
-                0.2: colors[2],
-                0.3: colors[3],
-                0.4: colors[4],
-                0.5: colors[5],
-                0.6: colors[6],
-                0.7: colors[7],
-                0.8: colors[8],
-                0.9: colors[9],
-                1.0: colors[10],
-            },
-        ).add_to(m)
-
-        # ホットスポットの追加
-        for spot in hotspots:
-            if math.isnan(spot.avg_lat) or math.isnan(spot.avg_lon):
-                continue
-
-            color = {"comb": "green", "gas": "red", "bio": "blue"}.get(
-                spot.type, "black"
-            )
-
-            popup_html = f"""
-            <div style='font-family: Arial; font-size: 12px; display: grid; grid-template-columns: auto auto auto; gap: 5px;'>
-                <b>Date</b>    <span>:</span> <span>{spot.source}</span>
-                <b>Corr</b>    <span>:</span> <span>{spot.correlation:.3f}</span>
-                <b>Ratio</b>   <span>:</span> <span>{spot.ratio:.3f}</span>
-                <b>Type</b>    <span>:</span> <span>{spot.type}</span>
-                <b>Section</b> <span>:</span> <span>{spot.section}</span>
-            </div>
-            """
-
-            popup = folium.Popup(
-                folium.Html(popup_html, script=True),
-                max_width=200,
-            )
-
-            folium.CircleMarker(
-                location=[spot.avg_lat, spot.avg_lon],
-                radius=8,
-                color=color,
-                fill=True,
-                popup=popup,
-                weight=2,
-            ).add_to(m)
-
-        # 中心点のマーカー
-        if plot_center_marker:
-            folium.Marker(
-                [self.__center_lat, self.__center_lon],
-                popup=center_marker_label,
-                icon=folium.Icon(color="green", icon="info-sign"),
-            ).add_to(m)
-
-        # 区画の境界線を描画
-        for section in range(self.__num_sections):
-            start_angle = math.radians(-180 + section * self.__section_size)
-
-            lat1 = self.__center_lat
-            lon1 = self.__center_lon
-            lat2 = math.degrees(
-                math.asin(
-                    math.sin(math.radians(lat1)) * math.cos(radius_meters / R)
-                    + math.cos(math.radians(lat1))
-                    * math.sin(radius_meters / R)
-                    * math.cos(start_angle)
-                )
-            )
-            lon2 = self.__center_lon + math.degrees(
-                math.atan2(
-                    math.sin(start_angle)
-                    * math.sin(radius_meters / R)
-                    * math.cos(math.radians(lat1)),
-                    math.cos(radius_meters / R)
-                    - math.sin(math.radians(lat1)) * math.sin(math.radians(lat2)),
-                )
-            )
-
-            folium.PolyLine(
-                locations=[[lat1, lon1], [lat2, lon2]],
-                color="black",
-                weight=1,
-                opacity=0.5,
-            ).add_to(m)
-
-        # カラーバーの追加
-        colormap = LinearColormap(
-            colors=colors, vmin=0, vmax=100, caption="Footprint contribution (%)"
-        )
-        colormap.add_to(m)
-
-        # 地図を保存
-        m.save(str(output_path))
-        self.logger.info(f"フットプリント地図を保存しました: {output_path}")

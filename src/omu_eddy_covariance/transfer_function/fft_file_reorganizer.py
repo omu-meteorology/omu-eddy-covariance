@@ -2,9 +2,9 @@ import os
 import re
 import csv
 import shutil
+from tqdm import tqdm
 from datetime import datetime
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
-from tqdm import tqdm
 
 
 class FftFileReorganizer:
@@ -121,6 +121,24 @@ class FftFileReorganizer:
         logger.addHandler(ch)  # StreamHandlerの追加
         return logger
 
+    def reorganize(self):
+        """
+        ファイルの再編成プロセス全体を実行します。
+        ディレクトリの準備、フラグファイルの読み込み、
+        有効なファイルの取得、ファイルのコピーを順に行います。
+        処理後、警告メッセージがあれば出力します。
+        """
+        self.__prepare_directories()
+        self.__read_flag_file()
+        valid_files = self.__get_valid_files()
+        self.__copy_files(valid_files)
+        self.logger.info("ファイルのコピーが完了しました。")
+
+        if self.__warnings:
+            self.logger.warn("Warnings:")
+            for warning in self.__warnings:
+                self.logger.warn(warning)
+
     def __copy_files(self, valid_files):
         """
         有効なファイルを適切な出力ディレクトリにコピーします。
@@ -222,21 +240,3 @@ class FftFileReorganizer:
                 return datetime.strptime(datetime_str, "%Y%m%d%H%M")
 
         raise ValueError(f"Could not parse datetime from filename: {filename}")
-
-    def reorganize(self):
-        """
-        ファイルの再編成プロセス全体を実行します。
-        ディレクトリの準備、フラグファイルの読み込み、
-        有効なファイルの取得、ファイルのコピーを順に行います。
-        処理後、警告メッセージがあれば出力します。
-        """
-        self.__prepare_directories()
-        self.__read_flag_file()
-        valid_files = self.__get_valid_files()
-        self.__copy_files(valid_files)
-        self.logger.info("ファイルのコピーが完了しました。")
-
-        if self.__warnings:
-            self.logger.warn("Warnings:")
-            for warning in self.__warnings:
-                self.logger.warn(warning)

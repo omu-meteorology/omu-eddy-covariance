@@ -1,18 +1,17 @@
-import jpholiday
-import math
-import matplotlib.pyplot as plt
-import numpy as np
+import io
 import os
+import math
+import requests
+import jpholiday
+import numpy as np
 import pandas as pd
-from datetime import datetime
-from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
+import matplotlib.pyplot as plt
 from PIL import Image
 from tqdm import tqdm
-from omu_eddy_covariance import HotspotData
-
-import io
-import requests
 from typing import Optional
+from datetime import datetime
+from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
+from omu_eddy_covariance import HotspotData
 
 
 class FluxFootprintAnalyzer:
@@ -67,14 +66,15 @@ class FluxFootprintAnalyzer:
         self.z_m: float = z_m
 
         # 図表の初期設定
-        self.__setup_plot_params(labelsize, ticksize, plot_params)
+        FluxFootprintAnalyzer.setup_plot_params(labelsize, ticksize, plot_params)
         # ロガー
         log_level: int = INFO
         if logging_debug:
             log_level = DEBUG
-        self.logger: Logger = self.__setup_logger(logger, log_level)
+        self.logger: Logger = FluxFootprintAnalyzer.setup_logger(logger, log_level)
 
-    def __setup_logger(self, logger: Logger | None, log_level: int = INFO):
+    @staticmethod
+    def setup_logger(logger: Logger | None, log_level: int = INFO):
         """
         ロガーを設定します。
 
@@ -103,7 +103,8 @@ class FluxFootprintAnalyzer:
         logger.addHandler(ch)  # StreamHandlerの追加
         return logger
 
-    def __setup_plot_params(
+    @staticmethod
+    def setup_plot_params(
         self, labelsize: float, ticksize: float, plot_params=None
     ) -> None:
         """
@@ -116,7 +117,7 @@ class FluxFootprintAnalyzer:
         """
         # デフォルトのプロットパラメータ
         default_params = {
-            "font.family": "Arial",
+            "font.family": ["Arial", "Dejavu Sans"],
             "axes.edgecolor": "None",
             "axes.labelcolor": "black",
             "text.color": "black",
@@ -140,415 +141,6 @@ class FluxFootprintAnalyzer:
             default_params.update(plot_params)
 
         plt.rcParams.update(default_params)  # プロットパラメータを更新
-
-    def __is_weekday(self, date: datetime) -> int:
-        """
-        指定された日付が平日であるかどうかを判定します。
-
-        Args:
-            date (datetime): 判定する日付。
-
-        Returns:
-            int: 平日であれば1、そうでなければ0。
-        """
-        return 1 if not jpholiday.is_holiday(date) and date.weekday() < 5 else 0
-
-    def __prepare_csv(self, file_path: str) -> pd.DataFrame:
-        """
-        フラックスデータを含むCSVファイルを読み込み、処理します。
-
-        引数:
-            file_path (str): CSVファイルのパス。
-
-        戻り値:
-            pd.DataFrame: 処理済みのデータフレーム。
-        """
-        # CSVファイルの最初の行を読み込み、ヘッダーを取得するための一時データフレームを作成
-        temp: pd.DataFrame = pd.read_csv(file_path, header=None, nrows=1, skiprows=0)
-        header = temp.loc[temp.index[0]]
-
-        # 実際のデータを読み込み、必要な行をスキップし、欠損値を指定
-        df: pd.DataFrame = pd.read_csv(
-            file_path,
-            header=None,
-            skiprows=2,
-            na_values=["#DIV/0!", "#VALUE!", "#REF!", "#N/A", "#NAME?", "NAN"],
-            low_memory=False,
-        )
-        # 取得したヘッダーをデータフレームに設定
-        df.columns = header
-
-        # self.required_columnsのカラムが存在するか確認
-        missing_columns: list[str] = [
-            col for col in self.required_columns if col not in df.columns.tolist()
-        ]
-        if missing_columns:
-            raise ValueError(
-                f"必要なカラムが不足しています: {', '.join(missing_columns)}"
-            )
-
-        # "Date"カラムをインデックスに設定して返却
-        df["Date"] = pd.to_datetime(df["Date"])
-        df = df.dropna(subset=["Date"])
-        df.set_index("Date", inplace=True)
-        return df
-
-    def combine_all_csv(self, csv_dir_path: str, suffix: str = ".csv") -> pd.DataFrame:
-        """
-        指定されたディレクトリ内の全CSVファイルを読み込み、処理し、結合します。
-        Monthlyシートを結合することを想定しています。
-
-        引数:
-            csv_dir_path (str): CSVファイルが格納されているディレクトリのパス。
-            suffix (str, optional): 読み込むファイルの拡張子。デフォルトは".csv"。
-
-        戻り値:
-            pandas.DataFrame: 結合および処理済みのデータフレーム。
-
-        注意:
-            - ディレクトリ内に少なくとも1つのCSVファイルが必要です。
-        """
-        csv_files = [f for f in os.listdir(csv_dir_path) if f.endswith(suffix)]
-        if not csv_files:
-            raise ValueError("指定されたディレクトリにCSVファイルが見つかりません。")
-
-        df_array: list[pd.DataFrame] = []
-        for csv_file in csv_files:
-            file_path: str = os.path.join(csv_dir_path, csv_file)
-            df: pd.DataFrame = self.__prepare_csv(file_path)
-            df_array.append(df)
-
-        # 結合
-        df_combined: pd.DataFrame = pd.concat(df_array, join="outer")
-        df_combined = df_combined.loc[~df_combined.index.duplicated(), :]
-
-        # 平日と休日の判定に使用するカラムを作成
-        df_combined[self.weekday_key] = df_combined.index.map(
-            self.__is_weekday
-        )  # 共通の関数を使用
-
-        return df_combined
-
-    def filter_data(
-        self,
-        df: pd.DataFrame,
-        start_date: str | None = None,
-        end_date: str | None = None,
-        months: list[int] | None = None,
-    ) -> pd.DataFrame:
-        """
-        指定された期間や月でデータをフィルタリングするメソッド。
-
-        Args:
-            df (pd.DataFrame): フィルタリングするデータフレーム
-            start_date (str | None): フィルタリングの開始日（'YYYY-MM-DD'形式）。デフォルトはNone。
-            end_date (str | None): フィルタリングの終了日（'YYYY-MM-DD'形式）。デフォルトはNone。
-            months (list[int] | None): フィルタリングする月のリスト（例：[1, 2, 12]）。デフォルトはNone。
-
-        Returns:
-            pd.DataFrame: フィルタリングされたデータフレーム
-        """
-        filtered_df: pd.DataFrame = df.copy()
-
-        # 期間でフィルタリング
-        if start_date is not None or end_date is not None:
-            filtered_df = filtered_df.loc[start_date:end_date]
-
-        # 月でフィルタリング
-        if months is not None:
-            filtered_df = filtered_df[filtered_df.index.month.isin(months)]
-
-        return filtered_df
-
-    def __source_area_KM2001(
-        self,
-        ksi: float,
-        mu: float,
-        dU: float,
-        sigmaV: float,
-        Z_d: float,
-        max_ratio: float = 0.8,
-    ) -> float:
-        """
-        Kormann and Meixner (2001)のフットプリントモデルに基づいてソースエリアを計算します。
-
-        このメソッドは、与えられたパラメータを使用して、フラックスの80%寄与距離を計算します。
-        計算は反復的に行われ、寄与率が80%に達するまで、または最大反復回数に達するまで続けられます。
-
-        Args:
-            ksi (float): フラックス長さスケール
-            mu (float): 形状パラメータ
-            dU (float): 風速の変化率
-            sigmaV (float): 風速の標準偏差
-            Z_d (float): ゼロ面変位高度
-            max_ratio (float, optional): 寄与率の最大値。デフォルトは0.8。
-
-        Returns:
-            float: 80%寄与距離（メートル単位）。計算が収束しない場合はnp.nan。
-
-        Note:
-            - 計算が収束しない場合（最大反復回数に達した場合）、結果はnp.nanとなります。
-        """
-        if max_ratio > 1:
-            raise ValueError("max_ratio は0以上1以下である必要があります。")
-        # 変数の初期値
-        sum_f: float = 0.0  # 寄与率(0 < sum_f < 1.0)
-        x1: float = 0.0
-        dF_xd: float = 0.0
-
-        x_d: float = ksi / (
-            1.0 + mu
-        )  # Eq. 22 (x_d : クロスウィンド積分フラックスフットプリント最大位置)
-
-        dx: float = x_d / 100.0  # 等値線の拡がりの最大距離の100分の1(m)
-
-        # 寄与率が80%に達するまでfを積算
-        while sum_f < (max_ratio / 1):
-            x1 += dx
-
-            # Equation 21 (dF : クロスウィンド積分フットプリント)
-            dF: float = (
-                pow(ksi, mu) * math.exp(-ksi / x1) / math.gamma(mu) / pow(x1, 1.0 + mu)
-            )
-
-            sum_f += dF  # Footprint を加えていく (0.0 < dF < 1.0)
-            dx *= 2.0  # 距離は2倍ずつ増やしていく
-
-            if dx > 1.0:
-                dx = 1.0  # 一気に、1 m 以上はインクリメントしない
-            if x1 > Z_d * 1000.0:
-                break  # ソースエリアが測定高度の1000倍以上となった場合、エラーとして止める
-
-        x_dst: float = x1  # 寄与率が80%に達するまでの積算距離
-        f_last: float = (
-            pow(ksi, mu)
-            * math.exp(-ksi / x_dst)
-            / math.gamma(mu)
-            / pow(x_dst, 1.0 + mu)
-        )  # Page 214 just below the Eq. 21.
-
-        # y方向の最大距離とその位置のxの距離
-        dy: float = x_d / 100.0  # 等値線の拡がりの最大距離の100分の1
-        y_dst: float = 0.0
-        accumulated_y: float = 0.0  # y方向の積算距離を表す変数
-
-        # 最大反復回数を設定
-        MAX_ITERATIONS: int = 100000
-        for _ in range(MAX_ITERATIONS):
-            accumulated_y += dy
-            if accumulated_y >= x_dst:
-                break
-
-            dF_xd = (
-                pow(ksi, mu)
-                * math.exp(-ksi / accumulated_y)
-                / math.gamma(mu)
-                / pow(accumulated_y, 1.0 + mu)
-            )  # 式21の直下（214ページ）
-
-            aa: float = math.log(x_dst * dF_xd / f_last / accumulated_y)
-            sigma: float = sigmaV * accumulated_y / dU  # 215ページ8行目
-
-            if 2.0 * aa >= 0:
-                y_dst_new: float = sigma * math.sqrt(2.0 * aa)
-                if y_dst_new <= y_dst:
-                    break  # forループを抜ける
-                y_dst = y_dst_new
-
-            dy = min(dy * 2.0, 1.0)
-
-        else:
-            # ループが正常に終了しなかった場合（最大反復回数に達した場合）
-            x_dst = np.nan
-
-        return x_dst
-
-    def __calculate_ground_correction(self, data: pd.DataFrame) -> float:
-        """
-        地面修正量を計算します（Pennypacker and Baldocchi, 2016）。
-
-        この関数は、与えられたデータフレームを使用して地面修正量を計算します。
-        計算は以下のステップで行われます：
-        1. 変位高さ（d）を計算
-        2. 中立条件外のデータを除外
-        3. 平均変位高さを計算
-        4. 地面修正量を返す
-
-        Args:
-            data (pd.DataFrame): 風速や摩擦速度などのデータを含むDataFrame
-
-        Returns:
-            float: 計算された地面修正量
-        """
-        z: float = self.z_m
-        # 変位高さ（d）の計算
-        data["d"] = 0.6 * (
-            z / (0.6 + 0.1 * (np.exp((self.KARMAN * data["WS vector"]) / data["u*"])))
-        )
-
-        # 中立条件外のデータを除外（中立条件：-0.1 < z/L < 0.1）
-        data.loc[((data["z/L"] < -0.1) | (0.1 < data["z/L"])), "d"] = np.nan
-
-        # 平均変位高さを計算
-        d: float = data["d"].mean()
-
-        # 地面修正量を返す
-        return z - d
-
-    def __calculate_stability_parameters(
-        self, dzL: float
-    ) -> tuple[float, float, float]:
-        """
-        安定性パラメータを計算します。
-
-        大気安定度に基づいて、運動量とスカラーの安定度関数、および安定度パラメータを計算します。
-
-        Args:
-            dzL (float): 無次元高度 (z/L)、ここで z は測定高度、L はモニン・オブコフ長
-
-        Returns:
-            tuple[float, float, float]:
-                phi_m (float): 運動量の安定度関数
-                phi_c (float): スカラーの安定度関数
-                n (float): 安定度パラメータ
-        """
-        phi_m: float = 0
-        phi_c: float = 0
-        n: float = 0
-        if dzL > 0.0:
-            # 安定成層の場合
-            dzL = min(dzL, 2.0)
-            phi_m = 1.0 + 5.0 * dzL
-            phi_c = 1.0 + 5.0 * dzL
-            n = 1.0 / (1.0 + 5.0 * dzL)
-        else:
-            # 不安定成層の場合
-            phi_m = pow(1.0 - 16.0 * dzL, -0.25)
-            phi_c = pow(1.0 - 16.0 * dzL, -0.50)
-            n = (1.0 - 24.0 * dzL) / (1.0 - 16.0 * dzL)
-        return phi_m, phi_c, n
-
-    def __calculate_footprint_parameters(
-        self, dUstar: float, dU: float, Z_d: float, phi_m: float, phi_c: float, n: float
-    ) -> tuple[float, float, float, float, float]:
-        """
-        フットプリントパラメータを計算します。
-
-        Args:
-            dUstar (float): 摩擦速度
-            dU (float): 風速
-            Z_d (float): 地面修正後の測定高度
-            phi_m (float): 運動量の安定度関数
-            phi_c (float): スカラーの安定度関数
-            n (float): 安定度パラメータ
-
-        Returns:
-            tuple[float, float, float, float, float]:
-                m (べき指数),
-                U (基準高度での風速),
-                r (べき指数の補正項),
-                mu (形状パラメータ),
-                ksi (フラックス長さスケール)
-        """
-        KARMAN: float = self.KARMAN
-        # パラメータの計算
-        m: float = dUstar / KARMAN * phi_m / dU
-        U: float = dU / pow(Z_d, m)
-        r: float = 2.0 + m - n
-        mu: float = (1.0 + m) / r
-        kz: float = KARMAN * dUstar * Z_d / phi_c
-        k: float = kz / pow(Z_d, n)
-        ksi: float = U * pow(Z_d, r) / r / r / k
-        return m, U, r, mu, ksi
-
-    def __prepare_plot_data(
-        self,
-        x80: float,
-        ksi: float,
-        mu: float,
-        r: float,
-        U: float,
-        m: float,
-        sigmaV: float,
-        flux_value: float,
-        plot_count: int,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        フットプリントのプロットデータを準備します。
-
-        Args:
-            x80 (float): 80%寄与距離
-            ksi (float): フラックス長さスケール
-            mu (float): 形状パラメータ
-            r (float): べき指数
-            U (float): 風速
-            m (float): 風速プロファイルのべき指数
-            sigmaV (float): 風速の標準偏差
-            flux_value (float): フラックス値
-            plot_count (int): 生成するプロット数
-
-        Returns:
-            tuple[np.ndarray, np.ndarray, np.ndarray]:
-                x座標、y座標、フラックス値の配列のタプル
-        """
-        x_lim: int = int(x80)
-
-        """
-        各ランで生成するプロット数
-        多いほどメモリに付加がかかるため注意
-        """
-        plot_num: int = plot_count  # 各ランで生成するプロット数
-
-        # x方向の距離配列を生成
-        x_list: np.ndarray = np.arange(1, x_lim + 1, dtype="float64")
-
-        # クロスウィンド積分フットプリント関数を計算
-        f_list: np.ndarray = (
-            ksi**mu * np.exp(-ksi / x_list) / math.gamma(mu) / x_list ** (1.0 + mu)
-        )
-
-        # プロット数に基づいてx座標を生成
-        num_list: np.ndarray = np.round(f_list * plot_num).astype("int64")
-        x1: np.ndarray = np.repeat(x_list, num_list)
-
-        # 風速プロファイルを計算
-        Ux: np.ndarray = (
-            (math.gamma(mu) / math.gamma(1 / r))
-            * ((r**2 * self.KARMAN) / U) ** (m / r)
-            * U
-            * x1 ** (m / r)
-        )
-
-        # y方向の分散を計算し、正規分布に従ってy座標を生成
-        sigma_array: np.ndarray = sigmaV * x1 / Ux
-        y1: np.ndarray = np.random.normal(0, sigma_array)
-
-        # フラックス値の配列を生成
-        flux1 = np.full_like(x1, flux_value)
-
-        return x1, y1, flux1
-
-    def __rotate_coordinates(
-        self, x: np.ndarray, y: np.ndarray, radian: float
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        座標を指定された角度で回転させます。
-
-        この関数は、与えられたx座標とy座標を、指定された角度（ラジアン）で回転させます。
-        回転は原点を中心に反時計回りに行われます。
-
-        Args:
-            x (np.ndarray): 回転させるx座標の配列
-            y (np.ndarray): 回転させるy座標の配列
-            radian (float): 回転角度（ラジアン）
-
-        Returns:
-            tuple[np.ndarray, np.ndarray]: 回転後の(x_, y_)座標の組
-        """
-        radian1: float = (radian - (np.pi / 2)) * (-1)
-        x_: np.ndarray = x * np.cos(radian1) - y * np.sin(radian1)
-        y_: np.ndarray = x * np.sin(radian1) + y * np.cos(radian1)
-        return x_, y_
 
     def calculate_flux_footprint(
         self,
@@ -664,6 +256,125 @@ class FluxFootprintAnalyzer:
             y_list,
             c_list,
         )
+
+    def combine_all_csv(self, csv_dir_path: str, suffix: str = ".csv") -> pd.DataFrame:
+        """
+        指定されたディレクトリ内の全CSVファイルを読み込み、処理し、結合します。
+        Monthlyシートを結合することを想定しています。
+
+        引数:
+            csv_dir_path (str): CSVファイルが格納されているディレクトリのパス。
+            suffix (str, optional): 読み込むファイルの拡張子。デフォルトは".csv"。
+
+        戻り値:
+            pandas.DataFrame: 結合および処理済みのデータフレーム。
+
+        注意:
+            - ディレクトリ内に少なくとも1つのCSVファイルが必要です。
+        """
+        csv_files = [f for f in os.listdir(csv_dir_path) if f.endswith(suffix)]
+        if not csv_files:
+            raise ValueError("指定されたディレクトリにCSVファイルが見つかりません。")
+
+        df_array: list[pd.DataFrame] = []
+        for csv_file in csv_files:
+            file_path: str = os.path.join(csv_dir_path, csv_file)
+            df: pd.DataFrame = self.__prepare_csv(file_path)
+            df_array.append(df)
+
+        # 結合
+        df_combined: pd.DataFrame = pd.concat(df_array, join="outer")
+        df_combined = df_combined.loc[~df_combined.index.duplicated(), :]
+
+        # 平日と休日の判定に使用するカラムを作成
+        df_combined[self.weekday_key] = df_combined.index.map(
+            self.__is_weekday
+        )  # 共通の関数を使用
+
+        return df_combined
+
+    def filter_data(
+        self,
+        df: pd.DataFrame,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        months: list[int] | None = None,
+    ) -> pd.DataFrame:
+        """
+        指定された期間や月でデータをフィルタリングするメソッド。
+
+        Args:
+            df (pd.DataFrame): フィルタリングするデータフレーム
+            start_date (str | None): フィルタリングの開始日（'YYYY-MM-DD'形式）。デフォルトはNone。
+            end_date (str | None): フィルタリングの終了日（'YYYY-MM-DD'形式）。デフォルトはNone。
+            months (list[int] | None): フィルタリングする月のリスト（例：[1, 2, 12]）。デフォルトはNone。
+
+        Returns:
+            pd.DataFrame: フィルタリングされたデータフレーム
+        """
+        filtered_df: pd.DataFrame = df.copy()
+
+        # 期間でフィルタリング
+        if start_date is not None or end_date is not None:
+            filtered_df = filtered_df.loc[start_date:end_date]
+
+        # 月でフィルタリング
+        if months is not None:
+            filtered_df = filtered_df[filtered_df.index.month.isin(months)]
+
+        return filtered_df
+
+    def get_satellite_image(
+        self,
+        api_key: str,
+        center_lat: float,
+        center_lon: float,
+        zoom: int = 15,
+        size: tuple[int, int] = (2160, 2160),
+        scale: int = 1,
+        output_path: Optional[str] = None,
+    ) -> Image.Image:
+        """
+        Google Maps Static APIを使用して衛星画像を取得します。
+
+        Args:
+            api_key (str): Google Maps Static APIのキー
+            center_lat (float): 中心の緯度
+            center_lon (float): 中心の経度
+            zoom (int, optional): ズームレベル（0-21）。デフォルトは15。
+            size (tuple[int, int], optional): 画像サイズ (幅, 高さ)。デフォルトは(2160, 2160)。
+            scale (int, optional): 画像の解像度スケール（1か2）。デフォルトは1。
+            output_path (Optional[str], optional): 画像の保存パス。デフォルトはNone。
+
+        Returns:
+            Image.Image: 取得した衛星画像
+        """
+        base_url = "https://maps.googleapis.com/maps/api/staticmap"
+
+        params = {
+            "center": f"{center_lat},{center_lon}",
+            "zoom": zoom,
+            "size": f"{size[0]}x{size[1]}",
+            "maptype": "satellite",
+            "scale": scale,
+            "key": api_key,
+        }
+
+        try:
+            response = requests.get(base_url, params=params)
+            response.raise_for_status()
+
+            image = Image.open(io.BytesIO(response.content))
+
+            if output_path:
+                image.save(output_path)
+                self.logger.info(f"衛星画像を保存しました: {output_path}")
+
+            return image
+
+        except requests.RequestException as e:
+            self.logger.error(f"衛星画像の取得に失敗しました: {str(e)}")
+            raise
 
     def plot_flux_footprint(
         self,
@@ -795,33 +506,6 @@ class FluxFootprintAnalyzer:
                     )
 
         return fig
-
-    def __convert_latlon_to_xy(
-        self, lat: float, lon: float, center_lat: float, center_lon: float
-    ) -> tuple[float, float]:
-        """
-        緯度経度をメートル単位のx-y座標に変換します。
-        中心からの相対距離を計算します。
-
-        Args:
-            lat (float): 緯度
-            lon (float): 経度
-
-        Returns:
-            tuple[float, float]: (x, y) x: 東西方向の距離(m), y: 南北方向の距離(m)
-        """
-        # 地球の半径 (メートル)
-        R = 6371000
-
-        # 緯度の差をメートルに変換
-        d_lat = lat - center_lat
-        y = R * math.radians(d_lat)
-
-        # 経度の差をメートルに変換（緯度による補正あり）
-        d_lon = lon - center_lon
-        x = R * math.radians(d_lon) * math.cos(math.radians(center_lat))
-
-        return x, y
 
     def plot_flux_footprint_with_hotspots(
         self,
@@ -995,58 +679,6 @@ class FluxFootprintAnalyzer:
 
         return fig
 
-    def get_satellite_image(
-        self,
-        api_key: str,
-        center_lat: float,
-        center_lon: float,
-        zoom: int = 15,
-        size: tuple[int, int] = (2160, 2160),
-        scale: int = 1,
-        output_path: Optional[str] = None,
-    ) -> Image.Image:
-        """
-        Google Maps Static APIを使用して衛星画像を取得します。
-
-        Args:
-            api_key (str): Google Maps Static APIのキー
-            center_lat (float): 中心の緯度
-            center_lon (float): 中心の経度
-            zoom (int, optional): ズームレベル（0-21）。デフォルトは15。
-            size (tuple[int, int], optional): 画像サイズ (幅, 高さ)。デフォルトは(2160, 2160)。
-            scale (int, optional): 画像の解像度スケール（1か2）。デフォルトは1。
-            output_path (Optional[str], optional): 画像の保存パス。デフォルトはNone。
-
-        Returns:
-            Image.Image: 取得した衛星画像
-        """
-        base_url = "https://maps.googleapis.com/maps/api/staticmap"
-
-        params = {
-            "center": f"{center_lat},{center_lon}",
-            "zoom": zoom,
-            "size": f"{size[0]}x{size[1]}",
-            "maptype": "satellite",
-            "scale": scale,
-            "key": api_key,
-        }
-
-        try:
-            response = requests.get(base_url, params=params)
-            response.raise_for_status()
-
-            image = Image.open(io.BytesIO(response.content))
-
-            if output_path:
-                image.save(output_path)
-                self.logger.info(f"衛星画像を保存しました: {output_path}")
-
-            return image
-
-        except requests.RequestException as e:
-            self.logger.error(f"衛星画像の取得に失敗しました: {str(e)}")
-            raise
-
     def plot_flux_footprint_with_hotspots_on_api(
         self,
         x_list: list[float],
@@ -1187,7 +819,7 @@ class FluxFootprintAnalyzer:
                     self.logger.debug(
                         f"Before - Type: {spot_type}, Lat: {spot.avg_lat:.6f}, Lon: {spot.avg_lon:.6f}"
                     )
-                    
+
                     # 中心からの相対距離を計算
                     dx = (spot.avg_lon - center_lon) * meters_per_lon
                     dy = (spot.avg_lat - center_lat) * meters_per_lat
@@ -1287,44 +919,103 @@ class FluxFootprintAnalyzer:
 
         return fig
 
-    def calculate_position_correction(
-        self,
-        reference_x: float,
-        reference_y: float,
-        actual_lat: float,
-        actual_lon: float,
-        center_lat: float,
-        center_lon: float,
-    ) -> tuple[float, float]:
+    def __calculate_footprint_parameters(
+        self, dUstar: float, dU: float, Z_d: float, phi_m: float, phi_c: float, n: float
+    ) -> tuple[float, float, float, float, float]:
         """
-        相対座標から緯度経度への変換の補正係数を計算します。
+        フットプリントパラメータを計算します。
 
-        実際の位置との差分に基づいて補正係数を算出します。
+        Args:
+            dUstar (float): 摩擦速度
+            dU (float): 風速
+            Z_d (float): 地面修正後の測定高度
+            phi_m (float): 運動量の安定度関数
+            phi_c (float): スカラーの安定度関数
+            n (float): 安定度パラメータ
+
+        Returns:
+            tuple[float, float, float, float, float]:
+                m (べき指数),
+                U (基準高度での風速),
+                r (べき指数の補正項),
+                mu (形状パラメータ),
+                ksi (フラックス長さスケール)
         """
-        EARTH_RADIUS = 6371000
-        meters_per_lat = EARTH_RADIUS * (math.pi / 180)
-        meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
+        KARMAN: float = self.KARMAN
+        # パラメータの計算
+        m: float = dUstar / KARMAN * phi_m / dU
+        U: float = dU / pow(Z_d, m)
+        r: float = 2.0 + m - n
+        mu: float = (1.0 + m) / r
+        kz: float = KARMAN * dUstar * Z_d / phi_c
+        k: float = kz / pow(Z_d, n)
+        ksi: float = U * pow(Z_d, r) / r / r / k
+        return m, U, r, mu, ksi
 
-        # 現在の変換方法での位置を計算
-        current_lat_offset = reference_y / meters_per_lat
-        current_lon_offset = reference_x / meters_per_lon
+    def __calculate_ground_correction(self, data: pd.DataFrame) -> float:
+        """
+        地面修正量を計算します（Pennypacker and Baldocchi, 2016）。
 
-        current_lat = center_lat + current_lat_offset
-        current_lon = center_lon + current_lon_offset
+        この関数は、与えられたデータフレームを使用して地面修正量を計算します。
+        計算は以下のステップで行われます：
+        1. 変位高さ（d）を計算
+        2. 中立条件外のデータを除外
+        3. 平均変位高さを計算
+        4. 地面修正量を返す
 
-        # 実際の位置との差を計算（メートル単位）
-        lat_diff_meters = (actual_lat - current_lat) * meters_per_lat
-        lon_diff_meters = (actual_lon - current_lon) * meters_per_lon
+        Args:
+            data (pd.DataFrame): 風速や摩擦速度などのデータを含むDataFrame
 
-        # 差分に基づく補正係数を計算
-        lat_correction = (
-            (reference_y + lat_diff_meters) / reference_y if reference_y != 0 else 1.0
+        Returns:
+            float: 計算された地面修正量
+        """
+        z: float = self.z_m
+        # 変位高さ（d）の計算
+        data["d"] = 0.6 * (
+            z / (0.6 + 0.1 * (np.exp((self.KARMAN * data["WS vector"]) / data["u*"])))
         )
-        lon_correction = (
-            (reference_x + lon_diff_meters) / reference_x if reference_x != 0 else 1.0
-        )
 
-        return lon_correction, lat_correction
+        # 中立条件外のデータを除外（中立条件：-0.1 < z/L < 0.1）
+        data.loc[((data["z/L"] < -0.1) | (0.1 < data["z/L"])), "d"] = np.nan
+
+        # 平均変位高さを計算
+        d: float = data["d"].mean()
+
+        # 地面修正量を返す
+        return z - d
+
+    def __calculate_stability_parameters(
+        self, dzL: float
+    ) -> tuple[float, float, float]:
+        """
+        安定性パラメータを計算します。
+
+        大気安定度に基づいて、運動量とスカラーの安定度関数、および安定度パラメータを計算します。
+
+        Args:
+            dzL (float): 無次元高度 (z/L)、ここで z は測定高度、L はモニン・オブコフ長
+
+        Returns:
+            tuple[float, float, float]:
+                phi_m (float): 運動量の安定度関数
+                phi_c (float): スカラーの安定度関数
+                n (float): 安定度パラメータ
+        """
+        phi_m: float = 0
+        phi_c: float = 0
+        n: float = 0
+        if dzL > 0.0:
+            # 安定成層の場合
+            dzL = min(dzL, 2.0)
+            phi_m = 1.0 + 5.0 * dzL
+            phi_c = 1.0 + 5.0 * dzL
+            n = 1.0 / (1.0 + 5.0 * dzL)
+        else:
+            # 不安定成層の場合
+            phi_m = pow(1.0 - 16.0 * dzL, -0.25)
+            phi_c = pow(1.0 - 16.0 * dzL, -0.50)
+            n = (1.0 - 24.0 * dzL) / (1.0 - 16.0 * dzL)
+        return phi_m, phi_c, n
 
     def __calculate_zoom_level(
         self,
@@ -1360,3 +1051,274 @@ class FluxFootprintAnalyzer:
 
         # 整数値に丸めて、有効範囲（0-21）に収める
         return max(0, min(21, round(zoom_level)))
+
+    def __convert_latlon_to_xy(
+        self, lat: float, lon: float, center_lat: float, center_lon: float
+    ) -> tuple[float, float]:
+        """
+        緯度経度をメートル単位のx-y座標に変換します。
+        中心からの相対距離を計算します。
+
+        Args:
+            lat (float): 緯度
+            lon (float): 経度
+
+        Returns:
+            tuple[float, float]: (x, y) x: 東西方向の距離(m), y: 南北方向の距離(m)
+        """
+        # 地球の半径 (メートル)
+        R = 6371000
+
+        # 緯度の差をメートルに変換
+        d_lat = lat - center_lat
+        y = R * math.radians(d_lat)
+
+        # 経度の差をメートルに変換（緯度による補正あり）
+        d_lon = lon - center_lon
+        x = R * math.radians(d_lon) * math.cos(math.radians(center_lat))
+
+        return x, y
+
+    def __is_weekday(self, date: datetime) -> int:
+        """
+        指定された日付が平日であるかどうかを判定します。
+
+        Args:
+            date (datetime): 判定する日付。
+
+        Returns:
+            int: 平日であれば1、そうでなければ0。
+        """
+        return 1 if not jpholiday.is_holiday(date) and date.weekday() < 5 else 0
+
+    def __prepare_csv(self, file_path: str) -> pd.DataFrame:
+        """
+        フラックスデータを含むCSVファイルを読み込み、処理します。
+
+        引数:
+            file_path (str): CSVファイルのパス。
+
+        戻り値:
+            pd.DataFrame: 処理済みのデータフレーム。
+        """
+        # CSVファイルの最初の行を読み込み、ヘッダーを取得するための一時データフレームを作成
+        temp: pd.DataFrame = pd.read_csv(file_path, header=None, nrows=1, skiprows=0)
+        header = temp.loc[temp.index[0]]
+
+        # 実際のデータを読み込み、必要な行をスキップし、欠損値を指定
+        df: pd.DataFrame = pd.read_csv(
+            file_path,
+            header=None,
+            skiprows=2,
+            na_values=["#DIV/0!", "#VALUE!", "#REF!", "#N/A", "#NAME?", "NAN"],
+            low_memory=False,
+        )
+        # 取得したヘッダーをデータフレームに設定
+        df.columns = header
+
+        # self.required_columnsのカラムが存在するか確認
+        missing_columns: list[str] = [
+            col for col in self.required_columns if col not in df.columns.tolist()
+        ]
+        if missing_columns:
+            raise ValueError(
+                f"必要なカラムが不足しています: {', '.join(missing_columns)}"
+            )
+
+        # "Date"カラムをインデックスに設定して返却
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df.dropna(subset=["Date"])
+        df.set_index("Date", inplace=True)
+        return df
+
+    def __prepare_plot_data(
+        self,
+        x80: float,
+        ksi: float,
+        mu: float,
+        r: float,
+        U: float,
+        m: float,
+        sigmaV: float,
+        flux_value: float,
+        plot_count: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        フットプリントのプロットデータを準備します。
+
+        Args:
+            x80 (float): 80%寄与距離
+            ksi (float): フラックス長さスケール
+            mu (float): 形状パラメータ
+            r (float): べき指数
+            U (float): 風速
+            m (float): 風速プロファイルのべき指数
+            sigmaV (float): 風速の標準偏差
+            flux_value (float): フラックス値
+            plot_count (int): 生成するプロット数
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]:
+                x座標、y座標、フラックス値の配列のタプル
+        """
+        x_lim: int = int(x80)
+
+        """
+        各ランで生成するプロット数
+        多いほどメモリに付加がかかるため注意
+        """
+        plot_num: int = plot_count  # 各ランで生成するプロット数
+
+        # x方向の距離配列を生成
+        x_list: np.ndarray = np.arange(1, x_lim + 1, dtype="float64")
+
+        # クロスウィンド積分フットプリント関数を計算
+        f_list: np.ndarray = (
+            ksi**mu * np.exp(-ksi / x_list) / math.gamma(mu) / x_list ** (1.0 + mu)
+        )
+
+        # プロット数に基づいてx座標を生成
+        num_list: np.ndarray = np.round(f_list * plot_num).astype("int64")
+        x1: np.ndarray = np.repeat(x_list, num_list)
+
+        # 風速プロファイルを計算
+        Ux: np.ndarray = (
+            (math.gamma(mu) / math.gamma(1 / r))
+            * ((r**2 * self.KARMAN) / U) ** (m / r)
+            * U
+            * x1 ** (m / r)
+        )
+
+        # y方向の分散を計算し、正規分布に従ってy座標を生成
+        sigma_array: np.ndarray = sigmaV * x1 / Ux
+        y1: np.ndarray = np.random.normal(0, sigma_array)
+
+        # フラックス値の配列を生成
+        flux1 = np.full_like(x1, flux_value)
+
+        return x1, y1, flux1
+
+    def __rotate_coordinates(
+        self, x: np.ndarray, y: np.ndarray, radian: float
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        座標を指定された角度で回転させます。
+
+        この関数は、与えられたx座標とy座標を、指定された角度（ラジアン）で回転させます。
+        回転は原点を中心に反時計回りに行われます。
+
+        Args:
+            x (np.ndarray): 回転させるx座標の配列
+            y (np.ndarray): 回転させるy座標の配列
+            radian (float): 回転角度（ラジアン）
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: 回転後の(x_, y_)座標の組
+        """
+        radian1: float = (radian - (np.pi / 2)) * (-1)
+        x_: np.ndarray = x * np.cos(radian1) - y * np.sin(radian1)
+        y_: np.ndarray = x * np.sin(radian1) + y * np.cos(radian1)
+        return x_, y_
+
+    def __source_area_KM2001(
+        self,
+        ksi: float,
+        mu: float,
+        dU: float,
+        sigmaV: float,
+        Z_d: float,
+        max_ratio: float = 0.8,
+    ) -> float:
+        """
+        Kormann and Meixner (2001)のフットプリントモデルに基づいてソースエリアを計算します。
+
+        このメソッドは、与えられたパラメータを使用して、フラックスの80%寄与距離を計算します。
+        計算は反復的に行われ、寄与率が80%に達するまで、または最大反復回数に達するまで続けられます。
+
+        Args:
+            ksi (float): フラックス長さスケール
+            mu (float): 形状パラメータ
+            dU (float): 風速の変化率
+            sigmaV (float): 風速の標準偏差
+            Z_d (float): ゼロ面変位高度
+            max_ratio (float, optional): 寄与率の最大値。デフォルトは0.8。
+
+        Returns:
+            float: 80%寄与距離（メートル単位）。計算が収束しない場合はnp.nan。
+
+        Note:
+            - 計算が収束しない場合（最大反復回数に達した場合）、結果はnp.nanとなります。
+        """
+        if max_ratio > 1:
+            raise ValueError("max_ratio は0以上1以下である必要があります。")
+        # 変数の初期値
+        sum_f: float = 0.0  # 寄与率(0 < sum_f < 1.0)
+        x1: float = 0.0
+        dF_xd: float = 0.0
+
+        x_d: float = ksi / (
+            1.0 + mu
+        )  # Eq. 22 (x_d : クロスウィンド積分フラックスフットプリント最大位置)
+
+        dx: float = x_d / 100.0  # 等値線の拡がりの最大距離の100分の1(m)
+
+        # 寄与率が80%に達するまでfを積算
+        while sum_f < (max_ratio / 1):
+            x1 += dx
+
+            # Equation 21 (dF : クロスウィンド積分フットプリント)
+            dF: float = (
+                pow(ksi, mu) * math.exp(-ksi / x1) / math.gamma(mu) / pow(x1, 1.0 + mu)
+            )
+
+            sum_f += dF  # Footprint を加えていく (0.0 < dF < 1.0)
+            dx *= 2.0  # 距離は2倍ずつ増やしていく
+
+            if dx > 1.0:
+                dx = 1.0  # 一気に、1 m 以上はインクリメントしない
+            if x1 > Z_d * 1000.0:
+                break  # ソースエリアが測定高度の1000倍以上となった場合、エラーとして止める
+
+        x_dst: float = x1  # 寄与率が80%に達するまでの積算距離
+        f_last: float = (
+            pow(ksi, mu)
+            * math.exp(-ksi / x_dst)
+            / math.gamma(mu)
+            / pow(x_dst, 1.0 + mu)
+        )  # Page 214 just below the Eq. 21.
+
+        # y方向の最大距離とその位置のxの距離
+        dy: float = x_d / 100.0  # 等値線の拡がりの最大距離の100分の1
+        y_dst: float = 0.0
+        accumulated_y: float = 0.0  # y方向の積算距離を表す変数
+
+        # 最大反復回数を設定
+        MAX_ITERATIONS: int = 100000
+        for _ in range(MAX_ITERATIONS):
+            accumulated_y += dy
+            if accumulated_y >= x_dst:
+                break
+
+            dF_xd = (
+                pow(ksi, mu)
+                * math.exp(-ksi / accumulated_y)
+                / math.gamma(mu)
+                / pow(accumulated_y, 1.0 + mu)
+            )  # 式21の直下（214ページ）
+
+            aa: float = math.log(x_dst * dF_xd / f_last / accumulated_y)
+            sigma: float = sigmaV * accumulated_y / dU  # 215ページ8行目
+
+            if 2.0 * aa >= 0:
+                y_dst_new: float = sigma * math.sqrt(2.0 * aa)
+                if y_dst_new <= y_dst:
+                    break  # forループを抜ける
+                y_dst = y_dst_new
+
+            dy = min(dy * 2.0, 1.0)
+
+        else:
+            # ループが正常に終了しなかった場合（最大反復回数に達した場合）
+            x_dst = np.nan
+
+        return x_dst
