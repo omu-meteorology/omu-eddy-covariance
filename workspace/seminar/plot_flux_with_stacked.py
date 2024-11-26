@@ -22,6 +22,7 @@ font_prop: FontProperties = FontProperties(fname=font_path)
 # rcParamsでの全体的な設定
 plt.rcParams.update(
     {
+        # "font.family": ["Dejavu Sans"],
         "font.family": ["Dejavu Sans", font_prop.get_name()],
         "font.size": 30,
         "axes.labelsize": 30,

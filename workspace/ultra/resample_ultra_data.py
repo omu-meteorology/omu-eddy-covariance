@@ -52,10 +52,10 @@ def resample_ultra_data(
 
     for filename in tqdm(csv_files, desc="Processing files"):
         input_filepath: str = os.path.join(input_dir, filename)
-        processor = EddyDataPreprocessor(input_filepath, fs, False)
+        processor = EddyDataPreprocessor(input_filepath, fs=fs)
 
         # リサンプリング＆欠損値補間
-        df: pd.DataFrame = processor.execute()
+        df: pd.DataFrame = processor.get_resampled_df()
 
         # 開始時間を取得
         start_time: datetime = df["TIMESTAMP"].iloc[0]
@@ -128,9 +128,9 @@ if __name__ == "__main__":
             input_dir,
             resampled_dir,
             calc_py_dir,
-            fs,
-            output_resampled,
-            calculate_slopes,
+            fs=fs,
+            output_resampled=output_resampled,
+            calculate_slopes=calculate_slopes,
         )
     except KeyboardInterrupt:
         # キーボード割り込みが発生した場合、処理を中止する

@@ -82,7 +82,7 @@ path = (
 )
 # path = r"C:\Users\nakao\workspace\sac\tmp\20240601-10_14.dat"
 pre: EddyDataPreprocessor = EddyDataPreprocessor(path)
-df: pd.DataFrame = pre.execute()
+df: pd.DataFrame = pre.get_resampled_df()
 calculator = SpectrumCalculator(
     df=df,
     fs=100,  # サンプリング周波数を適切に設定

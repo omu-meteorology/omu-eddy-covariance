@@ -140,8 +140,8 @@ class SpectrumCalculator:
         self,
         key: str,
         frequency_weighted: bool = True,
-        smooth: bool = False,
         log_scale: bool = True,
+        smooth: bool = False,
     ) -> tuple:
         """
         DataFrameから指定されたkeyのパワースペクトルと周波数軸を計算する
@@ -150,8 +150,8 @@ class SpectrumCalculator:
         Args:
             key (str): データの列名
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
             log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
+            smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
 
         Returns:
             tuple: (freqs, power_spectrum)
@@ -253,8 +253,8 @@ class SpectrumCalculator:
         key1: str,
         key2: str,
         frequency_weighted: bool = True,
-        smooth: bool = False,
         log_scale: bool = True,
+        smooth: bool = False,
     ) -> tuple:
         """
         DataFrameから指定されたkey1とkey2のコスペクトルとクアドラチャスペクトルを計算する
@@ -264,8 +264,8 @@ class SpectrumCalculator:
             key1 (str): データの列名1
             key2 (str): データの列名2
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
             log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
+            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
 
         Returns:
             tuple: (freqs, cospectrum, quadrature_spectrum, correlation_coefficient)
@@ -430,8 +430,8 @@ class SpectrumCalculator:
         key1: str,
         key2: str,
         frequency_weighted: bool = True,
-        smooth: bool = False,
         log_scale: bool = True,
+        smooth: bool = False,
     ) -> tuple:
         """
         DataFrameから指定されたkey1とkey2のコスペクトルを計算する
@@ -441,8 +441,8 @@ class SpectrumCalculator:
             key1 (str): データの列名1
             key2 (str): データの列名2
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
             log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
+            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
 
         Returns:
             tuple: (freqs, cospectrum, correlation_coefficient)
@@ -454,7 +454,7 @@ class SpectrumCalculator:
             key1=key1,
             key2=key2,
             frequency_weighted=frequency_weighted,
-            smooth=smooth,
             log_scale=log_scale,
+            smooth=smooth,
         )
         return freqs, cospectrum, correlation_coefficient

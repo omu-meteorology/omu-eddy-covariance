@@ -134,7 +134,8 @@ if __name__ == "__main__":
                 flag_once = False
             path: str = os.path.join(input_dir, file)
             pre: EddyDataPreprocessor = EddyDataPreprocessor(path)
-            df: pd.DataFrame = pre.execute(skiprows=0, drop_row=[])
+            df: pd.DataFrame = pre.get_resampled_df(skiprows=0, drop_row=[])
+            df = pre.add_uvw_columns(df)
             lags_list = calculate_lags(key1, key2_list, df)
             all_lags.append(lags_list)
             # tqdm.write(str(lags_list))
