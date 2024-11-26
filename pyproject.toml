@@ -64,6 +64,7 @@ dev-dependencies = [
   "hatchling>=1.25.0",
   "ipykernel>=6.29.5",
   "pytest>=7.4.0",
+  "python-dotenv>=1.0.1",
   "ruff>=0.6.8",
   "twine>=5.1.1",
 ]

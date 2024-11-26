@@ -1070,9 +1070,31 @@ class FluxFootprintAnalyzer:
         lat_correction: float = 0.8,  # 緯度方向の補正係数
     ) -> plt.Figure | None:
         """
+        フットプリントデータとホットスポットをGoogle Maps上にプロットします。
+
         Args:
-        lat_offset (float): 緯度方向の位置補正値（度）。正の値で北にシフト。
-        lon_offset (float): 経度方向の位置補正値（度）。正の値で東にシフト。
+            x_list (list[float]): フットプリントのx座標リスト（メートル単位）。
+            y_list (list[float]): フットプリントのy座標リスト（メートル単位）。
+            c_list (list[float]): フットプリントの強度を示す値のリスト。
+            hotspots (list[HotspotData]): ホットスポットデータのリスト。
+            center_lat (float): プロットの中心となる緯度。
+            center_lon (float): プロットの中心となる経度。
+            api_key (str): Google Maps Static APIのキー。
+            cmap (str): カラーマップの名前。
+            vmin (float): カラーバーの最小値。
+            vmax (float): カラーバーの最大値。
+            xy_max (float, optional): 表示範囲の最大値（デフォルトは4000）。
+            function (callable, optional): フットプリントの集約関数（デフォルトはnp.mean）。
+            cbar_label (str, optional): カラーバーのラベル。
+            cbar_labelpad (int, optional): カラーバーラベルのパディング。
+            output_path (str, optional): プロット画像の保存先パス。
+            hotspot_colors (dict[str, str] | None, optional): ホットスポットの色を指定する辞書。
+            auto_zoom (bool, optional): 自動ズームを使用するかどうか。
+            lon_correction (float, optional): 経度方向の補正係数（デフォルトは0.8）。
+            lat_correction (float, optional): 緯度方向の補正係数（デフォルトは0.8）。
+
+        Returns:
+            plt.Figure | None: プロットされた図のFigureオブジェクト、またはNone。
         """
         # 1. ズームレベルの設定
         zoom = 13
