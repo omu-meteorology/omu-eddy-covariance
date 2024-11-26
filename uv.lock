@@ -967,7 +967,7 @@ wheels = [
 
 [[package]]
 name = "omu-eddy-covariance"
-version = "0.1.4"
+version = "0.1.5.dev0+g597921c.d20241115"
 source = { editable = "." }
 dependencies = [
     { name = "contextily" },

@@ -141,6 +141,7 @@ class SpectrumCalculator:
         key: str,
         frequency_weighted: bool = True,
         smooth: bool = False,
+        log_scale: bool = True,
     ) -> tuple:
         """
         DataFrameから指定されたkeyのパワースペクトルと周波数軸を計算する
@@ -150,63 +151,61 @@ class SpectrumCalculator:
             key (str): データの列名
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
             smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
+            log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
 
         Returns:
-            tuple: (interp_freqs, interp_power_spectrum)
-                - interp_freqs (np.ndarray): 補間された周波数軸
-                - interp_power_spectrum (np.ndarray): 補間されたパワースペクトル
+            tuple: (freqs, power_spectrum)
+                - freqs (np.ndarray): 周波数軸（対数スケールの場合は対数変換済み）
+                - power_spectrum (np.ndarray): パワースペクトル（対数スケールの場合は対数変換済み）
         """
         # keyに一致するデータを取得
         column_data: np.ndarray = np.array(self.df[key].values)
-        
         # データ長
         data_length: int = len(column_data)
-        
         # トレンド除去
         column_data = self.__detrend(column_data, True)
-        
         # データの分散を計算（窓関数適用前）
         variance = np.var(column_data)
-        
+
         # 窓関数の適用
+        window_scale: float = 1.0
         if self.apply_window:
             window = self.__generate_window_function(
                 type=self.window_type, data_length=data_length
             )
             column_data *= window
             window_scale = np.mean(window**2)
-        else:
-            window_scale = 1.0
-            
+
         # FFTの計算
         fft_result = np.fft.rfft(column_data)
-        
+
         # 周波数軸の作成
         freqs: np.ndarray = np.fft.rfftfreq(data_length, 1.0 / self.fs)
-        
+
         # fft.cと同様のスペクトル計算ロジック
-        power_spectrum = np.zeros(len(freqs))
+        power_spectrum: np.ndarray = np.zeros(len(freqs))
         for i in range(1, len(freqs)):  # 0Hz成分を除外
-            # z と z* (複素共役) の計算
             z = fft_result[i]
-            z_star = np.conj(fft_result[data_length - i]) if i < data_length//2 else np.conj(z)
-            
-            # x = z + z*, y = z - z* の計算
+            z_star = np.conj(z)
+
+            # x = z + z*
             x = z + z_star
-            y = z - z_star
-            y = complex(y.imag, -y.real)  # 虚部と実部を入れ替え
-            
+            x_re = x.real
+            x_im = x.imag
+
             # パワースペクトルの計算 (sc = 0.5)
-            power_spectrum[i] = (x.real * x.real + x.imag * x.imag) * 0.5 / (data_length * window_scale)
-        
+            power_spectrum[i] = (
+                (x_re * x_re + x_im * x_im) * 0.5 / (data_length * window_scale)
+            )
+
         # 無次元化
         if self.dimensionless:
             power_spectrum /= variance
-            
+
         # 周波数の重みづけ
         if frequency_weighted:
             power_spectrum[1:] *= freqs[1:]  # 0Hz成分を除外
-            
+
         # 3点移動平均によるスペクトルの平滑化
         if smooth:
             smoothed_spectrum = np.zeros_like(power_spectrum)
@@ -214,59 +213,65 @@ class SpectrumCalculator:
             smoothed_spectrum[0] = 0.5 * (power_spectrum[0] + power_spectrum[1])
             smoothed_spectrum[-1] = 0.5 * (power_spectrum[-2] + power_spectrum[-1])
             # 中間点の平滑化
-            for i in range(1, len(power_spectrum)-1):
-                smoothed_spectrum[i] = (0.25 * power_spectrum[i-1] + 
-                                    0.5 * power_spectrum[i] + 
-                                    0.25 * power_spectrum[i+1])
+            for i in range(1, len(power_spectrum) - 1):
+                smoothed_spectrum[i] = (
+                    0.25 * power_spectrum[i - 1]
+                    + 0.5 * power_spectrum[i]
+                    + 0.25 * power_spectrum[i + 1]
+                )
             power_spectrum = smoothed_spectrum
-        
-        # 0Hz成分を除外して対数変換
-        nonzero_mask = freqs != 0
-        nonzero_freqs = freqs[nonzero_mask]
-        nonzero_power = power_spectrum[nonzero_mask]
-        
-        # 対数変換
-        log_freqs = np.log10(nonzero_freqs)
-        log_power = np.log10(nonzero_power)
-        
-        # 周波数軸の最小値と最大値を取得
-        min_freq = np.min(log_freqs)
-        max_freq = np.max(log_freqs)
-        
-        # 等間隔なplots個の点を生成（対数軸上で等間隔）
-        interp_log_freqs = np.linspace(min_freq, max_freq, self.plots)
-        interp_freqs = 10**interp_log_freqs
-        
-        # 生成した周波数に対応するパワースペクトルの値を対数軸上で線形補間
-        interp_log_power = np.interp(
-            interp_log_freqs, log_freqs, log_power
-        )
-        interp_power_spectrum = 10**interp_log_power
-        
-        return interp_freqs, interp_power_spectrum
 
-    def calculate_cospectrum(
+        # 0Hz成分を除外
+        nonzero_mask = freqs != 0
+        freqs = freqs[nonzero_mask]
+        power_spectrum = power_spectrum[nonzero_mask]
+
+        if log_scale:
+            # 対数変換
+            log_freqs = np.log10(freqs)
+            log_power = np.log10(power_spectrum)
+
+            # 周波数軸の最小値と最大値を取得
+            min_freq = np.min(log_freqs)
+            max_freq = np.max(log_freqs)
+
+            # 等間隔なplots個の点を生成（対数軸上で等間隔）
+            interp_log_freqs = np.linspace(min_freq, max_freq, self.plots)
+            interp_freqs = 10**interp_log_freqs
+
+            # 生成した周波数に対応するパワースペクトルの値を対数軸上で線形補間
+            interp_log_power = np.interp(interp_log_freqs, log_freqs, log_power)
+            interp_power_spectrum = 10**interp_log_power
+
+            return interp_freqs, interp_power_spectrum
+        else:
+            # 線形スケールの場合はそのまま返す
+            return freqs, power_spectrum
+
+    def calculate_crossspectrum(
         self,
         key1: str,
         key2: str,
         frequency_weighted: bool = True,
         smooth: bool = False,
-        window_size: int = 30,
+        log_scale: bool = True,
     ) -> tuple:
         """
-        DataFrameから指定されたkey1とkey2のコスペクトルを計算する
+        DataFrameから指定されたkey1とkey2のコスペクトルとクアドラチャスペクトルを計算する
+        fft.cと同様のロジックで実装
 
         Args:
             key1 (str): データの列名1
             key2 (str): データの列名2
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
-            window_size (int, optional): 平滑化のための移動平均ウィンドウサイズ。デフォルトは30。
+            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
+            log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
 
         Returns:
-            tuple: (interp_freqs, interp_cospectrum, correlation_coefficient)
-                - interp_freqs (np.ndarray): 補間された周波数軸
-                - interp_cospectrum (np.ndarray): 補間されたコスペクトル
+            tuple: (freqs, cospectrum, quadrature_spectrum, correlation_coefficient)
+                - freqs (np.ndarray): 周波数軸（対数スケールの場合は対数変換済み）
+                - cospectrum (np.ndarray): コスペクトル（対数スケールの場合は対数変換済み）
+                - quadrature_spectrum (np.ndarray): クアドラチャスペクトル（対数スケールの場合は対数変換済み）
                 - correlation_coefficient (float): 変数の相関係数
         """
         # key1とkey2に一致するデータを取得
@@ -281,79 +286,175 @@ class SpectrumCalculator:
         data1 = self.__detrend(data1, True)
         data2 = self.__detrend(data2, True)
 
+        # データ長
         data_length: int = len(data1)
 
         # 共分散の計算
         cov_matrix: np.ndarray = np.cov(data1, data2)
         covariance: float = cov_matrix[0, 1]
 
-        window: np.ndarray = np.array([])  # 空のnumpy配列で初期化
+        # 窓関数の適用
+        window_scale = 1.0
         if self.apply_window:
-            # ハニング窓の作成
             window = self.__generate_window_function(
                 type=self.window_type, data_length=data_length
             )
-
-            # ハニング窓の適用
             data1 *= window
             data2 *= window
+            window_scale = np.mean(window**2)
+
+        # FFTの計算
+        fft1 = np.fft.rfft(data1)
+        fft2 = np.fft.rfft(data2)
 
         # 周波数軸の作成
         freqs: np.ndarray = np.fft.rfftfreq(data_length, 1.0 / self.fs)
 
-        # 実数高速フーリエ変換の実行
-        fft1: np.ndarray = np.fft.rfft(data1)
-        fft2: np.ndarray = np.fft.rfft(data2)
+        # fft.cと同様のコスペクトル計算ロジック
+        cospectrum = np.zeros(len(freqs))
+        quad_spectrum = np.zeros(len(freqs))
 
-        # コスペクトルの計算
-        cospectrum: np.ndarray = 2 * np.real(np.conj(fft1) * fft2) / data_length
+        for i in range(1, len(freqs)):  # 0Hz成分を除外
+            z1 = fft1[i]
+            z2 = fft2[i]
+            z1_star = np.conj(z1)
+            z2_star = np.conj(z2)
 
-        # 窓関数の平均二乗値で割ることでスケーリングを行う
-        if self.apply_window:
-            cospectrum /= np.mean(window**2)
+            # x1 = z1 + z1*, x2 = z2 + z2*
+            x1 = z1 + z1_star
+            x2 = z2 + z2_star
+            x1_re = x1.real
+            x1_im = x1.imag
+            x2_re = x2.real
+            x2_im = x2.imag
 
-        # コスペクトルの正規化
+            # y1 = z1 - z1*, y2 = z2 - z2*
+            y1 = z1 - z1_star
+            y2 = z2 - z2_star
+            # 虚部と実部を入れ替え
+            y1_re = y1.imag
+            y1_im = -y1.real
+            y2_re = y2.imag
+            y2_im = -y2.real
+
+            # コスペクトルとクァドラチャスペクトルの計算
+            conj_x1_x2 = complex(
+                x1_re * x2_re + x1_im * x2_im, x1_im * x2_re - x1_re * x2_im
+            )
+            conj_y1_y2 = complex(
+                y1_re * y2_re + y1_im * y2_im, y1_im * y2_re - y1_re * y2_im
+            )
+
+            # スケーリングを適用
+            cospectrum[i] = (conj_x1_x2.real) * 0.5 / (data_length * window_scale)
+            quad_spectrum[i] = (conj_y1_y2.real) * 0.5 / (data_length * window_scale)
+
+        # 無次元化
         if self.dimensionless:
             cospectrum /= covariance
-
-        # 周波数が0でない要素のみを選択
-        nonzero_mask: np.ndarray = freqs != 0
-        nonzero_freqs: np.ndarray = freqs[nonzero_mask]
-        nonzero_cospectrum: np.ndarray = cospectrum[nonzero_mask]
+            quad_spectrum /= covariance
 
         # 周波数の重みづけ
-        nonzero_cospectrum *= nonzero_freqs  # 各周波数に対応する値をかける
+        if frequency_weighted:
+            cospectrum[1:] *= freqs[1:]
+            quad_spectrum[1:] *= freqs[1:]
 
-        # 周波数軸と正規化コスペクトルの対数を取る
-        log_freqs: np.ndarray = np.log10(nonzero_freqs)
-        log_cospectrum: np.ndarray = np.log10(np.abs(nonzero_cospectrum))
-
+        # 3点移動平均によるスペクトルの平滑化
         if smooth:
-            # データ端の処理のため、端点を複製
-            padded_data = np.pad(
-                log_cospectrum, (window_size // 2, window_size // 2), mode="edge"
-            )
-            # 移動平均を適用
-            log_cospectrum = self.__moving_average(padded_data, window_size)
-            # 元の長さにトリミング
-            if window_size % 2 == 0:
-                log_cospectrum = log_cospectrum[:-1]
+            smoothed_co = np.zeros_like(cospectrum)
+            smoothed_quad = np.zeros_like(quad_spectrum)
 
-        # 周波数軸の最小値と最大値を取得
-        min_freq: float = np.min(log_freqs)
-        max_freq: float = np.max(log_freqs)
+            # 端点の処理
+            smoothed_co[0] = 0.5 * (cospectrum[0] + cospectrum[1])
+            smoothed_co[-1] = 0.5 * (cospectrum[-2] + cospectrum[-1])
+            smoothed_quad[0] = 0.5 * (quad_spectrum[0] + quad_spectrum[1])
+            smoothed_quad[-1] = 0.5 * (quad_spectrum[-2] + quad_spectrum[-1])
 
-        # 等間隔なplots個の点を生成
-        interp_log_freqs: np.ndarray = np.linspace(min_freq, max_freq, self.plots)
-        interp_freqs: np.ndarray = 10**interp_log_freqs
+            # 中間点の平滑化
+            for i in range(1, len(cospectrum) - 1):
+                smoothed_co[i] = (
+                    0.25 * cospectrum[i - 1]
+                    + 0.5 * cospectrum[i]
+                    + 0.25 * cospectrum[i + 1]
+                )
+                smoothed_quad[i] = (
+                    0.25 * quad_spectrum[i - 1]
+                    + 0.5 * quad_spectrum[i]
+                    + 0.25 * quad_spectrum[i + 1]
+                )
 
-        # 生成した周波数に対応するコスペクトルの値を線形補間
-        interp_log_cospectrum: np.ndarray = np.interp(
-            interp_log_freqs, log_freqs, log_cospectrum
-        )
-        interp_cospectrum: np.ndarray = 10**interp_log_cospectrum
+            cospectrum = smoothed_co
+            quad_spectrum = smoothed_quad
 
         # 相関係数の計算
         correlation_coefficient: float = np.corrcoef(data1, data2)[0, 1]
 
-        return interp_freqs, interp_cospectrum, correlation_coefficient
+        # 0Hz成分を除外
+        nonzero_mask = freqs != 0
+        freqs = freqs[nonzero_mask]
+        cospectrum = cospectrum[nonzero_mask]
+        quad_spectrum = quad_spectrum[nonzero_mask]
+
+        if log_scale:
+            # 対数変換（スペクトルは負の値を取りうるので絶対値を取る）
+            log_freqs = np.log10(freqs)
+            log_co = np.log10(np.abs(cospectrum))
+            log_quad = np.log10(np.abs(quad_spectrum))
+
+            # 周波数軸の最小値と最大値を取得
+            min_freq = np.min(log_freqs)
+            max_freq = np.max(log_freqs)
+
+            # 等間隔なplots個の点を生成（対数軸上で等間隔）
+            interp_log_freqs = np.linspace(min_freq, max_freq, self.plots)
+            interp_freqs = 10**interp_log_freqs
+
+            # 生成した周波数に対応するスペクトルの値を対数軸上で線形補間
+            interp_log_co = np.interp(interp_log_freqs, log_freqs, log_co)
+            interp_log_quad = np.interp(interp_log_freqs, log_freqs, log_quad)
+            interp_cospectrum = 10**interp_log_co
+            interp_quadrature_spectrum = 10**interp_log_quad
+
+            return (
+                interp_freqs,
+                interp_cospectrum,
+                interp_quadrature_spectrum,
+                correlation_coefficient,
+            )
+        else:
+            # 線形スケールの場合はそのまま返す
+            return freqs, cospectrum, quad_spectrum, correlation_coefficient
+
+    def calculate_cospectrum(
+        self,
+        key1: str,
+        key2: str,
+        frequency_weighted: bool = True,
+        smooth: bool = False,
+        log_scale: bool = True,
+    ) -> tuple:
+        """
+        DataFrameから指定されたkey1とkey2のコスペクトルを計算する
+        fft.cと同様のロジックで実装
+
+        Args:
+            key1 (str): データの列名1
+            key2 (str): データの列名2
+            frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
+            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
+            log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
+
+        Returns:
+            tuple: (freqs, cospectrum, correlation_coefficient)
+                - freqs (np.ndarray): 周波数軸（対数スケールの場合は対数変換済み）
+                - cospectrum (np.ndarray): コスペクトル（対数スケールの場合は対数変換済み）
+                - correlation_coefficient (float): 変数の相関係数
+        """
+        freqs, cospectrum, _, correlation_coefficient = self.calculate_crossspectrum(
+            key1=key1,
+            key2=key2,
+            frequency_weighted=frequency_weighted,
+            smooth=smooth,
+            log_scale=log_scale,
+        )
+        return freqs, cospectrum, correlation_coefficient
