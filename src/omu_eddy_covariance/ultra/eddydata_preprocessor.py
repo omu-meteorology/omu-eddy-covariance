@@ -116,22 +116,28 @@ class EddyDataPreprocessor:
         key2_list: list[str] = ["Tv"],
         median_range: float = 20,
         output_dir: str | None = None,
-        output_filename: str = "delays_histogram",
+        output_base_filename: str = "delays_histogram",
         plot_range_tuple: tuple = (-50, 200),
         print_results: bool = True,
     ) -> dict[str, float]:
         """
-        遅れ時間（ラグ）の統計分析を行う
+        遅れ時間（ラグ）の統計分析を行い、指定されたディレクトリ内のデータファイルを処理します。
 
         Args:
-            delays_indices_df (pd.DataFrame): 遅れ時間が格納されたDataFrame
-            median_range (float): 中央値を中心とした範囲
-            plot_range_tuple (tuple): ヒストグラムの表示範囲
-            output_dir (str | None): 出力ディレクトリのパス。Noneの場合はプロットを表示
-            output_filename (str): 出力ファイル名。デフォルトは"delays_histogram.png"
+            input_dir (str): 入力データファイルが格納されているディレクトリのパス。
+            figsize (tuple[float, float]): プロットのサイズ（幅、高さ）。
+            input_files_patterns (str): 入力ファイル名のパターン（正規表現）。
+            input_files_suffix (str): 入力ファイルの拡張子。
+            key1 (str): 基準変数の列名。
+            key2_list (list[str]): 比較変数の列名のリスト。
+            median_range (float): 中央値を中心とした範囲。
+            output_dir (str | None): 出力ディレクトリのパス。Noneの場合はプロットを表示。
+            output_base_filename (str): 出力ファイル名の基礎。デフォルトは"delays_histogram"。
+            plot_range_tuple (tuple): ヒストグラムの表示範囲。
+            print_results (bool): 結果をコンソールに表示するかどうか。
 
         Returns:
-            dict[str, float]: 各変数の遅れ時間（平均値を採用）
+            dict[str, float]: 各変数の遅れ時間（平均値を採用）を含む辞書。
         """
         all_delays_indices: list[list[int]] = []
         results: dict[str, dict[str, float]] = {}
@@ -192,7 +198,7 @@ class EddyDataPreprocessor:
             # ファイルとして保存するか、表示するか
             if output_dir is not None:
                 os.makedirs(output_dir, exist_ok=True)
-                filename = f"{output_filename}-{column}.png"
+                filename = f"{output_base_filename}-{column}.png"
                 filepath = os.path.join(output_dir, filename)
                 plt.savefig(filepath, dpi=300, bbox_inches="tight")
                 plt.close()
