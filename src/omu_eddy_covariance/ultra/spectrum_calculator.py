@@ -25,21 +25,21 @@ class SpectrumCalculator:
             dimensionless (bool, optional): Trueの場合、分散で割って無次元化を行う。デフォルトはTrue。
             plots (int): プロットする点の数。可視化のためのデータポイント数。
         """
+        self.apply_delay_keys: list[str] = apply_delay_keys
+        self.apply_window: bool = apply_window
+        self.delay_second: float = delay_second
+        self.dimensionless: bool = dimensionless
         self.df: pd.DataFrame = df
         self.fs: float = fs
-        self.apply_delay_keys: list[str] = apply_delay_keys
-        self.delay_second: float = delay_second
         self.plots: int = plots
-        self.apply_window: bool = apply_window
         self.window_type: str = "hamming"
-        self.dimensionless: bool = dimensionless
 
     def calculate_cospectrum(
         self,
         key1: str,
         key2: str,
         frequency_weighted: bool = True,
-        log_scale: bool = True,
+        interpolate_points: bool = True,
         smooth: bool = False,
     ) -> tuple:
         """
@@ -50,7 +50,7 @@ class SpectrumCalculator:
             key1 (str): データの列名1
             key2 (str): データの列名2
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
+            interpolate_points (bool, optional): 等間隔なデータ点を生成するかどうか（対数軸上で等間隔）
             smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
 
         Returns:
@@ -63,7 +63,7 @@ class SpectrumCalculator:
             key1=key1,
             key2=key2,
             frequency_weighted=frequency_weighted,
-            log_scale=log_scale,
+            interpolate_points=interpolate_points,
             smooth=smooth,
         )
         return freqs, cospectrum, correlation_coefficient
@@ -73,7 +73,7 @@ class SpectrumCalculator:
         key1: str,
         key2: str,
         frequency_weighted: bool = True,
-        log_scale: bool = True,
+        interpolate_points: bool = True,
         smooth: bool = False,
     ) -> tuple:
         """
@@ -84,7 +84,7 @@ class SpectrumCalculator:
             key1 (str): データの列名1
             key2 (str): データの列名2
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
+            interpolate_points (bool, optional): 等間隔なデータ点を生成するかどうか（対数軸上で等間隔）
             smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
 
         Returns:
@@ -215,7 +215,7 @@ class SpectrumCalculator:
         cospectrum = cospectrum[nonzero_mask]
         quad_spectrum = quad_spectrum[nonzero_mask]
 
-        if log_scale:
+        if interpolate_points:
             # 対数変換（スペクトルは負の値を取りうるので絶対値を取る）
             log_freqs = np.log10(freqs)
             log_co = np.log10(np.abs(cospectrum))
@@ -249,7 +249,7 @@ class SpectrumCalculator:
         self,
         key: str,
         frequency_weighted: bool = True,
-        log_scale: bool = True,
+        interpolate_points: bool = True,
         smooth: bool = False,
     ) -> tuple:
         """
@@ -259,7 +259,7 @@ class SpectrumCalculator:
         Args:
             key (str): データの列名
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
-            log_scale (bool, optional): 対数スケールで出力するかどうか。デフォルトはTrue。
+            interpolate_points (bool, optional): 等間隔なデータ点を生成するかどうか（対数軸上で等間隔）
             smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
 
         Returns:
@@ -335,7 +335,7 @@ class SpectrumCalculator:
         freqs = freqs[nonzero_mask]
         power_spectrum = power_spectrum[nonzero_mask]
 
-        if log_scale:
+        if interpolate_points:
             # 対数変換
             log_freqs = np.log10(freqs)
             log_power = np.log10(power_spectrum)

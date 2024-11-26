@@ -64,7 +64,7 @@ plt.rcParams["axes.labelsize"] = font_size_label
 plt.rcParams["xtick.labelsize"] = font_size_ticks
 plt.rcParams["ytick.labelsize"] = font_size_ticks
 # 日本語フォントの設定
-plt.rcParams["font.family"] = ["MS Gothic","Dejavu Sans"]
+plt.rcParams["font.family"] = ["Arial", "Dejavu Sans"]
 
 if __name__ == "__main__":
     # 使用例
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     #     # + r"\2024.06.21\Ultra_Eddy\eddy_csv-20240514_20240621\TOA5_37477.SAC_Ultra.Eddy_3_2024_06_01_0900.dat"
     #     + r"\2024.06.21\Ultra_Eddy\eddy_csv-20240514_20240621\TOA5_37477.SAC_Ultra.Eddy_3_2024_06_01_1500.dat"  # きれい
     # )
-    path = "/home/z23641k/labo/omu-eddy-covariance/workspace/ultra/private/data/eddy_csv/TOA5_37477.SAC_Ultra.Eddy_107_2024_10_10_1000.dat"
+    path = "/home/z23641k/labo/omu-eddy-covariance/workspace/ultra/private/data/eddy_csv/TOA5_37477.SAC_Ultra.Eddy_107_2024_10_10_1200.dat"
 
     edp: EddyDataPreprocessor = EddyDataPreprocessor()
     df: pd.DataFrame = edp.get_resampled_df(filepath=path)
