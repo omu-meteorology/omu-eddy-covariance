@@ -20,20 +20,71 @@ center_lon=135.4829511120712,
 class MSAInputConfig:
     """入力ファイルの設定を保持するデータクラス"""
 
+    delay: float  # 測器の遅れ時間（秒）
+    fs: float  # サンプリング周波数（Hz）
     path: Path | str  # ファイルパス
-    delay: float = 0  # 測器の遅れ時間（秒）
+
+    def __post_init__(self) -> None:
+        """
+        インスタンス生成後に入力値の検証を行います。
+
+        Raises:
+            ValueError: 遅延時間が負の値である場合、またはサポートされていないファイル拡張子の場合。
+        """
+        # delayが0以上のfloatかを確認
+        if not isinstance(self.delay, (int, float)) or self.delay < 0:
+            raise ValueError(
+                f"Invalid delay value: {self.delay}. Must be a non-negative float."
+            )
+        # fsが有効かを確認
+        if not isinstance(self.fs, (int, float)) or self.fs <= 0:
+            raise ValueError(
+                f"Invalid sampling frequency: {self.fs}. Must be a positive float."
+            )
+        # 拡張子の確認
+        supported_extensions: list[str] = [".txt", ".csv"]
+        extension = Path(self.path).suffix
+        if extension not in supported_extensions:
+            raise ValueError(
+                f"Unsupported file extension: '{extension}'. Supported: {supported_extensions}"
+            )
+
+    @classmethod
+    def validate_and_create(
+        cls,
+        delay: float,
+        fs: float,
+        path: Path | str,
+    ) -> "MSAInputConfig":
+        """
+        入力値を検証し、MSAInputConfigインスタンスを生成するファクトリメソッド。
+
+        このメソッドは、指定された遅延時間、サンプリング周波数、およびファイルパスが有効であることを確認し、
+        有効な場合に新しいMSAInputConfigオブジェクトを返します。
+
+        Args:
+            delay (float): 遅延時間。0以上のfloatである必要があります。
+            fs (float): サンプリング周波数。正のfloatである必要があります。
+            path (Path | str): 入力ファイルのパス。サポートされている拡張子は.txtと.csvです。
+
+        Returns:
+            MSAInputConfig: 検証された入力設定を持つMSAInputConfigオブジェクト。
+        """
+        return cls(delay=delay, fs=fs, path=path)
 
 
 class MobileSpatialAnalyzer:
     """
     移動観測で得られた測定データを解析するクラス
     """
+    
+    EARTH_RADIUS_METERS: float = 6371000  # 地球の半径（メートル）
 
     def __init__(
         self,
         center_lat: float,
         center_lon: float,
-        inputs: list[MSAInputConfig] | list[tuple[str | Path, int]],
+        inputs: list[MSAInputConfig] | list[tuple[float, float, str | Path]],
         num_sections: int = 4,
         ch4_enhance_threshold: float = 0.1,
         correlation_threshold: float = 0.7,
@@ -48,7 +99,7 @@ class MobileSpatialAnalyzer:
         Args:
             center_lat (float): 中心緯度
             center_lon (float): 中心経度
-            inputs (list[MSAInputConfig] | list[tuple[str | Path, int]]): 入力ファイルのリスト
+            inputs (list[MSAInputConfig] | list[tuple[float, float, str | Path]]): 入力ファイルのリスト
             num_sections (int): 分割する区画数。デフォルトは4。
             ch4_enhance_threshold (float): CH4増加の閾値(ppm)。デフォルトは0.1。
             correlation_threshold (float): 相関係数の閾値。デフォルトは0.7。
@@ -243,7 +294,7 @@ class MobileSpatialAnalyzer:
         for section in range(self.__num_sections):
             start_angle = math.radians(-180 + section * self.__section_size)
 
-            R = 6371000  # 地球の半径（メートル）
+            R = self.EARTH_RADIUS_METERS
 
             # 境界線の座標を計算
             lat1 = self.__center_lat
@@ -447,7 +498,7 @@ class MobileSpatialAnalyzer:
         Returns:
             float: 2地点間の距離（メートル）
         """
-        R = 6371000  # 地球の半径（メートル）
+        R = self.EARTH_RADIUS_METERS
 
         # 緯度経度をラジアンに変換
         lat1_rad: float = math.radians(lat1)
@@ -733,15 +784,19 @@ class MobileSpatialAnalyzer:
         # 緯度経度のnanを削除
         df = df.dropna(subset=["latitude", "longitude"])
 
-        if config.delay > 0:
-            # 遅れ時間の補正
-            columns_to_shift: list[str] = ["ch4_ppm", "c2h6_ppb", "h2o_ppm"]
-            shift_periods: float = -config.delay
+        if config.delay < 0:
+            raise ValueError(
+                f"Invalid delay value: {config.delay}. Must be a non-negative float."
+            )
 
-            for col in columns_to_shift:
-                df[col] = df[col].shift(shift_periods)
+        # 遅れ時間の補正
+        columns_to_shift: list[str] = ["ch4_ppm", "c2h6_ppb", "h2o_ppm"]
+        shift_periods: float = -config.delay
 
-            df = df.dropna(subset=columns_to_shift)
+        for col in columns_to_shift:
+            df[col] = df[col].shift(shift_periods)
+
+        df = df.dropna(subset=columns_to_shift)
 
         # 水蒸気干渉の補正を適用
         df = self.__correct_h2o_interference_pico(df)
@@ -749,12 +804,12 @@ class MobileSpatialAnalyzer:
         return df
 
     def __normalize_inputs(
-        self, inputs: list[MSAInputConfig] | list[tuple[str | Path, int]]
+        self, inputs: list[MSAInputConfig] | list[tuple[float, float, str | Path]]
     ) -> list[MSAInputConfig]:
         """入力設定を標準化
 
         Args:
-            inputs (list[MSAInputConfig] | list[tuple[str | Path, int]]): 入力設定のリスト
+            inputs (list[MSAInputConfig] | list[tuple[float, float, str | Path]]): 入力設定のリスト
 
         Returns:
             list[MSAInputConfig]: 標準化された入力設定のリスト
@@ -762,14 +817,12 @@ class MobileSpatialAnalyzer:
         normalized: list[MSAInputConfig] = []
         for inp in inputs:
             if isinstance(inp, MSAInputConfig):
-                normalized.append(inp)
+                normalized.append(inp)  # すでに検証済みのため、そのまま追加
             else:
-                path, delay = inp
-                # 拡張子の確認
-                extension = Path(path).suffix
-                if extension not in [".txt", ".csv"]:
-                    raise ValueError(f"Unsupported file extension: {extension}")
-                normalized.append(MSAInputConfig(path=path, delay=delay))
+                delay, fs, path = inp
+                normalized.append(
+                    MSAInputConfig.validate_and_create(delay=delay, fs=fs, path=path)
+                )
         return normalized
 
     def __remove_duplicates_across_days(

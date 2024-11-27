@@ -4,36 +4,44 @@ from omu_eddy_covariance import HotspotData, MobileSpatialAnalyzer, MSAInputConf
 # MSAInputConfigによる詳細指定
 inputs: list[MSAInputConfig] = [
     MSAInputConfig(
-        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.10.17/input/Pico100121_241017_092120+.txt",
         delay=7,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.10.17/input/Pico100121_241017_092120+.txt",
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.09/input/Pico100121_241109_103128.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.11/input/Pico100121_241111_091102+.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.14/input/Pico100121_241114_093745+.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.18/input/Pico100121_241118_092855+.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.20/input/Pico100121_241120_092932+.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.24/input/Pico100121_241124_092712+.txt",
-        delay=13,
     ),
     MSAInputConfig(
-        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.25/input/Pico100121_241125_090721+.txt",
         delay=13,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.25/input/Pico100121_241125_090721+.txt",
     ),
 ]
 

@@ -103,34 +103,39 @@ class TransferFunctionCalculator:
         """
         df_processed = self.process_data(reference_key, target_key)
         # self.plot_ratio(df_processed, target_name, reference_name)
-        a: float = self.calculate_transfer_function(df_processed)
+        a, _ = self.calculate_transfer_function(df_processed)
         if show_tf_plot:
-            self.create_plot_transfer_function(
+            fig = self.create_plot_transfer_function(
                 df_processed, a, target_name, reference_name
             )
         return a
 
-    def calculate_transfer_function(self, df_processed: pd.DataFrame) -> float:
+    def calculate_transfer_function(
+        self, df_processed: pd.DataFrame
+    ) -> tuple[float, float]:
         """
         伝達関数の係数を計算する。
 
         Args:
             df_processed (pd.DataFrame): 処理されたデータフレーム。
-            f_low (float, optional): 下限周波数。デフォルトは0.001。
-            f_high (float, optional): 上限周波数。デフォルトは10。
 
         Returns:
-            float: 伝達関数の係数a。
+            tuple[float, float]: 伝達関数の係数aとその標準誤差。
         """
         df_cutoff: pd.DataFrame = self.__cutoff_df(df_processed)
 
         array_x = np.array(df_cutoff.index)
         array_y = np.array(df_cutoff["target"] / df_cutoff["reference"])
 
-        param, _ = curve_fit(
+        # フィッティングパラメータと共分散行列を取得
+        popt, pcov = curve_fit(
             TransferFunctionCalculator.transfer_function, array_x, array_y
         )
-        return param[0]
+
+        # 標準誤差を計算（共分散行列の対角成分の平方根）
+        perr = np.sqrt(np.diag(pcov))
+
+        return popt[0], perr[0]  # 係数aとその標準誤差を返す
 
     def create_plot_cospectra(
         self,
@@ -228,20 +233,20 @@ class TransferFunctionCalculator:
 
     def create_plot_transfer_function(
         self,
-        df_processed: pd.DataFrame,
         a: float,
-        target_name: str,
+        df_processed: pd.DataFrame,
         reference_name: str,
+        target_name: str,
         figsize: tuple[int, int] = (10, 6),
     ) -> plt.Figure:
         """
         伝達関数とそのフィットをプロットする。
 
         Args:
-            df_processed (pd.DataFrame): 処理されたデータフレーム。
             a (float): 伝達関数の係数。
-            target_name (str): ターゲットの名前。
+            df_processed (pd.DataFrame): 処理されたデータフレーム。
             reference_name (str): 参照の名前。
+            target_name (str): ターゲットの名前。
             figsize (tuple[int, int], optional): プロットのサイズ。デフォルトは(10, 6)。
 
         Returns:

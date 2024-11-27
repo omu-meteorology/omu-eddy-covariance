@@ -16,10 +16,10 @@ try:
     flag_file_path = os.path.join(base_path, flag_file_name)
 
     # インスタンスを作成
-    reoirganizer = FftFileReorganizer(
+    ffr = FftFileReorganizer(
         input_dir_path, output_dir_path, flag_file_path, sort_by_rh=False
     )
-    reoirganizer.reorganize()
+    ffr.reorganize()
 except KeyboardInterrupt:
     # キーボード割り込みが発生した場合、処理を中止する
     print("KeyboardInterrupt occurred. Abort processing.")

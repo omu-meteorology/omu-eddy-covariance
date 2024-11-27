@@ -30,28 +30,44 @@ font_manager.fontManager.addfont(font_path)
 # MSAInputConfigによる詳細指定
 inputs: list[MSAInputConfig] = [
     MSAInputConfig(
-        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.10.17/input/Pico100121_241017_092120+.txt",
         delay=7,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.10.17/input/Pico100121_241017_092120+.txt",
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.09/input/Pico100121_241109_103128.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.11/input/Pico100121_241111_091102+.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.14/input/Pico100121_241114_093745+.txt",
-        delay=13,
     ),
     MSAInputConfig(
+        delay=13,
+        fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.18/input/Pico100121_241118_092855+.txt",
-        delay=13,
     ),
     MSAInputConfig(
-        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.20/input/Pico100121_241120_092932+.txt",
         delay=13,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.20/input/Pico100121_241120_092932+.txt",
+    ),
+    MSAInputConfig(
+        delay=13,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.24/input/Pico100121_241124_092712+.txt",
+    ),
+    MSAInputConfig(
+        delay=13,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.25/input/Pico100121_241125_090721+.txt",
     ),
 ]
 
@@ -76,7 +92,7 @@ if __name__ == "__main__":
         hotspot_area_meter=30,
         window_minutes=5,
         logging_debug=False,
-    )
+    )-[]
     hotspots: list[HotspotData] = analyzer.analyze_hotspots(
         exclude_duplicates_across_days=True, additional_distance_meter=20
     )
@@ -92,7 +108,9 @@ if __name__ == "__main__":
     df["Fratio"] = (df["Fc2h6 ultra"] / df["Fch4 ultra"]) / 0.076 * 100
     x_list_r, y_list_r, c_list_r = analyzer_footprint.calculate_flux_footprint(
         # df, "Fratio", plot_count=30000
-        df, "Fratio", plot_count=50000
+        df,
+        "Fratio",
+        plot_count=50000,
     )
 
     # フットプリントとホットスポットの可視化
