@@ -16,8 +16,8 @@ class TransferFunctionCalculator:
         self,
         file_path: str,
         freq_key: str,
-        cutoff_freq_low: float,
-        cutoff_freq_high: float,
+        cutoff_freq_low: float = 0.01,
+        cutoff_freq_high: float = 1,
     ):
         """
         TransferFunctionCalculatorクラスのコンストラクタ。
@@ -32,7 +32,7 @@ class TransferFunctionCalculator:
         self.cutoff_freq_low: float = cutoff_freq_low
         self.cutoff_freq_high: float = cutoff_freq_high
         self.df: pd.DataFrame = self.__load_data(file_path)
-        self.setup_plot_params()
+        TransferFunctionCalculator.setup_plot_params()
 
     @staticmethod
     def setup_plot_params() -> None:

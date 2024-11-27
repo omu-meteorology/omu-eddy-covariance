@@ -104,9 +104,7 @@ class FluxFootprintAnalyzer:
         return logger
 
     @staticmethod
-    def setup_plot_params(
-        self, labelsize: float, ticksize: float, plot_params=None
-    ) -> None:
+    def setup_plot_params(labelsize: float, ticksize: float, plot_params=None) -> None:
         """
         matplotlibのプロットパラメータを設定します。
 

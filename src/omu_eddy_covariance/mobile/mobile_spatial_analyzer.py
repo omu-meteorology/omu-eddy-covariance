@@ -730,6 +730,9 @@ class MobileSpatialAnalyzer:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         df.set_index("timestamp", inplace=True)
 
+        # 緯度経度のnanを削除
+        df = df.dropna(subset=["latitude", "longitude"])
+
         if config.delay > 0:
             # 遅れ時間の補正
             columns_to_shift: list[str] = ["ch4_ppm", "c2h6_ppb", "h2o_ppm"]
@@ -785,7 +788,7 @@ class MobileSpatialAnalyzer:
             list[HotspotData]: 重複を除外したホットスポットのリスト
         """
         # 日付でソート（古い順）
-        sorted_hotspots: list[MSAInputConfig] = sorted(hotspots, key=lambda x: x.source)
+        sorted_hotspots: list[HotspotData] = sorted(hotspots, key=lambda x: x.source)
 
         # タイプごとに使用された位置を記録
         used_positions_by_type: dict[str, set] = {

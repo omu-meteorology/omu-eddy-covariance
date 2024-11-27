@@ -91,7 +91,8 @@ if __name__ == "__main__":
     # ratio
     df["Fratio"] = (df["Fc2h6 ultra"] / df["Fch4 ultra"]) / 0.076 * 100
     x_list_r, y_list_r, c_list_r = analyzer_footprint.calculate_flux_footprint(
-        df, "Fratio", plot_count=30000
+        # df, "Fratio", plot_count=30000
+        df, "Fratio", plot_count=50000
     )
 
     # フットプリントとホットスポットの可視化

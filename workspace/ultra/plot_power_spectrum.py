@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from omu_eddy_covariance import EddyDataPreprocessor
@@ -9,6 +10,7 @@ def plot_power_spectrum(
     key: str,
     ylabel: str,
     frequency_weighted: bool = True,
+    output_dir: str | None = None,
     plot_color: str = "black",
 ) -> None:
     """
@@ -51,15 +53,22 @@ def plot_power_spectrum(
 
     # グラフの表示
     plt.tight_layout()
-    plt.savefig(
-        f"/home/z23641k/labo/omu-eddy-covariance/workspace/ultra/private/data/output/power-{key}",
-        dpi=300,
-        bbox_inches="tight",
-    )
+    if output_dir is not None:
+        plt.savefig(
+            f"{output_dir}/power-{key}",
+            dpi=300,
+            bbox_inches="tight",
+        )
 
 
+# 変数定義
+input_file_path = "/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/data/2024.10.10/eddy_csv/TOA5_37477.SAC_Ultra.Eddy_107_2024_10_10_1200.dat"
+output_dir: str = (
+    "/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/outputs"
+)
 font_size_label: int = 20
 font_size_ticks: int = 14
+
 plt.rcParams["axes.labelsize"] = font_size_label
 plt.rcParams["xtick.labelsize"] = font_size_ticks
 plt.rcParams["ytick.labelsize"] = font_size_ticks
@@ -67,17 +76,10 @@ plt.rcParams["ytick.labelsize"] = font_size_ticks
 plt.rcParams["font.family"] = ["Arial", "Dejavu Sans"]
 
 if __name__ == "__main__":
-    # 使用例
-    data_dir = r"C:\Users\nakao\workspace\sac\ultra\data"
-    # path = (
-    #     data_dir
-    #     # + r"\2024.06.21\Ultra_Eddy\eddy_csv-20240514_20240621\TOA5_37477.SAC_Ultra.Eddy_3_2024_06_01_0900.dat"
-    #     + r"\2024.06.21\Ultra_Eddy\eddy_csv-20240514_20240621\TOA5_37477.SAC_Ultra.Eddy_3_2024_06_01_1500.dat"  # きれい
-    # )
-    path = "/home/z23641k/labo/omu-eddy-covariance/workspace/ultra/private/data/eddy_csv/TOA5_37477.SAC_Ultra.Eddy_107_2024_10_10_1200.dat"
+    os.makedirs(output_dir, exist_ok=True)
 
     edp: EddyDataPreprocessor = EddyDataPreprocessor()
-    df: pd.DataFrame = edp.get_resampled_df(filepath=path)
+    df: pd.DataFrame = edp.get_resampled_df(filepath=input_file_path)
     calculator = SpectrumCalculator(
         df=df,
         fs=10,
@@ -87,17 +89,20 @@ if __name__ == "__main__":
     plot_power_spectrum(
         calculator,
         key="Tv",
+        output_dir=output_dir,
         ylabel=r"$fS_{\mathrm{Tv}} / s_{\mathrm{Tv}}^2$",
     )
     plot_power_spectrum(
         calculator,
         key="Ultra_CH4_ppm_C",
-        ylabel=r"$fS_{\mathrm{CH_4}} / s_{\mathrm{CH_4}}^2$",
+        output_dir=output_dir,
         plot_color="red",
+        ylabel=r"$fS_{\mathrm{CH_4}} / s_{\mathrm{CH_4}}^2$",
     )
     plot_power_spectrum(
         calculator,
         key="Ultra_C2H6_ppb",
-        ylabel=r"$fS_{\mathrm{C_2H_6}} / s_{\mathrm{C_2H_6}}^2$",
+        output_dir=output_dir,
         plot_color="orange",
+        ylabel=r"$fS_{\mathrm{C_2H_6}} / s_{\mathrm{C_2H_6}}^2$",
     )

@@ -7,6 +7,7 @@ from .mobile.mobile_spatial_analyzer import (
 from .transfer_function.fft_file_reorganizer import FftFileReorganizer
 from .transfer_function.transfer_function_calculator import TransferFunctionCalculator
 from .ultra.eddydata_preprocessor import EddyDataPreprocessor
+from .ultra.monthly_converter import MonthlyConverter
 from .ultra.spectrum_calculator import SpectrumCalculator
 
 
@@ -19,5 +20,6 @@ __all__ = [
     "FftFileReorganizer",
     "TransferFunctionCalculator",
     "EddyDataPreprocessor",
+    "MonthlyConverter",
     "SpectrumCalculator",
 ]
