@@ -20,7 +20,7 @@ font_path = f"{project_root}/storage/assets/fonts/Arial/arial.ttf"
 font_manager.fontManager.addfont(font_path)
 
 months: list[int] = [6, 7, 8, 9, 10]  # 計算に含める月
-tag: str = "6_10"  # 画像ファイルに付与するタグ
+tag: str = "6_10-50000"  # 画像ファイルに付与するタグ
 
 if __name__ == "__main__":
     # 出力先ディレクトリを作成
@@ -34,30 +34,29 @@ if __name__ == "__main__":
     df = analyzer.filter_data(df, months=months)
 
     # # CH4
-    # x_list_ch4, y_list_ch4, c_list_ch4 = analyzer.calculate_flux_footprint(
-    #     df, "Fch4 ultra"
-    # )
-    # analyzer.plot_flux_footprint(
-    #     x_list_ch4,
-    #     y_list_ch4,
-    #     c_list_ch4,
-    #     base_image_path,
-    #     cmap="jet",
-    #     vmin=0,
-    #     vmax=100,
-    #     xy_min=-4000,
-    #     xy_max=4000,
-    #     function=np.mean,
-    #     cbar_label="CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-    #     cbar_labelpad=20,
-    #     # output_path=f"{output_dir_path}/test-footprint-ch4.png",
-    #     output_path=f"{output_dir_path}/footprint-ch4-{tag}.png",
-    # )
+    x_list_ch4, y_list_ch4, c_list_ch4 = analyzer.calculate_flux_footprint(
+        df, "Fch4 ultra", plot_count=50000
+    )
+    analyzer.plot_flux_footprint(
+        x_list_ch4,
+        y_list_ch4,
+        c_list_ch4,
+        base_image_path,
+        cmap="jet",
+        vmin=0,
+        vmax=100,
+        xy_min=-4000,
+        xy_max=4000,
+        function=np.mean,
+        cbar_label="CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+        cbar_labelpad=20,
+        # output_path=f"{output_dir_path}/test-footprint-ch4.png",
+        output_path=f"{output_dir_path}/footprint-ch4-{tag}.png",
+    )
 
     # C2H6
     x_list_c2h6, y_list_c2h6, c_list_c2h6 = analyzer.calculate_flux_footprint(
-        df,
-        "Fc2h6 ultra",
+        df, "Fc2h6 ultra", plot_count=50000
     )
     analyzer.plot_flux_footprint(
         x_list_c2h6,

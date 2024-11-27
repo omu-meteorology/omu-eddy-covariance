@@ -128,3 +128,19 @@ if __name__ == "__main__":
         xy_max=4000,
         output_path=f"{output_dir}/footprint_with_hotspots-ratio.png",
     )
+
+    # フットプリントとホットスポットの可視化
+    analyzer_footprint.plot_flux_footprint_with_hotspots_on_api(
+        x_list=x_list_r,  # メートル単位のx座標
+        y_list=y_list_r,  # メートル単位のy座標
+        c_list=c_list_r,
+        hotspots=hotspots,
+        center_lat=center_lan,
+        center_lon=center_lon,
+        api_key=gms_api_key,
+        cmap="jet",
+        vmin=0,
+        vmax=100,
+        xy_max=4000,
+        output_path=f"{output_dir}/footprint_with_hotspots-ratio.png",
+    )
