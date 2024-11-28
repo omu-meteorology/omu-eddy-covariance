@@ -43,13 +43,18 @@ inputs: list[MSAInputConfig] = [
         fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.25/input/Pico100121_241125_090721+.txt",
     ),
+    MSAInputConfig(
+        delay=13,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.28/input/Pico100121_241128_090240+.txt",
+    ),
 ]
 
 num_sections: int = 4
 output_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private"
 
 if __name__ == "__main__":
-    analyzer = MobileSpatialAnalyzer(
+    msa = MobileSpatialAnalyzer(
         center_lat=34.573904320329724,
         center_lon=135.4829511120712,
         inputs=inputs,
@@ -60,7 +65,7 @@ if __name__ == "__main__":
     )
 
     # ホットスポット検出
-    hotspots: list[HotspotData] = analyzer.analyze_hotspots(
+    hotspots: list[HotspotData] = msa.analyze_hotspots(
         exclude_duplicates_across_days=True, additional_distance_meter=20
     )
 
@@ -80,7 +85,7 @@ if __name__ == "__main__":
 
     # 区画ごとの結果を表示
     print("\n区画ごとの分析結果:")
-    section_size: float = analyzer.get_section_size()
+    section_size: float = msa.get_section_size()
     for section, counts in section_counts.items():
         start_angle = -180 + section * section_size
         end_angle = start_angle + section_size
@@ -90,7 +95,7 @@ if __name__ == "__main__":
         print(f"  Comb : {counts['comb']}")
 
     # 地図の作成と保存
-    analyzer.create_hotspots_map(hotspots, output_dir=output_dir)
+    msa.create_hotspots_map(hotspots, output_dir=output_dir)
 
     # ホットスポットを散布図で表示
-    analyzer.plot_scatter_c2h6_ch4(output_dir=output_dir)
+    msa.plot_scatter_c2h6_ch4(output_dir=output_dir)

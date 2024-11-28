@@ -4,186 +4,341 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from scipy import stats
-from matplotlib import rcParams
-from datetime import time, timedelta, datetime
 from matplotlib.ticker import FuncFormatter, MultipleLocator
-
-# matplotlibの設定
-font_size_label: int = 20
-font_size_ticks: int = 16
-rcParams["font.family"] = "Arial"
-rcParams["font.size"] = font_size_label
-rcParams["xtick.labelsize"] = font_size_ticks
-rcParams["ytick.labelsize"] = font_size_ticks
+from logging import getLogger, Logger, StreamHandler, Formatter, INFO, DEBUG
 
 
-def save_figure(fig, filename):
-    """図をoutputsディレクトリに保存する"""
-    out_dir: str = "C:\\Users\\nakao\\workspace\\sac\\seminar\\outputs"
-    os.makedirs(out_dir, exist_ok=True)
-    fig.savefig(os.path.join(out_dir, filename), dpi=300, bbox_inches="tight")
-    plt.close(fig)
+class FluxPlotter:
+    def __init__(
+        self,
+        output_dir: str,
+        labelsize: float = 20,
+        ticksize: float = 16,
+        plot_params: dict | None = None,
+        logger: Logger | None = None,
+        logging_debug: bool = False,
+    ):
+        """
+        散布図と日変化パターンを作図するクラスを初期化します。
 
+        引数:
+            output_dir (str): 図を保存するディレクトリのパス
+            labelsize (float): 軸ラベルのフォントサイズ。デフォルトは20。
+            ticksize (float): 軸目盛りのフォントサイズ。デフォルトは16。
+            plot_params (dict | None): matplotlibのプロットパラメータを指定する辞書。
+            logger (Optional[Logger]): 使用するロガー。Noneの場合は新しいロガーを生成。
+            logging_debug (bool): ログレベルをDEBUGに設定するかどうか。デフォルトはFalse。
+        """
+        self.output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
 
-def plot_combined_diurnal_patterns(
-    df,
-    x_col,
-    y_cols_ch4,
-    y_cols_c2h6,
-    labels_ch4,
-    labels_c2h6,
-    colors_ch4,
-    colors_c2h6,
-    filename,
-):
-    """CH4とC2H6の日変化パターンを1つの図に並べてプロットする"""
-    # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        # 図表の初期設定
+        FluxPlotter.setup_plot_params(labelsize, ticksize, plot_params)
 
-    # CH4のプロット (左側)
-    for y_col, label, color in zip(y_cols_ch4, labels_ch4, colors_ch4):
-        ax1.plot(df[x_col], df[y_col], "-o", label=label, color=color)
+        # ロガーの設定
+        log_level = DEBUG if logging_debug else INFO
+        self.logger = FluxPlotter.setup_logger(logger, log_level)
 
-    ax1.set_xlabel("Time")
-    ax1.set_ylabel(r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)")
-    ax1.legend()
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    ax1.xaxis.set_major_locator(mdates.HourLocator(interval=6))
-    ax1.set_xlim(df[x_col].min(), df[x_col].max())
-    ax1.set_ylim(0, 100)
-    ax1.yaxis.set_major_locator(MultipleLocator(20))
-    ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.0f}"))
-    ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top")
+        # DataFrameの初期化
+        self.__df: pd.DataFrame | None = None
 
-    # C2H6のプロット (右側)
-    for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
-        ax2.plot(df[x_col], df[y_col], "-o", label=label, color=color)
+    @property
+    def df(self) -> pd.DataFrame | None:
+        """処理済みのDataFrameを取得"""
+        return self.__df
 
-    ax2.set_xlabel("Time")
-    ax2.set_ylabel(r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)")
-    ax2.legend()
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    ax2.xaxis.set_major_locator(mdates.HourLocator(interval=6))
-    ax2.set_xlim(df[x_col].min(), df[x_col].max())
-    ax2.set_ylim(0, 5.0)
-    ax2.yaxis.set_major_locator(MultipleLocator(1))
-    ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
-    ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top")
+    def load_data(self, file_path: str) -> None:
+        """
+        CSVファイルを読み込み、必要な前処理を行います。
 
-    plt.tight_layout()
-    save_figure(fig, filename)
+        引数:
+            file_path (str): 読み込むCSVファイルのパス
+        """
+        self.logger.debug(f"Loading data from: {file_path}")
 
+        # データの読み込みと前処理
 
-def plot_scatter_with_regression(df, x_col, y_col, xlabel, ylabel, filename):
-    """散布図と回帰直線をプロットする"""
-    numeric_df = df[[x_col, y_col]].apply(pd.to_numeric, errors="coerce").dropna()
+        df = pd.read_csv(file_path, skiprows=[1])
+        df["Time"] = pd.to_datetime(df["Date"])
 
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.scatter(numeric_df[x_col], numeric_df[y_col], color="black")
+        # 数値データを含む列を数値型に変換
+        numeric_columns = [
+            "Fch4_open",
+            "Fch4_ultra",
+            "Fc2h6_ultra",
+            "Fch4_picaro",
+        ]
+        df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
 
-    # 線形回帰
-    slope, intercept, r_value, p_value, std_err = stats.linregress(
-        numeric_df[x_col], numeric_df[y_col]
-    )
+        self.__df = df
 
-    # 近似直線
-    x_range = np.linspace(0, 80, 100)
-    y_range = slope * x_range + intercept
-    ax.plot(x_range, y_range, "r")
+        self.logger.info(f"Data loaded and processed successfully: {len(df)} rows")
 
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
+    def get_valid_data(self, x_col: str, y_col: str) -> pd.DataFrame:
+        """
+        指定された列の有効なデータ（NaNを除いた）を取得します。
 
-    # 近似直線の式を右上に赤色で表示（符号を調整）
-    equation = f"y = {slope:.2f}x {'+' if intercept >= 0 else '-'} {abs(intercept):.2f}"
-    ax.text(
-        0.95, 0.95, equation, transform=ax.transAxes, va="top", ha="right", color="red"
-    )
+        引数:
+            x_col (str): X軸の列名
+            y_col (str): Y軸の列名
 
-    # 決定係数を近似直線の式の下に表示
-    ax.text(
-        0.95,
-        0.88,
-        f"R² = {r_value**2:.2f}",
-        transform=ax.transAxes,
-        va="top",
-        ha="right",
-        color="red",
-    )
+        戻り値:
+            pd.DataFrame: 有効なデータのみを含むDataFrame
+        """
+        if self.__df is None:
+            raise ValueError(
+                "No data loaded. Please load data first using load_data()."
+            )
 
-    save_figure(fig, filename)
+        return self.__df.dropna(subset=[x_col, y_col])
+
+    def plot_combined_diurnal_patterns(
+        self,
+        y_cols_ch4: list[str],
+        y_cols_c2h6: list[str],
+        labels_ch4: list[str],
+        labels_c2h6: list[str],
+        colors_ch4: list[str],
+        colors_c2h6: list[str],
+        filename: str,
+        show_label: bool = True,
+        show_legend: bool = True,
+    ) -> None:
+        """
+        CH4とC2H6の日変化パターンを1つの図に並べてプロットする。
+        各時間の値は、その月の同じ時間帯のデータの平均値として計算される。
+
+        例：0時の値は、その月の0:00-0:59のすべてのデータの平均値
+        """
+        df = self.__df.copy()
+        if df is None:
+            raise ValueError("No data loaded. Please load data first using load_data()")
+
+        self.logger.debug("Creating combined diurnal patterns plot")
+
+        # 時間データの抽出と平均値の計算
+        self.logger.debug("Calculating hourly means")
+        df["hour"] = pd.to_datetime(df["Date"]).dt.hour
+
+        # 時間ごとの平均値を計算
+        hourly_means = (
+            df.groupby("hour")
+            .agg(
+                {
+                    **{col: "mean" for col in y_cols_ch4},
+                    **{col: "mean" for col in y_cols_c2h6},
+                }
+            )
+            .reset_index()
+        )
+
+        # 24時間分のデータを作成（0-23時）
+        time_points = pd.date_range("2024-01-01", periods=24, freq="h")
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        # CH4のプロット (左側)
+        for y_col, label, color in zip(y_cols_ch4, labels_ch4, colors_ch4):
+            ax1.plot(time_points, hourly_means[y_col], "-o", label=label, color=color)
+
+        if show_label:
+            ax1.set_xlabel("Time")
+            ax1.set_ylabel(r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)")
+        if show_legend:
+            ax1.legend()
+
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        ax1.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+        ax1.set_xlim(time_points[0], time_points[-1])
+        ax1.yaxis.set_major_locator(MultipleLocator(20))
+        ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.0f}"))
+        ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top")
+
+        # C2H6のプロット (右側)
+        for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
+            ax2.plot(time_points, hourly_means[y_col], "-o", label=label, color=color)
+
+        if show_label:
+            ax2.set_xlabel("Time")
+            ax2.set_ylabel(r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)")
+        if show_legend:
+            ax2.legend()
+
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        ax2.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+        ax2.set_xlim(time_points[0], time_points[-1])
+        ax2.yaxis.set_major_locator(MultipleLocator(1))
+        ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
+        ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top")
+
+        plt.tight_layout()
+        self.save_figure(fig, filename)
+
+    def plot_scatter_with_regression(
+        self,
+        x_col: str,
+        y_col: str,
+        xlabel: str,
+        ylabel: str,
+        filename: str,
+        show_label: bool = True,
+        axis_range: tuple = (-50, 200),
+    ) -> None:
+        """散布図と回帰直線をプロットする"""
+        if self.__df is None:
+            raise ValueError(
+                "No data loaded. Please load data first using load_data()."
+            )
+
+        self.logger.debug("Creating scatter plot with regression")
+
+        numeric_df = self.get_valid_data(x_col, y_col)
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.scatter(numeric_df[x_col], numeric_df[y_col], color="black")
+
+        # 線形回帰
+        slope, intercept, r_value, p_value, std_err = stats.linregress(
+            numeric_df[x_col], numeric_df[y_col]
+        )
+
+        # 近似直線
+        x_range = np.linspace(axis_range[0], axis_range[1], 150)
+        y_range = slope * x_range + intercept
+        ax.plot(x_range, y_range, "r")
+
+        if show_label:
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+
+        ax.set_xlim(axis_range)
+        ax.set_ylim(axis_range)
+
+        # 1:1の関係を示す点線を追加
+        ax.plot(
+            [axis_range[0], axis_range[1]],
+            [axis_range[0], axis_range[1]],
+            "k--",
+            alpha=0.5,
+        )
+
+        # 近似直線の式と決定係数を表示
+        equation = (
+            f"y = {slope:.2f}x {'+' if intercept >= 0 else '-'} {abs(intercept):.2f}"
+        )
+        position_x = 0.50
+        ax.text(
+            position_x,
+            0.95,
+            equation,
+            transform=ax.transAxes,
+            va="top",
+            ha="right",
+            color="red",
+        )
+        ax.text(
+            position_x,
+            0.88,
+            f"R² = {r_value**2:.2f}",
+            transform=ax.transAxes,
+            va="top",
+            ha="right",
+            color="red",
+        )
+
+        self.save_figure(fig, filename)
+
+    def save_figure(self, fig: plt.Figure, filename: str) -> None:
+        """図を指定されたディレクトリに保存する"""
+        output_path = os.path.join(self.output_dir, filename)
+        fig.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        self.logger.info(f"Figure saved: {output_path}")
+
+    @staticmethod
+    def setup_logger(logger: Logger | None, log_level: int = INFO) -> Logger:
+        """ロガーを設定する"""
+        if logger is not None and isinstance(logger, Logger):
+            return logger
+
+        logger = getLogger(__name__)
+        logger.setLevel(log_level)
+
+        if not logger.handlers:
+            ch = StreamHandler()
+            ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            ch.setFormatter(ch_formatter)
+            logger.addHandler(ch)
+
+        return logger
+
+    @staticmethod
+    def setup_plot_params(
+        labelsize: float, ticksize: float, plot_params: dict | None = None
+    ) -> None:
+        """matplotlibのプロットパラメータを設定する"""
+        default_params = {
+            "font.family": "Arial",
+            "font.size": labelsize,
+            "xtick.labelsize": ticksize,
+            "ytick.labelsize": ticksize,
+        }
+
+        if plot_params:
+            default_params.update(plot_params)
+
+        plt.rcParams.update(default_params)
 
 
 if __name__ == "__main__":
-    # CSVファイルの読み込み
-    csv_path: str = "C:\\Users\\nakao\\workspace\\sac\\seminar\\data\\diurnals.csv"
-    df: pd.DataFrame = pd.read_csv(csv_path)
-    df = df.iloc[1:]  # 最初の行をスキップ
+    months: list[str] = ["06", "07", "08", "09"]
 
-    # 数値データを含む列を数値型に変換
-    numeric_columns = ["Fch4_open", "Fch4_ultra", "Fc2h6_ultra"]
-    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
-
-    # 時間を24時間形式に変換
-    df["Time"] = pd.to_datetime(df["Hour"], format="%H:%M", errors="coerce").dt.time
-
-    # 無効な時間データを除外
-    df = df.dropna(subset=["Time"])
-
-    # 24時（0時）のデータを追加して24時間のサイクルを完成させる
-    last_row = df.iloc[0].copy()
-    last_row["Time"] = time(0, 0)  # 24:00 の代わりに 00:00 を使用
-    df = pd.concat([df, pd.DataFrame([last_row])], ignore_index=True)
-
-    # 時間をdatetime型に変換（日付は任意）
-    base_date = datetime(2023, 1, 1)
-    df["Datetime"] = pd.to_datetime(
-        base_date.strftime("%Y-%m-%d ") + df["Time"].astype(str)
+    # プロッターの初期化
+    plotter = FluxPlotter(
+        output_dir="/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/outputs/diurnals",
+        labelsize=20,
+        ticksize=20,
+        logging_debug=False,
     )
 
-    # 最後の行（00:00）を次の日の00:00として処理
-    last_datetime = df.loc[df.index[-1], "Datetime"]
-
-    if pd.isna(last_datetime):
-        print("警告: 最後の行のDatetimeがNaNです。スキップします。")
-    elif isinstance(last_datetime, (pd.Timestamp, datetime, np.datetime64)):
-        df.loc[df.index[-1], "Datetime"] = pd.to_datetime(last_datetime) + timedelta(
-            days=1
-        )
-    elif isinstance(last_datetime, str):
-        df.loc[df.index[-1], "Datetime"] = pd.to_datetime(last_datetime) + timedelta(
-            days=1
-        )
-    else:
-        print(
-            f"警告: 予期しない型 {type(last_datetime)} です。最後の行の処理をスキップします。"
+    for month in months:
+        # データの読み込み
+        plotter.load_data(
+            f"/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/data/diurnals/diurnals-{month}.csv"
         )
 
-    # print(df["Datetime"].dtype)  # 確認のため、Datetime列の型を出力
+        # 日変化パターン
+        plotter.plot_combined_diurnal_patterns(
+            y_cols_ch4=["Fch4_open", "Fch4_ultra", "Fch4_picaro"],
+            y_cols_c2h6=["Fc2h6_ultra"],
+            labels_ch4=["Open Path", "Ultra", "Picarro"],
+            labels_c2h6=["Ultra"],
+            colors_ch4=["blue", "red", "green"],
+            colors_c2h6=["purple"],
+            filename=f"diurnal-pattern-{month}.png",
+        )
 
-    # 1. CH4とC2H6の日変化パターンを1つの図にプロット
-    plot_combined_diurnal_patterns(
-        df,
-        "Datetime",
-        ["Fch4_ultra", "Fch4_open"],
-        ["Fc2h6_ultra"],
-        ["Ultra", "Open Path"],
-        ["Ultra"],
-        ["black", "red"],
-        ["black"],
-        "combined_diurnal_patterns.png",
-    )
+        # 散布図
+        plotter.plot_scatter_with_regression(
+            x_col="Fch4_open",
+            y_col="Fch4_ultra",
+            xlabel=r"Open Path CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+            ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+            filename=f"scatter-open_ultra-{month}.png",
+        )
 
-    # 2. OpenのCH4フラックスとUltraのCH4フラックスの散布図
-    plot_scatter_with_regression(
-        df,
-        "Fch4_open",
-        "Fch4_ultra",
-        r"Open Path CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-        r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-        "ch4_flux_comparison.png",
-    )
+        plotter.plot_scatter_with_regression(
+            x_col="Fch4_open",
+            y_col="Fch4_picaro",
+            xlabel=r"Open Path CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+            ylabel=r"Picarro CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+            filename=f"scatter-open_picarro-{month}.png",
+        )
 
-    print("グラフが指定されたディレクトリに作成されました。")
+        plotter.plot_scatter_with_regression(
+            x_col="Fch4_picaro",
+            y_col="Fch4_ultra",
+            xlabel=r"Picarro CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+            ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+            filename=f"scatter-picarro_ultra-{month}.png",
+        )
