@@ -89,8 +89,8 @@ class FluxPlotter:
             raise ValueError(
                 "No data loaded. Please load data first using load_data()."
             )
-
-        return self.__df.dropna(subset=[x_col, y_col])
+        
+        return self.__df.copy().dropna(subset=[x_col, y_col])
 
     def plot_combined_diurnal_patterns(
         self,

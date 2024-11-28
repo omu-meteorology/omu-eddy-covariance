@@ -77,7 +77,7 @@ class MobileSpatialAnalyzer:
     """
     移動観測で得られた測定データを解析するクラス
     """
-    
+
     EARTH_RADIUS_METERS: float = 6371000  # 地球の半径（メートル）
 
     def __init__(
@@ -165,28 +165,32 @@ class MobileSpatialAnalyzer:
 
     def analyze_hotspots(
         self,
-        exclude_duplicates_across_days: bool = False,
-        additional_distance_meter: float = 20,
+        duplicate_check_mode: str = "none",
+        time_threshold_seconds: float = 180,
     ) -> list[HotspotData]:
         """
         ホットスポットを検出して分析します。
 
-        このメソッドは、クラス初期化時に設定されたwindow_sizeを使用して、
-        各データソースに対してホットスポットを検出し、分析結果を返します。
-
         Args:
-            exclude_duplicates_across_days (bool): 異なる日付間での重複を除外するかどうか。
-                True の場合、全期間で重複するホットスポットを除外します。
-                False の場合、日付ごとに独立してホットスポットを検出します。
-                デフォルトは False です。
-            additional_distance_meter (float): hotspot_area_meterに追加する距離（メートル）。
-                重複除外時の距離閾値は hotspot_area_meter + additional_distance_meter となります。
-                デフォルトは20メートルです。
+            duplicate_check_mode (str): 重複チェックのモード。
+                - "none": 重複チェックを行わない
+                - "space": 距離のみで重複チェック
+                - "space_and_time": 距離とタイムスタンプの両方で重複チェック
+                デフォルトは "none" です。
+            time_threshold_seconds (float): 重複とみなす時間の閾値（秒）。
+                duplicate_check_mode が "space_and_time" の場合のみ使用。
+                デフォルトは180秒です。
 
         Returns:
             list[HotspotData]: 検出されたホットスポットのリスト。
-            各ホットスポットは、位置、比率、タイプなどの情報を含みます。
         """
+        # 不正な入力値に対するエラーチェック
+        valid_modes = {"none", "space", "space_and_time"}
+        if duplicate_check_mode not in valid_modes:
+            raise ValueError(
+                f"無効な重複チェックモード: {duplicate_check_mode}. 有効な値は {valid_modes} です。"
+            )
+
         all_hotspots: list[HotspotData] = []
 
         # 各データソースに対して解析を実行
@@ -198,17 +202,15 @@ class MobileSpatialAnalyzer:
             hotspots: list[HotspotData] = self.__detect_hotspots(
                 df,
                 ch4_enhance_threshold=self.__ch4_enhance_threshold,
-                hotspot_areas_meter=self.__hotspot_area_meter,
             )
             all_hotspots.extend(hotspots)
 
-        # 全期間での重複除外が有効な場合
-        if exclude_duplicates_across_days:
-            distance_threshold: float = (
-                self.__hotspot_area_meter + additional_distance_meter
-            )
-            all_hotspots = self.__remove_duplicates_across_days(
-                all_hotspots, distance_threshold_meter=distance_threshold
+        # 重複チェックモードに応じて処理
+        if duplicate_check_mode != "none":
+            all_hotspots = self.__remove_duplicates(
+                all_hotspots,
+                check_time=duplicate_check_mode == "space_and_time",
+                time_threshold_seconds=time_threshold_seconds,
             )
 
         return all_hotspots
@@ -619,37 +621,25 @@ class MobileSpatialAnalyzer:
         self,
         df: pd.DataFrame,
         ch4_enhance_threshold: float,
-        hotspot_areas_meter: float,
     ) -> list[HotspotData]:
         """シンプル化したホットスポット検出
 
         Args:
             df (pd.DataFrame): 入力データフレーム
             ch4_enhance_threshold (float): CH4増加の閾値
-            hotspot_areas_meter (float): ホットスポット間の最小距離（メートル）
 
         Returns:
             list[HotspotData]: 検出されたホットスポットのリスト
         """
         hotspots: list[HotspotData] = []
-        # タイプごとに使用された位置を記録
-        used_positions_by_type: dict[str, set] = {
-            "bio": set(),
-            "gas": set(),
-            "comb": set(),
-        }
 
         # CH4増加量が閾値を超えるデータポイントを抽出
         enhanced_mask = df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold
 
         if enhanced_mask.any():
-            # 必要なデータを抽出
             lat = df["latitude"][enhanced_mask]
             lon = df["longitude"][enhanced_mask]
             ratios = df["c2h6_ch4_ratio_delta"][enhanced_mask]
-
-            # デバッグ情報の出力
-            self.logger.debug(f"{lat};{lon};{ratios}")
 
             # 各ポイントに対してホットスポットを作成
             for i in range(len(lat)):
@@ -664,19 +654,6 @@ class MobileSpatialAnalyzer:
                         spot_type = "comb"
                     elif ratios.iloc[i] >= 5:
                         spot_type = "gas"
-
-                    # 同じタイプのホットスポットとの距離のみをチェック
-                    too_close: bool = False
-                    for used_lat, used_lon in used_positions_by_type[spot_type]:
-                        distance = self.__calculate_distance(
-                            current_lat, current_lon, used_lat, used_lon
-                        )
-                        if distance < hotspot_areas_meter:
-                            too_close = True
-                            break
-
-                    if too_close:
-                        continue
 
                     angle: float = self.__calculate_angle(current_lat, current_lon)
                     section: int = self.__determine_section(angle)
@@ -693,9 +670,6 @@ class MobileSpatialAnalyzer:
                             type=spot_type,
                         )
                     )
-
-                    # タイプごとに使用した位置を記録
-                    used_positions_by_type[spot_type].add((current_lat, current_lon))
 
         return hotspots
 
@@ -825,50 +799,60 @@ class MobileSpatialAnalyzer:
                 )
         return normalized
 
-    def __remove_duplicates_across_days(
+    def __remove_duplicates(
         self,
         hotspots: list[HotspotData],
-        distance_threshold_meter: float,
+        check_time: bool,
+        time_threshold_seconds: float,
     ) -> list[HotspotData]:
         """
-        全期間での重複するホットスポットを除外します。
+        重複するホットスポットを除外します。
+        時間閾値内の重複は常に除外され、閾値を超えた場合はcheck_timeパラメータに応じて判定します。
 
         Args:
             hotspots (list[HotspotData]): 元のホットスポットのリスト
-            distance_threshold_meter (float): 重複とみなす距離の閾値（メートル）
+            check_time (bool): 時間閾値を超えた場合も重複チェックを継続するかどうか
+            time_threshold_seconds (float): 重複とみなす時間の閾値（秒）
 
         Returns:
             list[HotspotData]: 重複を除外したホットスポットのリスト
         """
-        # 日付でソート（古い順）
         sorted_hotspots: list[HotspotData] = sorted(hotspots, key=lambda x: x.source)
-
-        # タイプごとに使用された位置を記録
-        used_positions_by_type: dict[str, set] = {
-            "bio": set(),
-            "gas": set(),
-            "comb": set(),
+        used_positions_by_type: dict[str, list[tuple[float, float, str]]] = {
+            "bio": [],
+            "gas": [],
+            "comb": [],
         }
         unique_hotspots: list[HotspotData] = []
 
         for spot in sorted_hotspots:
-            # 同じタイプのホットスポットとの距離をチェック
             too_close: bool = False
-            for used_lat, used_lon in used_positions_by_type[spot.type]:
+            for used_lat, used_lon, used_time in used_positions_by_type[spot.type]:
+                # 距離チェック
                 distance: float = self.__calculate_distance(
                     spot.avg_lat, spot.avg_lon, used_lat, used_lon
                 )
-                if distance < distance_threshold_meter:
-                    too_close = True
-                    self.logger.debug(
-                        f"重複を検出: {spot.source} ({spot.avg_lat}, {spot.avg_lon})"
-                        f" - タイプ: {spot.type}, 距離: {distance:.1f}m"
-                    )
-                    break
+
+                if distance < self.__hotspot_area_meter:
+                    # 時間差の計算
+                    time_diff = pd.Timedelta(
+                        pd.to_datetime(spot.source) - pd.to_datetime(used_time)
+                    ).total_seconds()
+
+                    # 時間閾値内なら常に重複とみなす
+                    if abs(time_diff) <= time_threshold_seconds:
+                        too_close = True
+                        break
+                    # 時間閾値を超えた場合、check_timeがFalseなら新規ポイントとして扱う
+                    elif check_time:
+                        too_close = True
+                        break
 
             if not too_close:
                 unique_hotspots.append(spot)
-                used_positions_by_type[spot.type].add((spot.avg_lat, spot.avg_lon))
+                used_positions_by_type[spot.type].append(
+                    (spot.avg_lat, spot.avg_lon, spot.source)
+                )
 
         self.logger.info(
             f"重複除外: {len(hotspots)} → {len(unique_hotspots)} ホットスポット"

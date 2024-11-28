@@ -84,18 +84,19 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # ホットスポットの検出
-    analyzer = MobileSpatialAnalyzer(
-        center_lat=center_lan,
-        center_lon=center_lon,
-        inputs=inputs,
-        num_sections=num_sections,
-        hotspot_area_meter=30,
-        window_minutes=5,
-        logging_debug=False,
-    )-[]
-    hotspots: list[HotspotData] = analyzer.analyze_hotspots(
-        exclude_duplicates_across_days=True, additional_distance_meter=20
+    analyzer = (
+        MobileSpatialAnalyzer(
+            center_lat=center_lan,
+            center_lon=center_lon,
+            inputs=inputs,
+            num_sections=num_sections,
+            hotspot_area_meter=30,
+            window_minutes=5,
+            logging_debug=False,
+        )
+        - []
     )
+    hotspots: list[HotspotData] = analyzer.analyze_hotspots()
 
     # インスタンスを作成
     analyzer_footprint = FluxFootprintAnalyzer(z_m=111, logging_debug=False)
