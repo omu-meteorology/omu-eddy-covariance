@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
@@ -23,7 +24,7 @@ def plot_stacked_flux(
         )
 
     # データの読み込み
-    df: pd.DataFrame = pd.read_csv(input_filepath)
+    df: pd.DataFrame = pd.read_csv(input_filepath, skiprows=[1])
 
     # 方角の配置順序を定義（左上から時計回り）
     directions_order: list[str] = ["nw", "ne", "sw", "se"]
@@ -44,28 +45,34 @@ def plot_stacked_flux(
         # 単位によって倍率を補正
         diurnal *= flux_magnification
 
-        # gas由来とbio由来のCH4フラックスを計算
-        gas = diurnal * gasratio / 100
-        bio = diurnal * (100 - gasratio) / 100
+        # diurnalが10以下のデータをマスク
+        valid_mask = diurnal > 10
+
+        # gas由来とbio由来のCH4フラックスを計算（信頼性の低いデータは0に設定）
+        gas = np.where(valid_mask, diurnal * gasratio / 100, 0)
+        bio = np.where(valid_mask, diurnal * (100 - gasratio) / 100, 0)
 
         # 積み上げ棒グラフの作成
         width = 0.8
-        # p1 = ax.bar(df["month"], gas, width, label="都市", color="orange")
-        # p2 = ax.bar(
-        #     df["month"], bio, width, bottom=gas, label="生物", color="lightblue"
-        # )
         ax.bar(df["month"], gas, width, label="都市", color="orange")
         ax.bar(df["month"], bio, width, bottom=gas, label="生物", color="lightblue")
 
+        # x軸の設定
+        ax.set_xticks(df["month"])  # すべての月を目盛りとして設定
+        ax.set_xticklabels(df["month"])  # すべての月をラベルとして表示
+        
         # y軸の上限を設定
         if ylim is not None:
             ax.set_ylim(0, ylim)
 
-        # gas比率の表示
-        for i, (g, b) in enumerate(zip(gas, bio)):
-            total = g + b
-            ratio = g / total * 100
-            ax.text(df["month"][i], total, f"{ratio:.0f}%", ha="center", va="bottom")
+        # gas比率の表示（信頼性の低いデータは表示しない）
+        for i, (g, b, is_valid) in enumerate(zip(gas, bio, valid_mask)):
+            if is_valid:
+                total = g + b
+                ratio = g / total * 100
+                ax.text(
+                    df["month"][i], total, f"{ratio:.0f}%", ha="center", va="bottom"
+                )
 
         # グラフの装飾
         ax.set_title(titles[direction])

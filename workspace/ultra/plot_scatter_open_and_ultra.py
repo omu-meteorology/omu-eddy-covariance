@@ -13,7 +13,7 @@ class FluxPlotter:
         self,
         output_dir: str,
         labelsize: float = 20,
-        ticksize: float = 16,
+        ticksize: float = 20,
         plot_params: dict | None = None,
         logger: Logger | None = None,
         logging_debug: bool = False,
@@ -89,7 +89,7 @@ class FluxPlotter:
             raise ValueError(
                 "No data loaded. Please load data first using load_data()."
             )
-        
+
         return self.__df.copy().dropna(subset=[x_col, y_col])
 
     def plot_combined_diurnal_patterns(
@@ -101,8 +101,12 @@ class FluxPlotter:
         colors_ch4: list[str],
         colors_c2h6: list[str],
         filename: str,
+        label_only_ch4: bool = False,
         show_label: bool = True,
         show_legend: bool = True,
+        subplot_fontsize: int = 20,
+        subplot_label_ch4: str = "(a)",
+        subplot_label_c2h6: str = "(b)",
     ) -> None:
         """
         CH4とC2H6の日変化パターンを1つの図に並べてプロットする。
@@ -132,8 +136,13 @@ class FluxPlotter:
             .reset_index()
         )
 
+        # 24時目のデータを0時のデータで補完
+        last_row = hourly_means.iloc[0:1].copy()
+        last_row["hour"] = 24
+        hourly_means = pd.concat([hourly_means, last_row], ignore_index=True)
+
         # 24時間分のデータを作成（0-23時）
-        time_points = pd.date_range("2024-01-01", periods=24, freq="h")
+        time_points = pd.date_range("2024-01-01", periods=25, freq="h")
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
@@ -144,15 +153,30 @@ class FluxPlotter:
         if show_label:
             ax1.set_xlabel("Time")
             ax1.set_ylabel(r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)")
-        if show_legend:
-            ax1.legend()
 
-        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-        ax1.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+        # CH4のプロット (左側)の軸設定
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))  # %-Hで先頭の0を削除
+        ax1.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
         ax1.set_xlim(time_points[0], time_points[-1])
+        # 24時の表示を修正
+        ax1.set_xticks(time_points[::6])
+        ax1.set_xticklabels(["0", "6", "12", "18", "24"])
+
+        # CH4のy軸の設定
+        ch4_max = hourly_means[y_cols_ch4].max().max()
+        if ch4_max < 100:
+            ax1.set_ylim(0, 100)
+
         ax1.yaxis.set_major_locator(MultipleLocator(20))
         ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.0f}"))
-        ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top")
+        ax1.text(
+            0.02,
+            0.98,
+            subplot_label_ch4,
+            transform=ax1.transAxes,
+            va="top",
+            fontsize=subplot_fontsize,
+        )
 
         # C2H6のプロット (右側)
         for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
@@ -161,17 +185,59 @@ class FluxPlotter:
         if show_label:
             ax2.set_xlabel("Time")
             ax2.set_ylabel(r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)")
-        if show_legend:
-            ax2.legend()
 
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-        ax2.xaxis.set_major_locator(mdates.HourLocator(interval=6))
+        # CH4のプロット (左側)
+        ch4_lines = []  # 凡例用にラインオブジェクトを保存
+        for y_col, label, color in zip(y_cols_ch4, labels_ch4, colors_ch4):
+            (line,) = ax1.plot(
+                time_points, hourly_means[y_col], "-o", label=label, color=color
+            )
+            ch4_lines.append(line)
+
+        # C2H6のプロット (右側)
+        c2h6_lines = []  # 凡例用にラインオブジェクトを保存
+        for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
+            (line,) = ax2.plot(
+                time_points, hourly_means[y_col], "-o", label=label, color=color
+            )
+            c2h6_lines.append(line)
+
+        # 個別の凡例を削除し、図の下部に共通の凡例を配置
+        if show_legend:
+            all_lines = ch4_lines
+            all_labels = labels_ch4
+            if not label_only_ch4:
+                all_lines += c2h6_lines
+                all_labels += labels_c2h6
+            fig.legend(
+                all_lines,
+                all_labels,
+                loc="center",
+                bbox_to_anchor=(0.5, 0.02),
+                ncol=len(all_lines),
+            )
+
+        # C2H6のプロット (右側)の軸設定
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))  # %-Hで先頭の0を削除
+        ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
         ax2.set_xlim(time_points[0], time_points[-1])
+        # 24時の表示を修正
+        ax2.set_xticks(time_points[::6])
+        ax2.set_xticklabels(["0", "6", "12", "18", "24"])
+
         ax2.yaxis.set_major_locator(MultipleLocator(1))
         ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
-        ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top")
+        ax2.text(
+            0.02,
+            0.98,
+            subplot_label_c2h6,
+            transform=ax2.transAxes,
+            va="top",
+            fontsize=subplot_fontsize,
+        )
 
         plt.tight_layout()
+        plt.subplots_adjust(bottom=0.25)  # 下部に凡例用のスペースを確保
         self.save_figure(fig, filename)
 
     def plot_scatter_with_regression(
@@ -292,16 +358,22 @@ class FluxPlotter:
 
 if __name__ == "__main__":
     months: list[str] = ["06", "07", "08", "09"]
+    subplot_labels: list[list[str]] = [
+        ["(a)", "(b)"],
+        ["(c)", "(d)"],
+        ["(e)", "(f)"],
+        ["(g)", "(h)"],
+    ]
 
     # プロッターの初期化
     plotter = FluxPlotter(
         output_dir="/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/outputs/diurnals",
-        labelsize=20,
-        ticksize=20,
+        labelsize=24,
+        ticksize=24,
         logging_debug=False,
     )
 
-    for month in months:
+    for i, month in enumerate(months):  # インデックスを取得してループ
         # データの読み込み
         plotter.load_data(
             f"/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/data/diurnals/diurnals-{month}.csv"
@@ -309,13 +381,19 @@ if __name__ == "__main__":
 
         # 日変化パターン
         plotter.plot_combined_diurnal_patterns(
-            y_cols_ch4=["Fch4_open", "Fch4_ultra", "Fch4_picaro"],
+            y_cols_ch4=["Fch4_ultra", "Fch4_open", "Fch4_picaro"],
             y_cols_c2h6=["Fc2h6_ultra"],
-            labels_ch4=["Open Path", "Ultra", "Picarro"],
+            labels_ch4=["Ultra", "Open Path", "G2401"],
             labels_c2h6=["Ultra"],
-            colors_ch4=["blue", "red", "green"],
-            colors_c2h6=["purple"],
+            label_only_ch4=True,
+            show_label=False,
+            show_legend=(month == "09"),
+            colors_ch4=["black", "red", "blue"],
+            colors_c2h6=["black"],
             filename=f"diurnal-pattern-{month}.png",
+            subplot_label_ch4=subplot_labels[i][0],
+            subplot_label_c2h6=subplot_labels[i][1],
+            subplot_fontsize=24,
         )
 
         # 散布図

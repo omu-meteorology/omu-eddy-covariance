@@ -166,26 +166,27 @@ class MobileSpatialAnalyzer:
     def analyze_hotspots(
         self,
         duplicate_check_mode: str = "none",
-        time_threshold_seconds: float = 180,
+        time_threshold_seconds: float = 300,
     ) -> list[HotspotData]:
         """
         ホットスポットを検出して分析します。
 
         Args:
             duplicate_check_mode (str): 重複チェックのモード。
-                - "none": 重複チェックを行わない
-                - "space": 距離のみで重複チェック
-                - "space_and_time": 距離とタイムスタンプの両方で重複チェック
-                デフォルトは "none" です。
+                コンストラクタで与えられたhotspot_area_meterの範囲で重複除外を行うかを選択します。デフォルトは "none" です。
+                - "none": 重複チェックを行わない。
+                - "time_window": 指定された時間窓内の重複のみを除外。複数回の観測でその地点が定常的に排出しているかを検証する際に指定してください。
+                - "time_all": すべての時間範囲で重複チェックを行う。地点の分布のみを検出したい際に指定してください。
             time_threshold_seconds (float): 重複とみなす時間の閾値（秒）。
-                duplicate_check_mode が "space_and_time" の場合のみ使用。
-                デフォルトは180秒です。
+                - "time_window"モード: この時間窓内で検出された近接ホットスポットを重複として除外。
+                - "time_all"モード: この時間窓を超えても、同じ位置で検出されたホットスポットを重複として除外。
+                デフォルトは300秒です。
 
         Returns:
             list[HotspotData]: 検出されたホットスポットのリスト。
         """
         # 不正な入力値に対するエラーチェック
-        valid_modes = {"none", "space", "space_and_time"}
+        valid_modes = {"none", "time_window", "time_all"}
         if duplicate_check_mode not in valid_modes:
             raise ValueError(
                 f"無効な重複チェックモード: {duplicate_check_mode}. 有効な値は {valid_modes} です。"
@@ -209,7 +210,7 @@ class MobileSpatialAnalyzer:
         if duplicate_check_mode != "none":
             all_hotspots = self.__remove_duplicates(
                 all_hotspots,
-                check_time=duplicate_check_mode == "space_and_time",
+                check_time_all=duplicate_check_mode == "time_all",
                 time_threshold_seconds=time_threshold_seconds,
             )
 
@@ -681,7 +682,7 @@ class MobileSpatialAnalyzer:
             angle (float): 計算された角度
 
         Returns:
-            int: 区画番号
+            int: 区画番号（0-based-index）
         """
         for section_num, (start, end) in self.__sections.items():
             if start <= angle < end:
@@ -699,7 +700,7 @@ class MobileSpatialAnalyzer:
             section_size (float): 各区画の角度範囲のサイズ。
 
         Returns:
-            dict[int, tuple[float, float]]: 区画番号とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
+            dict[int, tuple[float, float]]: 区画番号（0-based-index）とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
         """
         sections: dict[int, tuple[float, float]] = {}
         for i in range(num_sections):
@@ -802,16 +803,16 @@ class MobileSpatialAnalyzer:
     def __remove_duplicates(
         self,
         hotspots: list[HotspotData],
-        check_time: bool,
+        check_time_all: bool,
         time_threshold_seconds: float,
     ) -> list[HotspotData]:
         """
         重複するホットスポットを除外します。
-        時間閾値内の重複は常に除外され、閾値を超えた場合はcheck_timeパラメータに応じて判定します。
+        時間閾値内の重複は常に除外され、閾値を超えた場合はcheck_time_allパラメータに応じて判定します。
 
         Args:
             hotspots (list[HotspotData]): 元のホットスポットのリスト
-            check_time (bool): 時間閾値を超えた場合も重複チェックを継続するかどうか
+            check_time_all (bool): 時間閾値を超えた場合も重複チェックを継続するかどうか
             time_threshold_seconds (float): 重複とみなす時間の閾値（秒）
 
         Returns:
@@ -843,8 +844,8 @@ class MobileSpatialAnalyzer:
                     if abs(time_diff) <= time_threshold_seconds:
                         too_close = True
                         break
-                    # 時間閾値を超えた場合、check_timeがFalseなら新規ポイントとして扱う
-                    elif check_time:
+                    # 時間閾値を超えた場合、check_time_allがFalseなら新規ポイントとして扱う
+                    elif check_time_all:
                         too_close = True
                         break
 
