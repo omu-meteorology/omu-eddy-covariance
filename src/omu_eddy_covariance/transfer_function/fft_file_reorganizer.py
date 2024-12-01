@@ -22,17 +22,18 @@ class FftFileReorganizer:
         r"FFT_TOA5_\d+\.SAC_Eddy_\d+_(\d{4})_(\d{2})_(\d{2})_(\d{4})(?:\+)?\.csv",
         r"FFT_TOA5_\d+\.SAC_Ultra\.Eddy_\d+_(\d{4})_(\d{2})_(\d{2})_(\d{4})(?:\+)?(?:-resampled)?\.csv",
     ]  # デフォルトのファイル名のパターン（正規表現）
-    OUTPUT_DIRS = {
+    DEFAULT_OUTPUT_DIRS = {
         "GOOD_DATA": "good_data_all",
         "BAD_DATA": "bad_data",
     }  # 出力ディレクトリの構造に関する定数
 
     def __init__(
         self,
-        input_path: str,
-        output_path: str,
+        input_dir: str,
+        output_dir: str,
         flag_csv_path: str,
         filename_patterns: list[str] | None = None,
+        output_dirs: dict[str, str] | None = None,
         sort_by_rh: bool = True,
         logger: Logger | None = None,
         logging_debug: bool = False,
@@ -41,25 +42,28 @@ class FftFileReorganizer:
         FftFileReorganizerクラスを初期化します。
 
         Args:
-            input_path (str): 入力ファイルが格納されているディレクトリのパス
-            output_path (str): 出力ファイルを格納するディレクトリのパス
+            input_dir (str): 入力ファイルが格納されているディレクトリのパス
+            output_dir (str): 出力ファイルを格納するディレクトリのパス
             flag_csv_path (str): フラグ情報が記載されているCSVファイルのパス
-            sort_by_rh (bool, optional): RHに基づいてサブディレクトリにファイルを分類するかどうか。デフォルトはTrue。
-            logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
-            logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
+            filename_patterns (list[str] | None): ファイル名のパターン（正規表現）のリスト
+            output_dirs (dict[str, str] | None): 出力ディレクトリの構造を定義する辞書
+            sort_by_rh (bool): RHに基づいてサブディレクトリにファイルを分類するかどうか
+            logger (Logger | None): 使用するロガー
+            logging_debug (bool): ログレベルをDEBUGに設定するかどうか
         """
-        self.__fft_path: str = input_path
-        self.__sorted_path: str = output_path
+        self.__fft_path: str = input_dir
+        self.__sorted_path: str = output_dir
+        self.__output_dirs = output_dirs or self.DEFAULT_OUTPUT_DIRS
         self.__good_data_path: str = os.path.join(
-            output_path, self.OUTPUT_DIRS["GOOD_DATA"]
+            output_dir, self.__output_dirs["GOOD_DATA"]
         )
         self.__bad_data_path: str = os.path.join(
-            output_path, self.OUTPUT_DIRS["BAD_DATA"]
+            output_dir, self.__output_dirs["BAD_DATA"]
         )
         self.__filename_patterns: list[str] = (
             self.DEFAULT_FILENAME_PATTERNS.copy()
             if filename_patterns is None
-            else self.DEFAULT_FILENAME_PATTERNS + filename_patterns
+            else filename_patterns
         )
         self.__flag_file_path: str = flag_csv_path
         self.__sort_by_rh: bool = sort_by_rh

@@ -48,6 +48,11 @@ inputs: list[MSAInputConfig] = [
         fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.28/input/Pico100121_241128_090240+.txt",
     ),
+    MSAInputConfig(
+        delay=13,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.30/input/Pico100121_241130_092420+.txt",
+    ),
 ]
 
 num_sections: int = 4
@@ -59,7 +64,7 @@ if __name__ == "__main__":
         center_lon=135.4829511120712,
         inputs=inputs,
         num_sections=num_sections,
-        hotspot_area_meter=30,
+        hotspot_area_meter=50,
         window_minutes=5,
         logging_debug=False,
     )

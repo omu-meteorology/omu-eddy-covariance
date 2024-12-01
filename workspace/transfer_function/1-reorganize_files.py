@@ -17,7 +17,10 @@ try:
 
     # インスタンスを作成
     ffr = FftFileReorganizer(
-        input_dir_path, output_dir_path, flag_file_path, sort_by_rh=False
+        input_dir=input_dir_path,
+        output_dir=output_dir_path,
+        flag_csv_path=flag_file_path,
+        sort_by_rh=False,
     )
     ffr.reorganize()
 except KeyboardInterrupt:
