@@ -1,11 +1,9 @@
 import os
-import matplotlib.pyplot as plt
 from omu_eddy_covariance import TransferFunctionCalculator
 
 # 変数定義
 base_path = "/home/connect0459/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
 tf_dir_name: str = "tf"
-
 # tf_file_name: str = "TF_Ultra.2024.08.06.csv"
 tf_file_name: str = "TF_Ultra.2024.08.06-detrend.csv"
 
@@ -25,61 +23,51 @@ try:
     tfc = TransferFunctionCalculator(file_path, " f", 0.01, 1)
 
     # コスペクトルのプロット
-    fig = tfc.create_plot_cospectra(
-        key_wt,
-        key_wch4,
+    tfc.create_plot_cospectra(
+        key1=key_wt,
+        key2=key_wch4,
         label1=r"$fC_{wTv}$ / $\overline{w^\prime Tv^\prime}$",
         label2=r"$fC_{wCH_{4}}$ / $\overline{w^\prime CH_{4}^\prime}$",
         color2="red",
         subplot_label="(a)",
+        show_plot=show_cospectra_plot,
     )
 
-    if show_cospectra_plot:
-        plt.show()  # GUIで表示する場合
-
-    plt.close(fig)  # メモリ解放
-
-    fig = tfc.create_plot_cospectra(
-        key_wt,
-        key_wc2h6,
+    tfc.create_plot_cospectra(
+        key1=key_wt,
+        key2=key_wc2h6,
         label1=r"$fC_{wTv}$ / $\overline{w^\prime Tv^\prime}$",
         label2=r"$fC_{wC_{2}H_{6}}$ / $\overline{w^\prime C_{2}H_{6}^\prime}$",
         color2="orange",
         subplot_label="(b)",
+        show_plot=show_cospectra_plot,
     )
 
-    if show_cospectra_plot:
-        plt.show()  # GUIで表示する場合
-
-    plt.close(fig)  # メモリ解放
-
-    # 伝達関数の計算
     print("伝達関数を分析中...")
-    df_wt_wch4 = tfc.process_data(reference_key=key_wt, target_key=key_wch4)
-    df_wt_wc2h6 = tfc.process_data(reference_key=key_wt, target_key=key_wc2h6)
-    # self.plot_ratio(df_processed, target_name, reference_name)
-    a_wch4, _ = tfc.calculate_transfer_function(df_wt_wch4)
-    a_wc2h6, _ = tfc.calculate_transfer_function(df_wt_wc2h6)
+    # 伝達関数の計算
+    a_wch4, _, df_wch4 = tfc.calculate_transfer_function(
+        reference_key=key_wt, target_key=key_wch4
+    )
+    a_wc2h6, _, df_wc2h6 = tfc.calculate_transfer_function(
+        reference_key=key_wt, target_key=key_wc2h6
+    )
 
-    fig_wch4 = tfc.create_plot_transfer_function(
+    # カーブフィット図の作成
+    tfc.create_plot_transfer_function(
         a=a_wch4,
-        df_processed=df_wt_wch4,
-        reference_name="wTv",
-        target_name="wCH4",
+        df_processed=df_wch4,
+        reference_name=key_wt,
+        target_name=key_wch4,
+        show_plot=show_tf_plot,
     )
-    fig_wc2h6 = tfc.create_plot_transfer_function(
+    tfc.create_plot_transfer_function(
         a=a_wc2h6,
-        df_processed=df_wt_wc2h6,
-        reference_name="wTv",
-        target_name="wC2H6",
+        df_processed=df_wc2h6,
+        reference_name=key_wt,
+        target_name=key_wc2h6,
+        show_plot=show_tf_plot,
     )
 
-    # a_wch4: float = tfc.analyze_transfer_function(
-    #     key_wt, "wTv", key_wch4, "wCH4", show_tf_plot
-    # )
-    # a_wc2h6: float = tfc.analyze_transfer_function(
-    #     key_wt, "wTv", key_wc2h6, "wC2H6", show_tf_plot
-    # )
     print(f"wCH4の係数 a: {a_wch4}")
     print(f"wC2H6の係数 a: {a_wc2h6}")
 except KeyboardInterrupt:

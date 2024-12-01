@@ -55,13 +55,13 @@ class EddyDataPreprocessor:
         if logger is not None and isinstance(logger, Logger):
             return logger
         # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
-        logger: Logger = getLogger()
-        logger.setLevel(log_level)  # ロガーのレベルを設定
+        new_logger: Logger = getLogger()
+        new_logger.setLevel(log_level)  # ロガーのレベルを設定
         ch = StreamHandler()
         ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
-        logger.addHandler(ch)  # StreamHandlerの追加
-        return logger
+        new_logger.addHandler(ch)  # StreamHandlerの追加
+        return new_logger
 
     def add_uvw_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """

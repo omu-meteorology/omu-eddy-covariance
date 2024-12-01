@@ -134,7 +134,7 @@ class MobileSpatialAnalyzer:
         )
 
     @staticmethod
-    def setup_logger(logger: Logger | None, log_level: int = INFO):
+    def setup_logger(logger: Logger | None, log_level: int = INFO) -> Logger:
         """
         ロガーを設定します。
 
@@ -145,23 +145,23 @@ class MobileSpatialAnalyzer:
         ログメッセージが表示されるようにStreamHandlerを追加します。ロガーのレベルは
         引数で指定されたlog_levelに基づいて設定されます。
 
-        Args:
+        引数:
             logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
             log_level (int): ロガーのログレベル。デフォルトはINFO。
 
-        Returns:
+        戻り値:
             Logger: 設定されたロガーオブジェクト。
         """
         if logger is not None and isinstance(logger, Logger):
             return logger
         # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
-        logger: Logger = getLogger()
-        logger.setLevel(log_level)  # ロガーのレベルを設定
+        new_logger: Logger = getLogger()
+        new_logger.setLevel(log_level)  # ロガーのレベルを設定
         ch = StreamHandler()
         ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
-        logger.addHandler(ch)  # StreamHandlerの追加
-        return logger
+        new_logger.addHandler(ch)  # StreamHandlerの追加
+        return new_logger
 
     def analyze_hotspots(
         self,

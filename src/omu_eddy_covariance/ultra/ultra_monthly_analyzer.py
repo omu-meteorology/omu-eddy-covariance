@@ -32,7 +32,7 @@ class UltraMonthlyAnalyzer:
         self.logger: Logger = UltraMonthlyAnalyzer.setup_logger(logger, log_level)
 
     @staticmethod
-    def setup_logger(logger: Logger | None, log_level: int = INFO):
+    def setup_logger(logger: Logger | None, log_level: int = INFO) -> Logger:
         """
         ロガーを設定します。
 
@@ -53,13 +53,13 @@ class UltraMonthlyAnalyzer:
         if logger is not None and isinstance(logger, Logger):
             return logger
         # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
-        logger: Logger = getLogger()
-        logger.setLevel(log_level)  # ロガーのレベルを設定
+        new_logger: Logger = getLogger()
+        new_logger.setLevel(log_level)  # ロガーのレベルを設定
         ch = StreamHandler()
         ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
-        logger.addHandler(ch)  # StreamHandlerの追加
-        return logger
+        new_logger.addHandler(ch)  # StreamHandlerの追加
+        return new_logger
 
     def calculate_daily_average(self, year: int, month: int) -> None:
         """

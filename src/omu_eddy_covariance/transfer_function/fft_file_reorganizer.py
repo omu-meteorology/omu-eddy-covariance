@@ -117,13 +117,13 @@ class FftFileReorganizer:
         if logger is not None and isinstance(logger, Logger):
             return logger
         # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
-        logger: Logger = getLogger()
-        logger.setLevel(log_level)  # ロガーのレベルを設定
+        new_logger: Logger = getLogger()
+        new_logger.setLevel(log_level)  # ロガーのレベルを設定
         ch = StreamHandler()
         ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
-        logger.addHandler(ch)  # StreamHandlerの追加
-        return logger
+        new_logger.addHandler(ch)  # StreamHandlerの追加
+        return new_logger
 
     def reorganize(self):
         """
@@ -154,7 +154,7 @@ class FftFileReorganizer:
         with tqdm(total=len(valid_files)) as pbar:
             for filename in valid_files:
                 src_file = os.path.join(self.__fft_path, filename)
-                file_time = self.parse_datetime(filename)
+                file_time = self.__parse_datetime(filename)
 
                 if file_time in self.__flags:
                     flag = self.__flags[file_time]["Flg"]
@@ -192,11 +192,33 @@ class FftFileReorganizer:
         valid_files = []
         for file in fft_files:
             try:
-                self.parse_datetime(file)
+                self.__parse_datetime(file)
                 valid_files.append(file)
             except ValueError as e:
                 self.__warnings.append(f"{file} をスキップします: {str(e)}")
-        return sorted(valid_files, key=self.parse_datetime)
+        return sorted(valid_files, key=self.__parse_datetime)
+
+    def __parse_datetime(self, filename: str) -> datetime:
+        """
+        ファイル名から日時情報を抽出します。
+
+        Args:
+            filename (str): 解析対象のファイル名
+
+        Returns:
+            datetime: 抽出された日時情報
+
+        Raises:
+            ValueError: ファイル名から日時情報を抽出できない場合
+        """
+        for pattern in self.__filename_patterns:
+            match = re.match(pattern, filename)
+            if match:
+                year, month, day, time = match.groups()
+                datetime_str: str = f"{year}{month}{day}{time}"
+                return datetime.strptime(datetime_str, "%Y%m%d%H%M")
+
+        raise ValueError(f"Could not parse datetime from filename: {filename}")
 
     def __prepare_directories(self):
         """
@@ -221,26 +243,10 @@ class FftFileReorganizer:
             reader = csv.DictReader(f)
             for row in reader:
                 time = datetime.strptime(row["time"], "%Y/%m/%d %H:%M")
-                self.__flags[time] = {"Flg": int(row["Flg"]), "RH": float(row["RH"])}
+                try:
+                    rh = float(row["RH"])
+                except ValueError:  # RHが#N/Aなどの数値に変換できない値の場合
+                    self.logger.debug(f"Invalid RH value at {time}: {row['RH']}")
+                    rh = -1  # 不正な値として扱うため、負の値を設定
 
-    def parse_datetime(self, filename: str) -> datetime:
-        """
-        ファイル名から日時情報を抽出します。
-
-        Args:
-            filename (str): 解析対象のファイル名
-
-        Returns:
-            datetime: 抽出された日時情報
-
-        Raises:
-            ValueError: ファイル名から日時情報を抽出できない場合
-        """
-        for pattern in self.__filename_patterns:
-            match = re.match(pattern, filename)
-            if match:
-                year, month, day, time = match.groups()
-                datetime_str: str = f"{year}{month}{day}{time}"
-                return datetime.strptime(datetime_str, "%Y%m%d%H%M")
-
-        raise ValueError(f"Could not parse datetime from filename: {filename}")
+                self.__flags[time] = {"Flg": int(row["Flg"]), "RH": rh}
