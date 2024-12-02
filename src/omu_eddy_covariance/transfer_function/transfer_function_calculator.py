@@ -58,7 +58,7 @@ class TransferFunctionCalculator:
                 "ytick.major.width": 0,
                 "axes.linewidth": 1.5,
                 "grid.linewidth": 1.0,
-                "font.size": 20,
+                "font.size": 16,
                 "axes.labelsize": 20,
             }
         )

@@ -56,15 +56,15 @@ try:
     tfc.create_plot_transfer_function(
         a=a_wch4,
         df_processed=df_wch4,
-        reference_name=key_wt,
-        target_name=key_wch4,
+        reference_name="wTv",
+        target_name="wCH4",
         show_plot=show_tf_plot,
     )
     tfc.create_plot_transfer_function(
         a=a_wc2h6,
         df_processed=df_wc2h6,
-        reference_name=key_wt,
-        target_name=key_wc2h6,
+        reference_name="wTv",
+        target_name="wC2H6",
         show_plot=show_tf_plot,
     )
 
