@@ -3,7 +3,9 @@ import folium
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from pathlib import Path
+from datetime import timedelta
 from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 from omu_eddy_covariance import HotspotData
@@ -88,7 +90,7 @@ class MobileSpatialAnalyzer:
         num_sections: int = 4,
         ch4_enhance_threshold: float = 0.1,
         correlation_threshold: float = 0.7,
-        hotspot_area_meter: float = 30,
+        hotspot_area_meter: float = 50,
         window_minutes: float = 5,
         logger: Logger | None = None,
         logging_debug: bool = False,
@@ -103,7 +105,7 @@ class MobileSpatialAnalyzer:
             num_sections (int): 分割する区画数。デフォルトは4。
             ch4_enhance_threshold (float): CH4増加の閾値(ppm)。デフォルトは0.1。
             correlation_threshold (float): 相関係数の閾値。デフォルトは0.7。
-            hotspot_area_meter (float): ホットスポットの検出に使用するエリアの半径（メートル）。デフォルトは30メートル。
+            hotspot_area_meter (float): ホットスポットの検出に使用するエリアの半径（メートル）。デフォルトは50メートル。
             window_minutes (float): 移動窓の大きさ（分）。デフォルトは5分。
             logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
             logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
@@ -215,6 +217,70 @@ class MobileSpatialAnalyzer:
             )
 
         return all_hotspots
+
+    def calculate_measurement_stats(
+        self,
+        show_individual_stats: bool = True,
+        show_total_stats: bool = True,
+    ) -> tuple[float, timedelta]:
+        """
+        各ファイルの測定時間と走行距離を計算し、合計を返します。
+
+        Args:
+            show_individual_stats (bool): 個別ファイルの統計を表示するかどうか。デフォルトはTrue。
+            show_total_stats (bool): 合計統計を表示するかどうか。デフォルトはTrue。
+
+        Returns:
+            tuple[float, timedelta]: 総距離(km)と総時間のタプル
+        """
+        total_distance: float = 0.0
+        total_time: timedelta = timedelta()
+        individual_stats: list[dict] = []  # 個別の統計情報を保存するリスト
+
+        # プログレスバーを表示しながら計算
+        for source_name, df in tqdm(self.__data.items(), desc="Calculating", unit="file"):
+            # 時間の計算
+            time_spent = df.index[-1] - df.index[0]
+
+            # 距離の計算
+            distance_km = 0.0
+            for i in range(len(df) - 1):
+                lat1, lon1 = df.iloc[i][["latitude", "longitude"]]
+                lat2, lon2 = df.iloc[i + 1][["latitude", "longitude"]]
+                distance_km += self.__calculate_distance(lat1, lon1, lat2, lon2) / 1000
+
+            # 合計に加算
+            total_distance += distance_km
+            total_time += time_spent
+
+            # 統計情報を保存
+            if show_individual_stats:
+                average_speed = distance_km / (time_spent.total_seconds() / 3600)
+                individual_stats.append({
+                    "source": source_name,
+                    "distance": distance_km,
+                    "time": time_spent,
+                    "speed": average_speed
+                })
+
+        # 計算完了後に統計情報を表示
+        if show_individual_stats:
+            self.logger.info("=== Individual Stats ===")
+            for stat in individual_stats:
+                print(f"File         : {stat['source']}")
+                print(f"  Distance   : {stat['distance']:.2f} km")
+                print(f"  Time       : {stat['time']}")
+                print(f"  Avg. Speed : {stat['speed']:.1f} km/h\n")
+
+        # 合計を表示
+        if show_total_stats:
+            average_speed_total: float = total_distance / (total_time.total_seconds() / 3600)
+            self.logger.info("=== Total Stats ===")
+            print(f"  Distance   : {total_distance:.2f} km")
+            print(f"  Time       : {total_time}")
+            print(f"  Avg. Speed : {average_speed_total:.1f} km/h\n")
+
+        return total_distance, total_time
 
     def create_hotspots_map(
         self,

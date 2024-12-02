@@ -53,6 +53,11 @@ inputs: list[MSAInputConfig] = [
         fs=1,
         path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.11.30/input/Pico100121_241130_092420+.txt",
     ),
+    MSAInputConfig(
+        delay=13,
+        fs=1,
+        path="/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/data/2024.12.02/input/Pico100121_241202_090316+.txt",
+    ),
 ]
 
 num_sections: int = 4
@@ -68,6 +73,8 @@ if __name__ == "__main__":
         window_minutes=5,
         logging_debug=False,
     )
+
+    # msa.calculate_measurement_stats()
 
     # ホットスポット検出
     hotspots: list[HotspotData] = msa.analyze_hotspots(
