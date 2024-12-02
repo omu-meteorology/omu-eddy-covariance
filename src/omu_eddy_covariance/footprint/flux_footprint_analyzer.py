@@ -169,8 +169,13 @@ class FluxFootprintAnalyzer:
             - すべての距離はメートル単位で表されます
             - 正のx値は東方向、正のy値は北方向を示します
         """
-        df: pd.DataFrame = df.copy()  # 明示的にコピーを作成
-        # データフレームのインデックスから日付の配列を作成
+        df: pd.DataFrame = df.copy()
+
+        # インデックスがdatetimeであることを確認し、必要に応じて変換
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+
+        # DatetimeIndexから直接dateプロパティにアクセス
         datelist: np.ndarray = np.array(df.index.date)
 
         # 各日付が平日かどうかを判定し、リストに格納
@@ -255,7 +260,71 @@ class FluxFootprintAnalyzer:
             c_list,
         )
 
-    def combine_all_csv(self, csv_dir_path: str, suffix: str = ".csv") -> pd.DataFrame:
+    def combine_all_data(
+        self, data_source: str | pd.DataFrame, source_type: str = "csv", **kwargs
+    ) -> pd.DataFrame:
+        """
+        CSVファイルまたはMonthlyConverterからのデータを統合します
+
+        Args:
+            data_source (str | pd.DataFrame): CSVディレクトリパスまたはDataFrame
+            source_type (str): "csv" または "monthly"
+            **kwargs: 追加パラメータ
+                - sheet_names (list[str]): Monthlyの場合のシート名
+                - start_date (str): 開始日
+                - end_date (str): 終了日
+
+        Returns:
+            pd.DataFrame: 処理済みのデータフレーム
+        """
+        if source_type == "csv":
+            # 既存のCSV処理ロジック
+            return self.__combine_all_csv(data_source)
+        elif source_type == "monthly":
+            # MonthlyConverterからのデータを処理
+            if not isinstance(data_source, pd.DataFrame):
+                raise ValueError("monthly形式の場合、DataFrameを直接渡す必要があります")
+
+            df = data_source.copy()
+
+            # required_columnsからDateを除外して欠損値チェックを行う
+            check_columns = [col for col in self.required_columns if col != "Date"]
+            
+            # インデックスがdatetimeであることを確認
+            if not isinstance(df.index, pd.DatetimeIndex) and "Date" not in df.columns:
+                raise ValueError("DatetimeIndexまたはDateカラムが必要です")
+                
+            if "Date" in df.columns:
+                df.set_index("Date", inplace=True)
+
+            # 必要なカラムの存在確認
+            missing_columns = [
+                col for col in check_columns if col not in df.columns.tolist()
+            ]
+            if missing_columns:
+                missing_cols = ", ".join(missing_columns)
+                current_cols = ", ".join(df.columns.tolist())
+                raise ValueError(
+                    f"必要なカラムが不足しています: {missing_cols}\n"
+                    f"現在のカラム: {current_cols}"
+                )
+
+            # 平日/休日の判定用カラムを追加
+            df[self.weekday_key] = df.index.map(self.__is_weekday)
+            
+            # Dateを除外したカラムで欠損値の処理
+            df = df.dropna(subset=check_columns)
+            
+            # インデックスの重複を除去
+            df = df.loc[~df.index.duplicated(), :]
+
+            return df
+        else:
+            raise ValueError("source_typeは'csv'または'monthly'である必要があります")
+
+    def __combine_all_csv(
+        self, csv_dir_path: str, suffix: str = ".csv"
+    ) -> pd.DataFrame:
         """
         指定されたディレクトリ内の全CSVファイルを読み込み、処理し、結合します。
         Monthlyシートを結合することを想定しています。
@@ -428,7 +497,7 @@ class FluxFootprintAnalyzer:
         ax_data: plt.Axes = fig.add_axes([0.05, 0.1, 0.8, 0.8])
 
         self.logger.info("プロットを作成中...")
-        # フラックスの空間変動の可視化
+        # フラックスの空間変���の可視化
         hexbin = ax_data.hexbin(
             x_list,
             y_list,
@@ -713,7 +782,7 @@ class FluxFootprintAnalyzer:
             cmap (str): カラーマップの名前。
             vmin (float): カラーバーの最小値。
             vmax (float): カラーバーの最大値。
-            xy_max (float, optional): 表示範囲の最大値（デフォルトは4000）。
+            xy_max (float, optional): 表示範囲の最大値（���フォルトは4000）��
             function (callable, optional): フットプリントの集約関数（デフォルトはnp.mean）。
             cbar_label (str, optional): カラーバーのラベル。
             cbar_labelpad (int, optional): カラーバーラベルのパディング。
@@ -954,7 +1023,7 @@ class FluxFootprintAnalyzer:
         """
         地面修正量を計算します（Pennypacker and Baldocchi, 2016）。
 
-        この関数は、与えられたデータフレームを使用して地面修正量を計算します。
+        この関数は、与えられ��データフレームを使用して地面修正量を計算します。
         計算は以下のステップで行われます：
         1. 変位高さ（d）を計算
         2. 中立条件外のデータを除外

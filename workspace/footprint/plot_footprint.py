@@ -1,8 +1,7 @@
 import os
 import numpy as np
-import pandas as pd
 from matplotlib import font_manager
-from omu_eddy_covariance import FluxFootprintAnalyzer
+from omu_eddy_covariance import FluxFootprintAnalyzer, MonthlyConverter
 
 
 # プロジェクトルートや作業ディレクトリのパスを定義
@@ -19,23 +18,35 @@ base_image_path: str = f"{project_root}/storage/assets/images/SAC(height8000).jp
 font_path = f"{project_root}/storage/assets/fonts/Arial/arial.ttf"
 font_manager.fontManager.addfont(font_path)
 
-months: list[int] = [6, 7, 8, 9, 10]  # 計算に含める月
+months: list[int] = [5, 6, 7, 8, 9, 10]  # 計算に含める月
 tag: str = "6_10-50000"  # 画像ファイルに付与するタグ
 
 if __name__ == "__main__":
     # 出力先ディレクトリを作成
     os.makedirs(output_dir_path, exist_ok=True)
 
+    with MonthlyConverter(
+        "/home/connect0459/labo/omu-eddy-covariance/workspace/private/monthly",
+        file_pattern="SA.Ultra.*.xlsx",
+    ) as converter:
+        # 特定の期間のデータを読み込む
+        monthly_df = converter.read_sheets(
+            sheet_names=["Final"], start_date="2024-05-15", end_date="2024-10-31"
+        )
+
     # インスタンスを作成
     analyzer = FluxFootprintAnalyzer(z_m=111)
-    df: pd.DataFrame = analyzer.combine_all_csv(csv_dir_path)
 
-    # 月ごとにデータをフィルタリング
-    df = analyzer.filter_data(df, months=months)
+    # MonthlyConverterのデータを処理
+    # df = analyzer.combine_all_data(csv_dir_path, source_type="csv")
+    df = analyzer.combine_all_data(monthly_df, source_type="monthly")
+
+    # # 月ごとにデータをフィルタリング（必要に応じて）
+    # df = analyzer.filter_data(df, months=months)
 
     # # CH4
     x_list_ch4, y_list_ch4, c_list_ch4 = analyzer.calculate_flux_footprint(
-        df, "Fch4 ultra", plot_count=50000
+        df, "Fch4 ultra", plot_count=10000
     )
     analyzer.plot_flux_footprint(
         x_list_ch4,
