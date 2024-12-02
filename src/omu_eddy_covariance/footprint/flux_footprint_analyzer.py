@@ -302,11 +302,11 @@ class FluxFootprintAnalyzer:
                 col for col in check_columns if col not in df.columns.tolist()
             ]
             if missing_columns:
-                missing_cols = ", ".join(missing_columns)
-                current_cols = ", ".join(df.columns.tolist())
+                missing_cols = "','".join(missing_columns)
+                current_cols = "','".join(df.columns.tolist())
                 raise ValueError(
-                    f"必要なカラムが不足しています: {missing_cols}\n"
-                    f"現在のカラム: {current_cols}"
+                    f"必要なカラムが不足しています: '{missing_cols}'\n"
+                    f"現在のカラム: '{current_cols}'"
                 )
 
             # 平日/休日の判定用カラムを追加
