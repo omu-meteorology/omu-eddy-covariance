@@ -56,6 +56,9 @@ class EddyDataPreprocessor:
             return logger
         # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
         new_logger: Logger = getLogger()
+        # 既存のハンドラーをすべて削除
+        for handler in new_logger.handlers[:]:
+            new_logger.removeHandler(handler)
         new_logger.setLevel(log_level)  # ロガーのレベルを設定
         ch = StreamHandler()
         ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")

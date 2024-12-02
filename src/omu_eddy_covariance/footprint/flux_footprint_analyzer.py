@@ -30,6 +30,8 @@ class FluxFootprintAnalyzer:
     この実装は、Kormann and Meixner (2001)の論文に基づいています。
     """
 
+    EARTH_RADIUS_METER = 6371000  # 地球の半径（メートル）
+
     def __init__(
         self,
         z_m: float,
@@ -96,6 +98,9 @@ class FluxFootprintAnalyzer:
             return logger
         # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
         new_logger: Logger = getLogger()
+        # 既存のハンドラーをすべて削除
+        for handler in new_logger.handlers[:]:
+            new_logger.removeHandler(handler)
         new_logger.setLevel(log_level)  # ロガーのレベルを設定
         ch = StreamHandler()
         ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -289,11 +294,11 @@ class FluxFootprintAnalyzer:
 
             # required_columnsからDateを除外して欠損値チェックを行う
             check_columns = [col for col in self.required_columns if col != "Date"]
-            
+
             # インデックスがdatetimeであることを確認
             if not isinstance(df.index, pd.DatetimeIndex) and "Date" not in df.columns:
                 raise ValueError("DatetimeIndexまたはDateカラムが必要です")
-                
+
             if "Date" in df.columns:
                 df.set_index("Date", inplace=True)
 
@@ -311,10 +316,10 @@ class FluxFootprintAnalyzer:
 
             # 平日/休日の判定用カラムを追加
             df[self.weekday_key] = df.index.map(self.__is_weekday)
-            
+
             # Dateを除外したカラムで欠損値の処理
             df = df.dropna(subset=check_columns)
-            
+
             # インデックスの重複を除去
             df = df.loc[~df.index.duplicated(), :]
 
@@ -812,8 +817,9 @@ class FluxFootprintAnalyzer:
             base_image = Image.new("RGB", (2160, 2160), "lightgray")
 
         # 3. 座標変換のための定数
-        EARTH_RADIUS = 6371000  # 地球の半径（メートル）
-        meters_per_lat = EARTH_RADIUS * (math.pi / 180)  # 緯度1度あたりのメートル
+        meters_per_lat = self.EARTH_RADIUS_METER * (
+            math.pi / 180
+        )  # 緯度1度あたりのメートル
         meters_per_lon = meters_per_lat * math.cos(
             math.radians(center_lat)
         )  # 経度1度あたりのメートル
@@ -825,8 +831,7 @@ class FluxFootprintAnalyzer:
 
         # 4. フットプリントデータの座標変換
         # 補正係数を適用した座標変換
-        EARTH_RADIUS = 6371000
-        meters_per_lat = EARTH_RADIUS * (math.pi / 180)
+        meters_per_lat = self.EARTH_RADIUS_METER * (math.pi / 180)
         meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
 
         x_deg = np.array(x_list) / meters_per_lon * lon_correction
@@ -873,7 +878,7 @@ class FluxFootprintAnalyzer:
         default_colors = {"bio": "blue", "gas": "red", "comb": "green"}
 
         # 座標変換のための定数
-        meters_per_lat = EARTH_RADIUS * (math.pi / 180)
+        meters_per_lat = self.EARTH_RADIUS_METER * (math.pi / 180)
         meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
 
         for spot_type, color in (hotspot_colors or default_colors).items():

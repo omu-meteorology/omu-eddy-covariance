@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 from dotenv import load_dotenv
 from matplotlib import font_manager
 from omu_eddy_covariance import (
@@ -104,7 +105,7 @@ if __name__ == "__main__":
     ) as converter:
         # 特定の期間のデータを読み込む
         monthly_df = converter.read_sheets(
-            sheet_names=["Final"], start_date="2024-10-08", end_date="2024-10-31"
+            sheet_names=["Final"], start_date="2024-08-01", end_date="2024-10-31"
         )
 
     # ホットスポットの検出
@@ -113,29 +114,46 @@ if __name__ == "__main__":
         center_lon=center_lon,
         inputs=inputs,
         num_sections=num_sections,
-        hotspot_area_meter=30,
+        hotspot_area_meter=50,
         window_minutes=5,
         logging_debug=False,
     )
-    hotspots: list[HotspotData] = msa.analyze_hotspots()
+    hotspots: list[HotspotData] = msa.analyze_hotspots(
+        duplicate_check_mode="time_window"
+    )
 
     # インスタンスを作成
     ffa = FluxFootprintAnalyzer(z_m=111, logging_debug=False)
-    # df: pd.DataFrame = ffa.combine_all_data(csv_dir, source_type="csv")
-    df = ffa.combine_all_data(monthly_df, source_type="monthly")
 
-    # # 月ごとにデータをフィルタリング
+    # df: pd.DataFrame = ffa.combine_all_data(csv_dir, source_type="csv")
+    # # # 月ごとにデータをフィルタリング
     # df = ffa.filter_data(df, months=months)
+
+    df: pd.DataFrame = ffa.combine_all_data(monthly_df, source_type="monthly")
 
     # ratio
     df["Fratio"] = (df["Fc2h6 ultra"] / df["Fch4 ultra"]) / 0.076 * 100
     x_list_r, y_list_r, c_list_r = ffa.calculate_flux_footprint(
         df=df,
         flux_key="Fratio",
-        plot_count=10000,
+        plot_count=50000,
     )
 
     # フットプリントとホットスポットの可視化
+    ffa.plot_flux_footprint_with_hotspots(
+        x_list=x_list_r,  # メートル単位のx座標
+        y_list=y_list_r,  # メートル単位のy座標
+        c_list=c_list_r,
+        hotspots=hotspots,
+        center_lat=center_lan,
+        center_lon=center_lon,
+        base_image_path="/home/connect0459/labo/omu-eddy-covariance/workspace/footprint/SAC(height8000).jpg",
+        cmap="jet",
+        vmin=0,
+        vmax=100,
+        xy_max=4000,
+        output_path=f"{output_dir}/footprint_with_hotspots-ratio-base.png",
+    )
     ffa.plot_flux_footprint_with_hotspots_on_api(
         x_list=x_list_r,  # メートル単位のx座標
         y_list=y_list_r,  # メートル単位のy座標
@@ -148,5 +166,5 @@ if __name__ == "__main__":
         vmin=0,
         vmax=100,
         xy_max=4000,
-        output_path=f"{output_dir}/footprint_with_hotspots-ratio.png",
+        output_path=f"{output_dir}/footprint_with_hotspots-ratio-api.png",
     )
