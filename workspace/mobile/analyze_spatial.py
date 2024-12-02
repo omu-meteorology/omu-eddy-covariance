@@ -69,7 +69,7 @@ if __name__ == "__main__":
         center_lon=135.4829511120712,
         inputs=inputs,
         num_sections=num_sections,
-        hotspot_area_meter=50,
+        hotspot_area_meter=100,
         window_minutes=5,
         logging_debug=False,
     )
@@ -78,8 +78,7 @@ if __name__ == "__main__":
 
     # ホットスポット検出
     hotspots: list[HotspotData] = msa.analyze_hotspots(
-        # duplicate_check_mode="time_window",
-        duplicate_check_mode="time_all",
+        duplicate_check_mode="time_window",
     )
 
     # 結果の表示

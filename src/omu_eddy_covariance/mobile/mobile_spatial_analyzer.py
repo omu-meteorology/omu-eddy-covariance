@@ -168,21 +168,19 @@ class MobileSpatialAnalyzer:
     def analyze_hotspots(
         self,
         duplicate_check_mode: str = "none",
-        time_threshold_seconds: float = 300,
+        min_time_threshold_seconds: float = 300,
+        max_time_threshold_hours: float = 12,
     ) -> list[HotspotData]:
         """
         ホットスポットを検出して分析します。
 
         Args:
             duplicate_check_mode (str): 重複チェックのモード。
-                コンストラクタで与えられたhotspot_area_meterの範囲で重複除外を行うかを選択します。デフォルトは "none" です。
                 - "none": 重複チェックを行わない。
-                - "time_window": 指定された時間窓内の重複のみを除外。複数回の観測でその地点が定常的に排出しているかを検証する際に指定してください。
-                - "time_all": すべての時間範囲で重複チェックを行う。地点の分布のみを検出したい際に指定してください。
-            time_threshold_seconds (float): 重複とみなす時間の閾値（秒）。
-                - "time_window"モード: この時間窓内で検出された近接ホットスポットを重複として除外。
-                - "time_all"モード: この時間窓を超えても、同じ位置で検出されたホットスポットを重複として除外。
-                デフォルトは300秒です。
+                - "time_window": 指定された時間窓内の重複のみを除外。
+                - "time_all": すべての時間範囲で重複チェックを行う。
+            min_time_threshold_seconds (float): 重複とみなす最小時間の閾値（秒）。デフォルトは300秒。
+            max_time_threshold_hours (float): 重複チェックを一時的に無視する最大時間の閾値（時間）。デフォルトは12時間。
 
         Returns:
             list[HotspotData]: 検出されたホットスポットのリスト。
@@ -213,7 +211,8 @@ class MobileSpatialAnalyzer:
             all_hotspots = self.__remove_duplicates(
                 all_hotspots,
                 check_time_all=duplicate_check_mode == "time_all",
-                time_threshold_seconds=time_threshold_seconds,
+                min_time_threshold_seconds=min_time_threshold_seconds,
+                max_time_threshold_hours=max_time_threshold_hours,
             )
 
         return all_hotspots
@@ -238,7 +237,9 @@ class MobileSpatialAnalyzer:
         individual_stats: list[dict] = []  # 個別の統計情報を保存するリスト
 
         # プログレスバーを表示しながら計算
-        for source_name, df in tqdm(self.__data.items(), desc="Calculating", unit="file"):
+        for source_name, df in tqdm(
+            self.__data.items(), desc="Calculating", unit="file"
+        ):
             # 時間の計算
             time_spent = df.index[-1] - df.index[0]
 
@@ -256,12 +257,14 @@ class MobileSpatialAnalyzer:
             # 統計情報を保存
             if show_individual_stats:
                 average_speed = distance_km / (time_spent.total_seconds() / 3600)
-                individual_stats.append({
-                    "source": source_name,
-                    "distance": distance_km,
-                    "time": time_spent,
-                    "speed": average_speed
-                })
+                individual_stats.append(
+                    {
+                        "source": source_name,
+                        "distance": distance_km,
+                        "time": time_spent,
+                        "speed": average_speed,
+                    }
+                )
 
         # 計算完了後に統計情報を表示
         if show_individual_stats:
@@ -274,7 +277,9 @@ class MobileSpatialAnalyzer:
 
         # 合計を表示
         if show_total_stats:
-            average_speed_total: float = total_distance / (total_time.total_seconds() / 3600)
+            average_speed_total: float = total_distance / (
+                total_time.total_seconds() / 3600
+            )
             self.logger.info("=== Total Stats ===")
             print(f"  Distance   : {total_distance:.2f} km")
             print(f"  Time       : {total_time}")
@@ -870,16 +875,22 @@ class MobileSpatialAnalyzer:
         self,
         hotspots: list[HotspotData],
         check_time_all: bool,
-        time_threshold_seconds: float,
+        min_time_threshold_seconds: float,
+        max_time_threshold_hours: float,
     ) -> list[HotspotData]:
         """
         重複するホットスポットを除外します。
-        時間閾値内の重複は常に除外され、閾値を超えた場合はcheck_time_allパラメータに応じて判定します。
+
+        時間による重複判定の仕様:
+        1. min_time_threshold_seconds以内の重複は常に除外
+        2. min_time_threshold_seconds < 時間差 <= max_time_threshold_hoursの場合は保持
+        3. max_time_threshold_hours以上離れた場合はcheck_time_allパラメータに従う
 
         Args:
             hotspots (list[HotspotData]): 元のホットスポットのリスト
-            check_time_all (bool): 時間閾値を超えた場合も重複チェックを継続するかどうか
-            time_threshold_seconds (float): 重複とみなす時間の閾値（秒）
+            check_time_all (bool): max_time_threshold_hours以上離れた場合も重複チェックを継続するかどうか
+            min_time_threshold_seconds (float): 重複とみなす最小時間の閾値（秒）
+            max_time_threshold_hours (float): 重複チェックを一時的に無視する最大時間の閾値（時間）
 
         Returns:
             list[HotspotData]: 重複を除外したホットスポットのリスト
@@ -901,17 +912,22 @@ class MobileSpatialAnalyzer:
                 )
 
                 if distance < self.__hotspot_area_meter:
-                    # 時間差の計算
+                    # 時間差の計算（秒単位）
                     time_diff = pd.Timedelta(
                         pd.to_datetime(spot.source) - pd.to_datetime(used_time)
                     ).total_seconds()
+                    time_diff_abs = abs(time_diff)
 
-                    # 時間閾値内なら常に重複とみなす
-                    if abs(time_diff) <= time_threshold_seconds:
+                    # 時間差に基づく判定
+                    if time_diff_abs <= min_time_threshold_seconds:
+                        # Case 1: 最小時間閾値以内は常に重複とみなす
                         too_close = True
                         break
-                    # 時間閾値を超えた場合、check_time_allがFalseなら新規ポイントとして扱う
+                    elif time_diff_abs <= max_time_threshold_hours * 3600:
+                        # Case 2: 最大時間閾値以内は重複とみなさない（異なるポイントとして保持）
+                        continue
                     elif check_time_all:
+                        # Case 3: 最大時間閾値を超えた場合はcheck_time_allに従う
                         too_close = True
                         break
 
