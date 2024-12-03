@@ -165,7 +165,7 @@ class EddyDataPreprocessor:
 
         for file in tqdm(csv_files, desc="Calculating"):
             path: str = os.path.join(input_dir, file)
-            df: pd.DataFrame = self.get_resampled_df(filepath=path)
+            df, _ = self.get_resampled_df(filepath=path)
             df = self.add_uvw_columns(df)
             delays_list = self.__calculate_time_delay(
                 df,
@@ -266,6 +266,7 @@ class EddyDataPreprocessor:
             interpolate (bool, optional): 欠損値の補完を適用するフラグ。デフォルトはTrue。
             numeric_columns (list[str], optional): 数値型に変換する列名のリスト。
                 デフォルトは["Ux", "Uy", "Uz", "Tv", "diag_sonic", "CO2_new", "H2O", "diag_irga", "cell_tmpr", "cell_press", "Ultra_CH4_ppm", "Ultra_C2H6_ppb", "Ultra_H2O_ppm", "Ultra_CH4_ppm_C", "Ultra_C2H6_ppb_C"]。
+            metadata_rows (int, optional): メタデータとして読み込む行数。デフォルトは4。
             skiprows (list[int], optional): スキップする行インデックスのリスト。デフォルトは[0, 2, 3]のため、1, 3, 4行目がスキップされる。
 
         Returns:
@@ -294,6 +295,16 @@ class EddyDataPreprocessor:
         # インデックスをセット
         df = df.set_index(index_column)
 
+        # リサンプリング前の有効数字を取得
+        decimal_places = {}
+        for col in numeric_columns:
+            if col in df.columns:
+                # 各列の最大有効数字を取得
+                max_decimals = (
+                    df[col].astype(str).str.extract(r"\.(\d+)")[0].str.len().max()
+                )
+                decimal_places[col] = int(max_decimals) if pd.notna(max_decimals) else 0
+
         # {self.fs}Hzでリサンプリングする
         resampling_period: int = int(1000 / self.fs)  # ms単位で算出
         # numeric_only=Trueは数値型のみ欠損補間を行う
@@ -301,9 +312,13 @@ class EddyDataPreprocessor:
             numeric_only=True
         )
 
-        # 欠損値をインターポレートで補完する
         if interpolate:
+            # 補間を実行
             df_resampled = df_resampled.interpolate()
+            # 有効数字を調整
+            for col, decimals in decimal_places.items():
+                if col in df_resampled.columns:
+                    df_resampled[col] = df_resampled[col].round(decimals)
 
         # DateTimeインデックスを削除する
         df = df_resampled.reset_index()
@@ -317,12 +332,33 @@ class EddyDataPreprocessor:
         resampled_dir: str,
         calc_py_dir: str,
         input_files_suffix: str = ".dat",
-        key_datetime: str = "TIMESTAMP",
         key_ch4_concentration: str = "Ultra_CH4_ppm_C",
         key_c2h6_concentration: str = "Ultra_C2H6_ppb",
         ratio_csv_prefix: str = "SAC.Ultra",
         output_ratio: bool = True,
         output_resampled: bool = True,
+        index_column: str = "TIMESTAMP",
+        index_format: str = "%Y-%m-%d %H:%M:%S.%f",
+        interpolate: bool = True,
+        numeric_columns: list[str] = [
+            "Ux",
+            "Uy",
+            "Uz",
+            "Tv",
+            "diag_sonic",
+            "CO2_new",
+            "H2O",
+            "diag_irga",
+            "cell_tmpr",
+            "cell_press",
+            "Ultra_CH4_ppm",
+            "Ultra_C2H6_ppb",
+            "Ultra_H2O_ppm",
+            "Ultra_CH4_ppm_C",
+            "Ultra_C2H6_ppb_C",
+        ],
+        metadata_rows: int = 4,
+        skiprows: list[int] = [0, 2, 3],
     ) -> None:
         """
         指定されたディレクトリ内のCSVファイルを処理し、リサンプリングと欠損値補間を行います。
@@ -336,12 +372,17 @@ class EddyDataPreprocessor:
             resampled_dir (str): リサンプリングされたCSVファイルを出力するディレクトリのパス。
             calc_py_dir (str): 計算結果を保存するディレクトリのパス。
             input_files_suffix (str): 入力ファイルの拡張子（.datや.csvなど）。デフォルトは".dat"。
-            key_datetime (str): 日時情報を含む列名。デフォルトは'TIMESTAMP'。
             key_ch4_concentration (str): CH4濃度を含む列名。デフォルトは'Ultra_CH4_ppm_C'。
             key_c2h6_concentration (str): C2H6濃度を含む列名。デフォルトは'Ultra_C2H6_ppb'。
             output_ratio (bool, optional): 線形回帰を行うかどうか。デフォルトはTrue。
             output_resampled (bool, optional): リサンプリングされたCSVファイルを出力するかどうか。デフォルトはTrue。
             ratio_csv_prefix (str): 出力ファイルの接頭辞。デフォルトは'SAC.Ultra'で、出力時は'SAC.Ultra.2024.09.21.ratio.csv'のような形式となる。
+            index_column (str): 日時情報を含む列名。デフォルトは'TIMESTAMP'。
+            index_format (str, optional): インデックスの日付形式。デフォルトは'%Y-%m-%d %H:%M:%S.%f'。
+            interpolate (bool): 欠損値補間を行うかどうか。デフォルトはTrue。
+            numeric_columns (list[str]): 数値データを含む列名のリスト。デフォルトは指定された列名のリスト。
+            metadata_rows (int): メタデータとして読み込む行数。デフォルトは4。
+            skiprows (list[int]): 読み飛ばす行のインデックスリスト。デフォルトは[0, 2, 3]。
 
         Returns:
             None
@@ -369,10 +410,18 @@ class EddyDataPreprocessor:
         for filename in tqdm(csv_files, desc="Processing files"):
             input_filepath: str = os.path.join(input_dir, filename)
             # リサンプリング＆欠損値補間
-            df, metadata = self.get_resampled_df(filepath=input_filepath)
+            df, metadata = self.get_resampled_df(
+                filepath=input_filepath,
+                index_column=index_column,
+                index_format=index_format,
+                interpolate=interpolate,
+                numeric_columns=numeric_columns,
+                metadata_rows=metadata_rows,
+                skiprows=skiprows,
+            )
 
             # 開始時間を取得
-            start_time: datetime = pd.to_datetime(df[key_datetime].iloc[0])
+            start_time: datetime = pd.to_datetime(df[index_column].iloc[0])
             # 処理したファイルの中で最も最新の日付
             latest_date = max(latest_date, start_time)
 
@@ -387,7 +436,9 @@ class EddyDataPreprocessor:
                     for line in metadata:
                         f.write(f"{line}\n")
                 # データフレームを追記モードで書き込む
-                df.to_csv(output_csv_path, index=False, mode="a", quoting=3, header=False)
+                df.to_csv(
+                    output_csv_path, index=False, mode="a", quoting=3, header=False
+                )
 
             # 相関係数とC2H6/CH4比を計算
             if output_ratio:

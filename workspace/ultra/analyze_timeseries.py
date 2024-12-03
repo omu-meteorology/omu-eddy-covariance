@@ -98,7 +98,7 @@ def main():
     # データ読み込み
     filepath = "/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/data/2024.10.10/eddy_csv/TOA5_37477.SAC_Ultra.Eddy_107_2024_10_10_1000.dat"
     edp = EddyDataPreprocessor()
-    df = edp.get_resampled_df(filepath=filepath)
+    df, _ = edp.get_resampled_df(filepath=filepath)
 
     # 分析実行
     results, summary = analyze_methane_ratio(df)

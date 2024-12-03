@@ -1,5 +1,4 @@
 import os
-import pandas as pd
 import matplotlib.pyplot as plt
 from omu_eddy_covariance import EddyDataPreprocessor
 from omu_eddy_covariance import SpectrumCalculator
@@ -79,7 +78,7 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     edp: EddyDataPreprocessor = EddyDataPreprocessor()
-    df: pd.DataFrame = edp.get_resampled_df(filepath=input_file_path)
+    df, _ = edp.get_resampled_df(filepath=input_file_path)
     calculator = SpectrumCalculator(
         df=df,
         fs=10,
