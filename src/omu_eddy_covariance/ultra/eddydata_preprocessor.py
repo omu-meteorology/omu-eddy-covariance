@@ -1,6 +1,5 @@
 import os
 import re
-import glob
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -113,7 +112,7 @@ class EddyDataPreprocessor:
         self,
         input_dir: str,
         figsize: tuple[float, float] = (10, 8),
-        input_files_patterns: str = r"Eddy_(\d+)",
+        input_files_pattern: str = r"Eddy_(\d+)",
         input_files_suffix: str = ".dat",
         key1: str = "wind_w",
         key2_list: list[str] = ["Tv"],
@@ -129,7 +128,7 @@ class EddyDataPreprocessor:
         Args:
             input_dir (str): 入力データファイルが格納されているディレクトリのパス。
             figsize (tuple[float, float]): プロットのサイズ（幅、高さ）。
-            input_files_patterns (str): 入力ファイル名のパターン（正規表現）。
+            input_files_pattern (str): 入力ファイル名のパターン（正規表現）。
             input_files_suffix (str): 入力ファイルの拡張子。
             key1 (str): 基準変数の列名。
             key2_list (list[str]): 比較変数の列名のリスト。
@@ -146,22 +145,14 @@ class EddyDataPreprocessor:
         results: dict[str, dict[str, float]] = {}
 
         # メイン処理
-        csv_files: list[str] = glob.glob(
-            os.path.join(input_dir, f"*{input_files_suffix}"), recursive=True
+        # ファイル名に含まれる数字に基づいてソート
+        csv_files = self.__get_sorted_files(
+            input_dir, input_files_pattern, input_files_suffix
         )
         if not csv_files:
             raise FileNotFoundError(
                 f"There is no CSV file to process. Target directory: {input_dir}"
             )
-
-        # ファイル名に含まれる数字に基づいてソート
-        csv_files = [f for f in csv_files if re.search(input_files_patterns, f)]
-        # 正規表現のマッチング結果がNoneでない場合のみ数値変換を行う
-        csv_files.sort(
-            key=lambda x: int(re.search(input_files_patterns, x).group(1))
-            if re.search(input_files_patterns, x)
-            else float("inf")
-        )  # type: ignore
 
         for file in tqdm(csv_files, desc="Calculating"):
             path: str = os.path.join(input_dir, file)
@@ -331,12 +322,13 @@ class EddyDataPreprocessor:
         input_dir: str,
         resampled_dir: str,
         calc_py_dir: str,
+        input_file_pattern: str = r"Eddy_(\d+)",
         input_files_suffix: str = ".dat",
         key_ch4_concentration: str = "Ultra_CH4_ppm_C",
         key_c2h6_concentration: str = "Ultra_C2H6_ppb",
-        ratio_csv_prefix: str = "SAC.Ultra",
         output_ratio: bool = True,
         output_resampled: bool = True,
+        ratio_csv_prefix: str = "SAC.Ultra",
         index_column: str = "TIMESTAMP",
         index_format: str = "%Y-%m-%d %H:%M:%S.%f",
         interpolate: bool = True,
@@ -371,6 +363,7 @@ class EddyDataPreprocessor:
             input_dir (str): 入力CSVファイルが格納されているディレクトリのパス。
             resampled_dir (str): リサンプリングされたCSVファイルを出力するディレクトリのパス。
             calc_py_dir (str): 計算結果を保存するディレクトリのパス。
+            input_file_pattern (str): ファイル名からソートキーを抽出する正規表現パターン。デフォルトは"Eddy_(\d+)"で、最初の数字グループでソートします。
             input_files_suffix (str): 入力ファイルの拡張子（.datや.csvなど）。デフォルトは".dat"。
             key_ch4_concentration (str): CH4濃度を含む列名。デフォルトは'Ultra_CH4_ppm_C'。
             key_c2h6_concentration (str): C2H6濃度を含む列名。デフォルトは'Ultra_C2H6_ppb'。
@@ -398,14 +391,10 @@ class EddyDataPreprocessor:
         ratio_data: list[dict[str, str | float]] = []
         latest_date: datetime = datetime.min
 
-        csv_files: list[str] = [
-            f for f in os.listdir(input_dir) if f.endswith(input_files_suffix)
-        ]
-        csv_files.sort(
-            key=lambda x: int(re.search(r"Eddy_(\d+)", x).group(1))
-            if re.search(r"Eddy_(\d+)", x)
-            else float("inf")
-        )  # type: ignore
+        # csvファイル名のリスト
+        csv_files: list[str] = self.__get_sorted_files(
+            input_dir, input_file_pattern, input_files_suffix
+        )
 
         for filename in tqdm(csv_files, desc="Processing files"):
             input_filepath: str = os.path.join(input_dir, filename)
@@ -427,7 +416,7 @@ class EddyDataPreprocessor:
 
             # リサンプリング＆欠損値補間したCSVを出力
             if output_resampled:
-                base_filename: str = re.sub(r"\.dat$", "", filename)
+                base_filename: str = re.sub(rf"\{input_files_suffix}$", "", filename)
                 output_csv_path: str = os.path.join(
                     resampled_dir, f"{base_filename}-resampled.csv"
                 )
@@ -523,6 +512,29 @@ class EddyDataPreprocessor:
 
             delays_list.append(delay)
         return delays_list
+
+    def __get_sorted_files(
+        self, directory: str, pattern: str, suffix: str
+    ) -> list[str]:
+        """
+        指定されたディレクトリ内のファイルを、ファイル名に含まれる数字に基づいてソートして返す。
+
+        Parameters:
+            directory (str): ファイルが格納されているディレクトリのパス
+            pattern (str): ファイル名からソートキーを抽出する正規表現パターン
+            suffix (str): ファイルの拡張子
+
+        Returns:
+            list[str]: ソートされたファイル名のリスト
+        """
+        files: list[str] = [f for f in os.listdir(directory) if f.endswith(suffix)]
+        files = [f for f in files if re.search(pattern, f)]
+        files.sort(
+            key=lambda x: int(re.search(pattern, x).group(1))
+            if re.search(pattern, x)
+            else float("inf")
+        )
+        return files
 
     def __horizontal_wind_speed(
         self, x_array: np.ndarray, y_array: np.ndarray, wind_dir: float

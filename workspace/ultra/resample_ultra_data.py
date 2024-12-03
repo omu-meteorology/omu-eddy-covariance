@@ -12,9 +12,9 @@ if __name__ == "__main__":
     try:
         edp = EddyDataPreprocessor(fs=10)
         edp.output_resampled_data(
-            input_dir,
-            resampled_dir,
-            calc_py_dir,
+            input_dir=input_dir,
+            resampled_dir=resampled_dir,
+            calc_py_dir=calc_py_dir,
             output_ratio=True,
             output_resampled=True,
         )
