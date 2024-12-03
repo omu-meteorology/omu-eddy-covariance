@@ -80,9 +80,7 @@ def plot_all_tf_curves(file_path: str):
 
 # メイン処理
 try:
-    tf_csv_path: str = (
-        "C:\\Users\\nakao\\workspace\\sac\\ultra\\transfer_function\\tf-a\\TF_Ultra_a.csv"
-    )
+    tf_csv_path: str = "C:\\Users\\nakao\\workspace\\sac\\ultra\\transfer_function\\tf-a\\TF_Ultra_a.csv"
     plot_all_tf_curves(tf_csv_path)
 except KeyboardInterrupt:
     # キーボード割り込みが発生した場合、処理を中止する

@@ -141,7 +141,7 @@ if __name__ == "__main__":
     # ) # API
     image = ffa.get_satellite_image(
         local_image_path="/home/connect0459/labo/omu-eddy-covariance/storage/assets/images/SAC-zoom_13.png"
-    ) # ローカル
+    )  # ローカル
 
     # フットプリントとホットスポットの可視化
     ffa.plot_flux_footprint_with_hotspots(

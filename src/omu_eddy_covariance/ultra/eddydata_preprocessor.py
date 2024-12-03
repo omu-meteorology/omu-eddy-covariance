@@ -85,7 +85,7 @@ class EddyDataPreprocessor:
         # 平均風向を計算
         wind_direction: float = self.__wind_direction(wind_x_array, wind_y_array)
 
-        # 水平方向に座標回転を行いu, v成分を求める
+        # 水平方向に座標回転を行u, v成分を求める
         wind_u_array, wind_v_array = self.__horizontal_wind_speed(
             wind_x_array, wind_y_array, wind_direction
         )
@@ -122,7 +122,7 @@ class EddyDataPreprocessor:
         output_base_filename: str = "delays_histogram",
         plot_range_tuple: tuple = (-50, 200),
         print_results: bool = True,
-    ) -> dict[str, float]:
+    ) -> dict[str, dict[str, float]]:
         """
         遅れ時間（ラグ）の統計分析を行い、指定されたディレクトリ内のデータファイルを処理します。
 
@@ -140,7 +140,7 @@ class EddyDataPreprocessor:
             print_results (bool): 結果をコンソールに表示するかどうか。
 
         Returns:
-            dict[str, float]: 各変数の遅れ時間（平均値を採用）を含む辞書。
+            dict[str, dict[str, float]]: 各変数の遅れ時間（平均値を採用）を含む辞書。
         """
         all_delays_indices: list[list[int]] = []
         results: dict[str, dict[str, float]] = {}
@@ -150,10 +150,9 @@ class EddyDataPreprocessor:
             os.path.join(input_dir, f"*{input_files_suffix}"), recursive=True
         )
         if not csv_files:
-            self.logger.error(
+            raise FileNotFoundError(
                 f"There is no CSV file to process. Target directory: {input_dir}"
             )
-            return
 
         # ファイル名に含まれる数字に基づいてソート
         csv_files = [f for f in csv_files if re.search(input_files_patterns, f)]
@@ -215,7 +214,7 @@ class EddyDataPreprocessor:
 
             # 平均値を計算
             mean_value = np.mean(filtered_data)
-            mean_seconds = mean_value / self.fs  # 統計値を秒に変換
+            mean_seconds = float(mean_value / self.fs)  # 統計値を秒に変換
             results[column] = mean_seconds
 
             if print_results:
@@ -245,8 +244,9 @@ class EddyDataPreprocessor:
             "Ultra_CH4_ppm_C",
             "Ultra_C2H6_ppb_C",
         ],
-        skiprows: list[int] | None = [0, 2, 3],
-    ) -> pd.DataFrame:
+        metadata_rows: int = 4,
+        skiprows: list[int] = [0, 2, 3],
+    ) -> tuple[pd.DataFrame, list[str]]:
         """
         CSVファイルを読み込み、前処理を行う
 
@@ -269,9 +269,17 @@ class EddyDataPreprocessor:
             skiprows (list[int], optional): スキップする行インデックスのリスト。デフォルトは[0, 2, 3]のため、1, 3, 4行目がスキップされる。
 
         Returns:
-            df (pd.DataFrame): 前処理済みのデータフレーム
+            tuple[pd.DataFrame, list[str]]: 前処理済みのデータフレームとメタデータのリスト
         """
-        # CSVファイルを読み込む
+        # メタデータを読み込む（最初の数行）
+        metadata: list[str] = []
+        with open(filepath, "r") as f:
+            for _ in range(metadata_rows):
+                line = f.readline().strip()
+                # クォーテーションを削除
+                metadata.append(line.replace('"', ""))
+
+        # CSVファイルを読み込む（skiprowsで除外したDataFrameの一行目がヘッダーとなる）
         df: pd.DataFrame = pd.read_csv(filepath, skiprows=skiprows)
 
         # 数値データをfloat型に変換する
@@ -299,7 +307,9 @@ class EddyDataPreprocessor:
 
         # DateTimeインデックスを削除する
         df = df_resampled.reset_index()
-        return df
+        # ミリ秒を1桁にフォーマット
+        df[index_column] = df[index_column].dt.strftime("%Y-%m-%d %H:%M:%S.%f").str[:-5]
+        return df, metadata
 
     def output_resampled_data(
         self,
@@ -359,10 +369,10 @@ class EddyDataPreprocessor:
         for filename in tqdm(csv_files, desc="Processing files"):
             input_filepath: str = os.path.join(input_dir, filename)
             # リサンプリング＆欠損値補間
-            df: pd.DataFrame = self.get_resampled_df(filepath=input_filepath)
+            df, metadata = self.get_resampled_df(filepath=input_filepath)
 
             # 開始時間を取得
-            start_time: datetime = df[key_datetime].iloc[0]
+            start_time: datetime = pd.to_datetime(df[key_datetime].iloc[0])
             # 処理したファイルの中で最も最新の日付
             latest_date = max(latest_date, start_time)
 
@@ -372,7 +382,12 @@ class EddyDataPreprocessor:
                 output_csv_path: str = os.path.join(
                     resampled_dir, f"{base_filename}-resampled.csv"
                 )
-                df.to_csv(output_csv_path, index=False)
+                # メタデータを先に書き込む
+                with open(output_csv_path, "w") as f:
+                    for line in metadata:
+                        f.write(f"{line}\n")
+                # データフレームを追記モードで書き込む
+                df.to_csv(output_csv_path, index=False, mode="a", quoting=3, header=False)
 
             # 相関係数とC2H6/CH4比を計算
             if output_ratio:
@@ -453,7 +468,7 @@ class EddyDataPreprocessor:
             )  # data2とdata1の順序を入れ替え
 
             # 相互相関のピークのインデックスを取得
-            delay: int = (data_length - 1) - correlation.argmax()  # 符号を反転
+            delay: int = int((data_length - 1) - correlation.argmax())  # 符号を反転
 
             delays_list.append(delay)
         return delays_list
@@ -517,7 +532,7 @@ class EddyDataPreprocessor:
         水平方向の平均風向を計算する関数
 
         Parameters:
-            x_array (numpy.ndarray): 東西方向の風速成分
+            x_array (numpy.ndarray): 西方向の風速成分
             y_array (numpy.ndarray): 南北方向の風速成分
 
         Returns:

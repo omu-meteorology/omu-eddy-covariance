@@ -2,7 +2,7 @@ from omu_eddy_covariance import EddyDataPreprocessor
 
 if __name__ == "__main__":
     root_path: str = (
-        "/home/z23641k/labo/omu-eddy-covariance/workspace/ultra/private/data"
+        "/home/connect0459/labo/omu-eddy-covariance/workspace/ultra/private/data/test"
     )
 
     input_dir: str = f"{root_path}/eddy_csv"

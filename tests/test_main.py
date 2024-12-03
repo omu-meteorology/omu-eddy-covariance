@@ -1,4 +1,3 @@
-import pytest
 from omu_eddy_covariance import __version__
 
 

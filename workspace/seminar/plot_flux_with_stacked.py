@@ -60,7 +60,7 @@ def plot_stacked_flux(
         # x軸の設定
         ax.set_xticks(df["month"])  # すべての月を目盛りとして設定
         ax.set_xticklabels(df["month"])  # すべての月をラベルとして表示
-        
+
         # y軸の上限を設定
         if ylim is not None:
             ax.set_ylim(0, ylim)
