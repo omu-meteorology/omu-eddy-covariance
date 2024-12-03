@@ -121,7 +121,7 @@ class EddyDataPreprocessor:
         output_base_filename: str = "delays_histogram",
         plot_range_tuple: tuple = (-50, 200),
         print_results: bool = True,
-    ) -> dict[str, dict[str, float]]:
+    ) -> dict[str, float]:
         """
         遅れ時間（ラグ）の統計分析を行い、指定されたディレクトリ内のデータファイルを処理します。
 
@@ -139,10 +139,10 @@ class EddyDataPreprocessor:
             print_results (bool): 結果をコンソールに表示するかどうか。
 
         Returns:
-            dict[str, dict[str, float]]: 各変数の遅れ時間（平均値を採用）を含む辞書。
+            dict[str, float]: 各変数の遅れ時間（平均値を採用）を含む辞書。
         """
         all_delays_indices: list[list[int]] = []
-        results: dict[str, dict[str, float]] = {}
+        results: dict[str, float] = {}
 
         # メイン処理
         # ファイル名に含まれる数字に基づいてソート
@@ -530,7 +530,7 @@ class EddyDataPreprocessor:
         files: list[str] = [f for f in os.listdir(directory) if f.endswith(suffix)]
         files = [f for f in files if re.search(pattern, f)]
         files.sort(
-            key=lambda x: int(re.search(pattern, x).group(1))
+            key=lambda x: int(re.search(pattern, x).group(1))  # type:ignore
             if re.search(pattern, x)
             else float("inf")
         )
