@@ -119,7 +119,7 @@ class EddyDataPreprocessor:
         median_range: float = 20,
         metadata_rows: int = 4,
         output_dir: str | None = None,
-        output_base_filename: str = "delays_histogram",
+        output_tag: str | None = None,
         plot_range_tuple: tuple = (-50, 200),
         print_results: bool = True,
         resample: bool = True,
@@ -139,7 +139,6 @@ class EddyDataPreprocessor:
             median_range (float): 中央値を中心とした範囲。
             metadata_rows (int): メタデータの行数。
             output_dir (str | None): 出力ディレクトリのパス。Noneの場合はプロットを表示。
-            output_base_filename (str): 出力ファイル名の基礎。デフォルトは"delays_histogram"。
             plot_range_tuple (tuple): ヒストグラムの表示範囲。
             print_results (bool): 結果をコンソールに表示するかどうか。
             resample (bool): データをリサンプリングするかどうか。
@@ -206,8 +205,11 @@ class EddyDataPreprocessor:
             # ファイルとして保存するか
             if output_dir is not None:
                 os.makedirs(output_dir, exist_ok=True)
-                filename = f"{output_base_filename}-{column}.png"
-                filepath = os.path.join(output_dir, filename)
+                filename_base: str = f"delays_histogram-{column}"
+                if output_tag is not None:
+                    filename_base += f"-{output_tag}"
+                filename: str = f"{filename_base}.png"
+                filepath: str = os.path.join(output_dir, filename)
                 plt.savefig(filepath, dpi=300, bbox_inches="tight")
                 plt.close()
 
@@ -241,9 +243,7 @@ class EddyDataPreprocessor:
         # 結果をCSVファイルとして出力
         if output_dir is not None:
             output_df: pd.DataFrame = pd.DataFrame(output_data)
-            csv_filepath: str = os.path.join(
-                output_dir, f"{output_base_filename}_results.csv"
-            )
+            csv_filepath: str = os.path.join(output_dir, "delays_results.csv")
             output_df.to_csv(csv_filepath, index=False, encoding="utf-8")
             self.logger.info(f"解析結果をCSVファイルに保存しました: {csv_filepath}")
 
