@@ -117,10 +117,13 @@ class EddyDataPreprocessor:
         key1: str = "wind_w",
         key2_list: list[str] = ["Tv"],
         median_range: float = 20,
+        metadata_rows: int = 4,
         output_dir: str | None = None,
         output_base_filename: str = "delays_histogram",
         plot_range_tuple: tuple = (-50, 200),
         print_results: bool = True,
+        resample: bool = True,
+        skiprows: list[int] = [0, 2, 3],
     ) -> dict[str, float]:
         """
         遅れ時間（ラグ）の統計分析を行い、指定されたディレクトリ内のデータファイルを処理します。
@@ -156,7 +159,12 @@ class EddyDataPreprocessor:
 
         for file in tqdm(csv_files, desc="Calculating"):
             path: str = os.path.join(input_dir, file)
-            df, _ = self.get_resampled_df(filepath=path)
+            if resample:
+                df, _ = self.get_resampled_df(
+                    filepath=path, metadata_rows=metadata_rows, skiprows=skiprows
+                )
+            else:
+                df = pd.read_csv(path, skiprows=skiprows)
             df = self.add_uvw_columns(df)
             delays_list = self.__calculate_time_delay(
                 df,
@@ -363,7 +371,7 @@ class EddyDataPreprocessor:
             input_dir (str): 入力CSVファイルが格納されているディレクトリのパス。
             resampled_dir (str): リサンプリングされたCSVファイルを出力するディレクトリのパス。
             calc_py_dir (str): 計算結果を保存するディレクトリのパス。
-            input_file_pattern (str): ファイル名からソートキーを抽出する正規表現パターン。デフォルトは"Eddy_(\d+)"で、最初の数字グループでソートします。
+            input_file_pattern (str): ファイル名からソートキーを抽出する正規表現パターン。デフォルトでは、最初の数字グループでソートします。
             input_files_suffix (str): 入力ファイルの拡張子（.datや.csvなど）。デフォルトは".dat"。
             key_ch4_concentration (str): CH4濃度を含む列名。デフォルトは'Ultra_CH4_ppm_C'。
             key_c2h6_concentration (str): C2H6濃度を含む列名。デフォルトは'Ultra_C2H6_ppb'。

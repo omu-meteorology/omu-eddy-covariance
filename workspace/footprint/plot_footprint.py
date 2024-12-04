@@ -81,7 +81,7 @@ work_dir: str = f"{project_root}/workspace/footprint"
 output_dir: str = f"{work_dir}/private/outputs"  # 出力先のディレクトリ
 dotenv_path = f"{work_dir}/.env"  # .envファイル
 
-start_date, end_date = "2024-06-01", "2024-08-31"
+start_date, end_date = "2024-10-01", "2024-11-30"
 date_tag: str = f"-{start_date}_{end_date}"
 
 # ローカルフォントを読み込む場合はコメントアウトを解除して適切なパスを入力

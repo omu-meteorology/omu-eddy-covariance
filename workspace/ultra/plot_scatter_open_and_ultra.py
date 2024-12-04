@@ -373,12 +373,13 @@ class FluxPlotter:
 
 
 if __name__ == "__main__":
-    months: list[str] = ["06", "07", "08", "09"]
+    months: list[str] = ["06", "07", "08", "09", "10"]
     subplot_labels: list[list[str]] = [
         ["(a)", "(b)"],
         ["(c)", "(d)"],
         ["(e)", "(f)"],
         ["(g)", "(h)"],
+        ["(i)", "(j)"],
     ]
 
     # プロッターの初期化
@@ -403,10 +404,10 @@ if __name__ == "__main__":
             labels_c2h6=["Ultra"],
             label_only_ch4=True,
             show_label=False,
-            show_legend=(month == "09"),
+            show_legend=(month == "09" or month=="07"),
             colors_ch4=["black", "red", "blue"],
             colors_c2h6=["black"],
-            filename=f"diurnal-pattern-{month}.png",
+            filename=f"diurnal-pattern-slide-{month}.png",
             subplot_label_ch4=subplot_labels[i][0],
             subplot_label_c2h6=subplot_labels[i][1],
             subplot_fontsize=24,

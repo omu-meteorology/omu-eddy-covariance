@@ -127,17 +127,19 @@ class MonthlyConverter:
         skiprows: int | list[int] = [1],
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
+        include_end_date: bool = False,
         sort_by_date: bool = True,
     ) -> pd.DataFrame:
         """
-        指定されたシートを読み込み、DataFrameとして返却する
-        2行目（単位の行）はスキップする
+        指定されたシートを読み込み、DataFrameとして返却する。
+        デフォルトでは2行目（単位の行）はスキップする。
 
         Args:
             sheet_names (str | list[str]): 読み込むシート名。文字列または文字列のリスト
             start_date (str | None): 開始日 ('yyyy-MM-dd')。この日付の'00:00:00'のデータが開始行となる。
-            end_date (str | None): 終了日 ('yyyy-MM-dd')。この日付の最後のデータが終了行となる。
-            sort_by_date (bool): ファイルの日付でソートするかどうか
+            end_date (str | None): 終了日 ('yyyy-MM-dd')。この日付をデータに含めるかはinclude_end_dateフラグによって変化する。
+            include_end_date (bool): 終了日を含めるかどうか。デフォルトはFalse。
+            sort_by_date (bool): ファイルの日付でソートするかどうかデフォルトはTrue。
 
         Returns:
             pd.DataFrame: 結合されたDataFrame
@@ -194,9 +196,10 @@ class MonthlyConverter:
             combined_df = combined_df[combined_df["Date"] >= start_dt]
 
         if end_date:
-            end_dt = pd.to_datetime(end_date) + pd.Timedelta(
-                days=1
-            )  # 終了日の翌日の0時を設定
+            end_dt = pd.to_datetime(end_date)
+            # 終了日を含む場合、翌日の0時を設定
+            if include_end_date:
+                end_dt += pd.Timedelta(days=1)
             combined_df = combined_df[
                 combined_df["Date"] < end_dt
             ]  # 終了日の翌日0時より前のデータを全て含める
