@@ -119,7 +119,7 @@ class EddyDataPreprocessor:
         median_range: float = 20,
         metadata_rows: int = 4,
         output_dir: str | None = None,
-        output_tag: str | None = None,
+        output_tag: str = "",
         plot_range_tuple: tuple = (-50, 200),
         print_results: bool = True,
         resample: bool = True,
@@ -139,6 +139,7 @@ class EddyDataPreprocessor:
             median_range (float): 中央値を中心とした範囲。
             metadata_rows (int): メタデータの行数。
             output_dir (str | None): 出力ディレクトリのパス。Noneの場合はプロットを表示。
+            output_tag (str): 出力ファイルに付与するタグ。デフォルトは空文字で、何も付与されない。
             plot_range_tuple (tuple): ヒストグラムの表示範囲。
             print_results (bool): 結果をコンソールに表示するかどうか。
             resample (bool): データをリサンプリングするかどうか。
@@ -205,10 +206,7 @@ class EddyDataPreprocessor:
             # ファイルとして保存するか
             if output_dir is not None:
                 os.makedirs(output_dir, exist_ok=True)
-                filename_base: str = f"delays_histogram-{column}"
-                if output_tag is not None:
-                    filename_base += f"-{output_tag}"
-                filename: str = f"{filename_base}.png"
+                filename: str = f"delays_histogram-{column}{output_tag}.png"
                 filepath: str = os.path.join(output_dir, filename)
                 plt.savefig(filepath, dpi=300, bbox_inches="tight")
                 plt.close()
@@ -228,22 +226,23 @@ class EddyDataPreprocessor:
             # 結果とメタデータを出力データに追加
             output_data.append(
                 {
-                    "column": column,
-                    "delay_seconds": mean_seconds,
-                    "unit": "seconds",
-                    "reference_column": key1,
-                    "calculation_method": "mean",
-                    "median_range": f"±{median_range} samples",
+                    "key1": key1,
+                    "key2": column,
+                    "key2_delay": round(mean_seconds, 2),  # 数値として小数点2桁を保持
+                    "delay_unit": "s",
+                    "median_range": median_range,
                 }
             )
 
             if print_results:
-                print(f"{column:<{max_key_length}} : {mean_seconds:.2f} seconds")
+                print(f"{column:<{max_key_length}} : {mean_seconds:.2f} s")
 
         # 結果をCSVファイルとして出力
         if output_dir is not None:
             output_df: pd.DataFrame = pd.DataFrame(output_data)
-            csv_filepath: str = os.path.join(output_dir, "delays_results.csv")
+            csv_filepath: str = os.path.join(
+                output_dir, f"delays_results{output_tag}.csv"
+            )
             output_df.to_csv(csv_filepath, index=False, encoding="utf-8")
             self.logger.info(f"解析結果をCSVファイルに保存しました: {csv_filepath}")
 
