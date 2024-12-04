@@ -127,6 +127,7 @@ class EddyDataPreprocessor:
     ) -> dict[str, float]:
         """
         遅れ時間（ラグ）の統計分析を行い、指定されたディレクトリ内のデータファイルを処理します。
+        解析結果とメタデータはCSVファイルとして出力されます。
 
         Args:
             input_dir (str): 入力データファイルが格納されているディレクトリのパス。
@@ -136,10 +137,13 @@ class EddyDataPreprocessor:
             key1 (str): 基準変数の列名。
             key2_list (list[str]): 比較変数の列名のリスト。
             median_range (float): 中央値を中心とした範囲。
+            metadata_rows (int): メタデータの行数。
             output_dir (str | None): 出力ディレクトリのパス。Noneの場合はプロットを表示。
             output_base_filename (str): 出力ファイル名の基礎。デフォルトは"delays_histogram"。
             plot_range_tuple (tuple): ヒストグラムの表示範囲。
             print_results (bool): 結果をコンソールに表示するかどうか。
+            resample (bool): データをリサンプリングするかどうか。
+            skiprows (list[int]): スキップする行番号のリスト。
 
         Returns:
             dict[str, float]: 各変数の遅れ時間（平均値を採用）を含む辞書。
@@ -154,7 +158,7 @@ class EddyDataPreprocessor:
         )
         if not csv_files:
             raise FileNotFoundError(
-                f"There is no CSV file to process. Target directory: {input_dir}"
+                f"There is no '{input_files_suffix}' file to process; input_dir: '{input_dir}', input_files_suffix: '{input_files_suffix}'"
             )
 
         for file in tqdm(csv_files, desc="Calculating"):
@@ -185,6 +189,9 @@ class EddyDataPreprocessor:
         if print_results:
             self.logger.info(f"カラム`{key1}`に対する遅れ時間を表示します。")
 
+        # 結果を格納するためのリスト
+        output_data = []
+
         for column in delays_indices_df.columns:
             data: pd.Series = delays_indices_df[column]
 
@@ -196,7 +203,7 @@ class EddyDataPreprocessor:
             plt.ylabel("Frequency")
             plt.xlim(plot_range_tuple)
 
-            # ファイルとして保存するか、表示するか
+            # ファイルとして保存するか
             if output_dir is not None:
                 os.makedirs(output_dir, exist_ok=True)
                 filename = f"{output_base_filename}-{column}.png"
@@ -213,11 +220,33 @@ class EddyDataPreprocessor:
 
             # 平均値を計算
             mean_value = np.mean(filtered_data)
-            mean_seconds = float(mean_value / self.fs)  # 統計値を秒に変換
+            mean_seconds: float = float(mean_value / self.fs)  # 統計値を秒に変換
             results[column] = mean_seconds
+
+            # 結果とメタデータを出力データに追加
+            output_data.append(
+                {
+                    "column": column,
+                    "delay_seconds": mean_seconds,
+                    "unit": "seconds",
+                    "reference_column": key1,
+                    "calculation_method": "mean",
+                    "median_range": f"±{median_range} samples",
+                }
+            )
 
             if print_results:
                 print(f"{column:<{max_key_length}} : {mean_seconds:.2f} seconds")
+
+        # 結果をCSVファイルとして出力
+        if output_dir is not None:
+            output_df: pd.DataFrame = pd.DataFrame(output_data)
+            csv_filepath: str = os.path.join(
+                output_dir, f"{output_base_filename}_results.csv"
+            )
+            output_df.to_csv(csv_filepath, index=False, encoding="utf-8")
+            self.logger.info(f"解析結果をCSVファイルに保存しました: {csv_filepath}")
+
         return results
 
     def get_resampled_df(
