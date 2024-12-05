@@ -22,7 +22,7 @@ center_lon=135.4829511120712,
 class MSAInputConfig:
     """入力ファイルの設定を保持するデータクラス"""
 
-    delay: float  # 測器の遅れ時間（秒）
+    lag: float  # 測器の遅れ時間（秒）
     fs: float  # サンプリング周波数（Hz）
     path: Path | str  # ファイルパス
 
@@ -33,10 +33,10 @@ class MSAInputConfig:
         Raises:
             ValueError: 遅延時間が負の値である場合、またはサポートされていないファイル拡張子の場合。
         """
-        # delayが0以上のfloatかを確認
-        if not isinstance(self.delay, (int, float)) or self.delay < 0:
+        # lagが0以上のfloatかを確認
+        if not isinstance(self.lag, (int, float)) or self.lag < 0:
             raise ValueError(
-                f"Invalid delay value: {self.delay}. Must be a non-negative float."
+                f"Invalid lag value: {self.lag}. Must be a non-negative float."
             )
         # fsが有効かを確認
         if not isinstance(self.fs, (int, float)) or self.fs <= 0:
@@ -54,7 +54,7 @@ class MSAInputConfig:
     @classmethod
     def validate_and_create(
         cls,
-        delay: float,
+        lag: float,
         fs: float,
         path: Path | str,
     ) -> "MSAInputConfig":
@@ -65,14 +65,14 @@ class MSAInputConfig:
         有効な場合に新しいMSAInputConfigオブジェクトを返します。
 
         Args:
-            delay (float): 遅延時間。0以上のfloatである必要があります。
+            lag (float): 遅延時間。0以上のfloatである必要があります。
             fs (float): サンプリング周波数。正のfloatである必要があります。
             path (Path | str): 入力ファイルのパス。サポートされている拡張子は.txtと.csvです。
 
         Returns:
             MSAInputConfig: 検証された入力設定を持つMSAInputConfigオブジェクト。
         """
-        return cls(delay=delay, fs=fs, path=path)
+        return cls(lag=lag, fs=fs, path=path)
 
 
 class MobileSpatialAnalyzer:
@@ -833,14 +833,14 @@ class MobileSpatialAnalyzer:
         # 緯度経度のnanを削除
         df = df.dropna(subset=["latitude", "longitude"])
 
-        if config.delay < 0:
+        if config.lag < 0:
             raise ValueError(
-                f"Invalid delay value: {config.delay}. Must be a non-negative float."
+                f"Invalid lag value: {config.lag}. Must be a non-negative float."
             )
 
         # 遅れ時間の補正
         columns_to_shift: list[str] = ["ch4_ppm", "c2h6_ppb", "h2o_ppm"]
-        shift_periods: float = -config.delay
+        shift_periods: float = -config.lag
 
         for col in columns_to_shift:
             df[col] = df[col].shift(shift_periods)
@@ -868,9 +868,9 @@ class MobileSpatialAnalyzer:
             if isinstance(inp, MSAInputConfig):
                 normalized.append(inp)  # すでに検証済みのため、そのまま追加
             else:
-                delay, fs, path = inp
+                lag, fs, path = inp
                 normalized.append(
-                    MSAInputConfig.validate_and_create(delay=delay, fs=fs, path=path)
+                    MSAInputConfig.validate_and_create(lag=lag, fs=fs, path=path)
                 )
         return normalized
 

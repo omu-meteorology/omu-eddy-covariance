@@ -67,14 +67,21 @@ class EddyDataPreprocessor:
 
     def add_uvw_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        DataFrameに鉛直風速w、水平風速u、v の列を追加する関数
+        DataFrameに水平風速u、v、鉛直風速wの列を追加する関数。
+        各成分のキーは'wind_u'、'wind_v'、'wind_w'である。
 
         Parameters:
             df (pd.DataFrame): 風速データを含むDataFrame
 
         Returns:
-            df (pd.DataFrame): 鉛直風速w、水平風速u、vの列を追加したDataFrame
+            df (pd.DataFrame): 水平風速u、v、鉛直風速wの列を追加したDataFrame
         """
+        required_columns: list[str] = ["Ux", "Uy", "Uz"]
+        # 必要な列がDataFrameに存在するか確認
+        for column in required_columns:
+            if column not in df.columns:
+                raise ValueError(f"必要な列 '{column}' がDataFrameに存在しません。")
+
         processed_df: pd.DataFrame = df.copy()
         # pandasの.valuesを使用してnumpy配列を取得し、その型をnp.ndarrayに明示的にキャストする
         wind_x_array: np.ndarray = np.array(processed_df["Ux"].values)
@@ -108,7 +115,7 @@ class EddyDataPreprocessor:
 
         return processed_df
 
-    def analyze_time_delays(
+    def analyze_lag_times(
         self,
         input_dir: str,
         figsize: tuple[float, float] = (10, 8),
@@ -122,8 +129,8 @@ class EddyDataPreprocessor:
         output_tag: str = "",
         plot_range_tuple: tuple = (-50, 200),
         print_results: bool = True,
-        resample: bool = True,
         skiprows: list[int] = [0, 2, 3],
+        use_resampling: bool = True,
     ) -> dict[str, float]:
         """
         遅れ時間（ラグ）の統計分析を行い、指定されたディレクトリ内のデータファイルを処理します。
@@ -142,13 +149,15 @@ class EddyDataPreprocessor:
             output_tag (str): 出力ファイルに付与するタグ。デフォルトは空文字で、何も付与されない。
             plot_range_tuple (tuple): ヒストグラムの表示範囲。
             print_results (bool): 結果をコンソールに表示するかどうか。
-            resample (bool): データをリサンプリングするかどうか。
             skiprows (list[int]): スキップする行番号のリスト。
+            use_resampling (bool): データをリサンプリングするかどうか。
+                inputするファイルが既にリサンプリング済みの場合はFalseでよい。
+                デフォルトはTrue。
 
         Returns:
             dict[str, float]: 各変数の遅れ時間（平均値を採用）を含む辞書。
         """
-        all_delays_indices: list[list[int]] = []
+        all_lags_indices: list[list[int]] = []
         results: dict[str, float] = {}
 
         # メイン処理
@@ -163,28 +172,28 @@ class EddyDataPreprocessor:
 
         for file in tqdm(csv_files, desc="Calculating"):
             path: str = os.path.join(input_dir, file)
-            if resample:
+            if use_resampling:
                 df, _ = self.get_resampled_df(
                     filepath=path, metadata_rows=metadata_rows, skiprows=skiprows
                 )
             else:
                 df = pd.read_csv(path, skiprows=skiprows)
             df = self.add_uvw_columns(df)
-            delays_list = self.__calculate_time_delay(
+            lags_list = self.__calculate_lag_time(
                 df,
                 key1,
                 key2_list,
             )
-            all_delays_indices.append(delays_list)
+            all_lags_indices.append(lags_list)
         self.logger.info("すべてのCSVファイルにおける遅れ時間が計算されました。")
 
-        # Convert all_delays_indices to a DataFrame
-        delays_indices_df: pd.DataFrame = pd.DataFrame(
-            all_delays_indices, columns=key2_list
+        # Convert all_lags_indices to a DataFrame
+        lags_indices_df: pd.DataFrame = pd.DataFrame(
+            all_lags_indices, columns=key2_list
         )
 
         # フォーマット用のキーの最大の長さ
-        max_key_length: int = max(len(column) for column in delays_indices_df.columns)
+        max_key_length: int = max(len(column) for column in lags_indices_df.columns)
 
         if print_results:
             self.logger.info(f"カラム`{key1}`に対する遅れ時間を表示します。")
@@ -192,8 +201,8 @@ class EddyDataPreprocessor:
         # 結果を格納するためのリスト
         output_data = []
 
-        for column in delays_indices_df.columns:
-            data: pd.Series = delays_indices_df[column]
+        for column in lags_indices_df.columns:
+            data: pd.Series = lags_indices_df[column]
 
             # ヒストグラムの作成
             plt.figure(figsize=figsize)
@@ -206,7 +215,7 @@ class EddyDataPreprocessor:
             # ファイルとして保存するか
             if output_dir is not None:
                 os.makedirs(output_dir, exist_ok=True)
-                filename: str = f"delays_histogram-{column}{output_tag}.png"
+                filename: str = f"lags_histogram-{column}{output_tag}.png"
                 filepath: str = os.path.join(output_dir, filename)
                 plt.savefig(filepath, dpi=300, bbox_inches="tight")
                 plt.close()
@@ -228,8 +237,8 @@ class EddyDataPreprocessor:
                 {
                     "key1": key1,
                     "key2": column,
-                    "key2_delay": round(mean_seconds, 2),  # 数値として小数点2桁を保持
-                    "delay_unit": "s",
+                    "key2_lag": round(mean_seconds, 2),  # 数値として小数点2桁を保持
+                    "lag_unit": "s",
                     "median_range": median_range,
                 }
             )
@@ -241,7 +250,7 @@ class EddyDataPreprocessor:
         if output_dir is not None:
             output_df: pd.DataFrame = pd.DataFrame(output_data)
             csv_filepath: str = os.path.join(
-                output_dir, f"delays_results{output_tag}.csv"
+                output_dir, f"lags_results{output_tag}.csv"
             )
             output_df.to_csv(csv_filepath, index=False, encoding="utf-8")
             self.logger.info(f"解析結果をCSVファイルに保存しました: {csv_filepath}")
@@ -470,22 +479,26 @@ class EddyDataPreprocessor:
                 ch4_data: pd.Series = df[key_ch4_concentration]
                 c2h6_data: pd.Series = df[key_c2h6_concentration]
 
-                # 近似直線の傾き、切片、相関係数を計算
                 ratio_row: dict[str, str | float] = {
                     "Date": start_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                    "Slope": f"{np.nan}",
-                    "Intercept": f"{np.nan}",
-                    "R": f"{np.nan}",
+                    "slope": f"{np.nan}",
+                    "intercept": f"{np.nan}",
+                    "r_value": f"{np.nan}",
+                    "p_value": f"{np.nan}",
+                    "stderr": f"{np.nan}",
                 }
+                # 近似直線の傾き、切片、相関係数を計算
                 try:
-                    slope, intercept, r_value, _, _ = stats.linregress(
+                    slope, intercept, r_value, p_value, stderr = stats.linregress(
                         ch4_data, c2h6_data
                     )
-                    ratio_row = {
+                    ratio_row: dict[str, str | float] = {
                         "Date": start_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                        "Slope": f"{slope:.6f}",
-                        "Intercept": f"{intercept:.6f}",
-                        "R": f"{r_value:.6f}",
+                        "slope": f"{slope:.6f}",
+                        "intercept": f"{intercept:.6f}",
+                        "r_value": f"{r_value:.6f}",
+                        "p_value": f"{p_value:.6f}",
+                        "stderr": f"{stderr:.6f}",
                     }
                 except Exception:
                     # 何もせず、デフォルトの ratio_row を使用する
@@ -509,7 +522,7 @@ class EddyDataPreprocessor:
             ratio_path: str = os.path.join(calc_py_dir, ratio_filename)
             ratio_df.to_csv(ratio_path, index=False)
 
-    def __calculate_time_delay(
+    def __calculate_lag_time(
         self,
         df: pd.DataFrame,
         key1: str,
@@ -527,7 +540,7 @@ class EddyDataPreprocessor:
         Returns:
             list[int]: 各比較変数に対する遅れ時間（ディレイ）のリスト
         """
-        delays_list: list[int] = []
+        lags_list: list[int] = []
         for key2 in key2_list:
             data1: np.ndarray = np.array(df[key1].values)
             data2: np.ndarray = np.array(df[key2].values)
@@ -544,10 +557,10 @@ class EddyDataPreprocessor:
             )  # data2とdata1の順序を入れ替え
 
             # 相互相関のピークのインデックスを取得
-            delay: int = int((data_length - 1) - correlation.argmax())  # 符号を反転
+            lag: int = int((data_length - 1) - correlation.argmax())  # 符号を反転
 
-            delays_list.append(delay)
-        return delays_list
+            lags_list.append(lag)
+        return lags_list
 
     def __get_sorted_files(
         self, directory: str, pattern: str, suffix: str
@@ -637,7 +650,6 @@ class EddyDataPreprocessor:
         Returns:
             wind_direction (float): 風向 (radians)
         """
-
         wind_direction: float = np.arctan2(np.mean(y_array), np.mean(x_array))
         # CSAT3では以下の補正が必要
         wind_direction = 0 - wind_direction

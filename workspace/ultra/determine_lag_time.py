@@ -9,9 +9,11 @@ if __name__ == "__main__":
 
     # メイン処理
     edp = EddyDataPreprocessor(fs=10)
-    edp.analyze_time_delays(
+    edp.analyze_lag_times(
         input_dir=input_dir,
-        output_dir=output_dir,
+        input_files_suffix=".csv",
+        use_resampling=False,
         key1="wind_w",
         key2_list=["Tv", "Ultra_CH4_ppm_C", "Ultra_C2H6_ppb"],
+        output_dir=output_dir,
     )

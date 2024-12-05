@@ -6,8 +6,8 @@ class SpectrumCalculator:
     def __init__(
         self,
         df: pd.DataFrame,
-        apply_delay_keys: list[str],
-        delay_second: float,
+        apply_lag_keys: list[str],
+        lag_second: float,
         fs: float,
         apply_window: bool = True,
         dimensionless: bool = True,
@@ -18,16 +18,16 @@ class SpectrumCalculator:
 
         Args:
             df (pd.DataFrame): pandasのデータフレーム。解析対象のデータを含む。
-            apply_delay_keys (list[str]): コスペクトルの遅れ時間補正を適用するキーのリスト。
-            delay_second (float): 遅延時間（秒）。データの遅延を指定。
+            apply_lag_keys (list[str]): コスペクトルの遅れ時間補正を適用するキーのリスト。
+            lag_second (float): 遅延時間（秒）。データの遅延を指定。
             fs (float): サンプリング周波数（Hz）。データのサンプリングレートを指定。
             apply_window (bool, optional): 窓関数を適用するフラグ。デフォルトはTrue。
             dimensionless (bool, optional): Trueの場合、分散で割って無次元化を行う。デフォルトはTrue。
             plots (int): プロットする点の数。可視化のためのデータポイント数。
         """
-        self.apply_delay_keys: list[str] = apply_delay_keys
+        self.apply_lag_keys: list[str] = apply_lag_keys
         self.apply_window: bool = apply_window
-        self.delay_second: float = delay_second
+        self.lag_second: float = lag_second
         self.dimensionless: bool = dimensionless
         self.df: pd.DataFrame = df
         self.fs: float = fs
@@ -99,8 +99,10 @@ class SpectrumCalculator:
         data2: np.ndarray = np.array(self.df[key2].values)
 
         # 遅れ時間の補正
-        if key2 in self.apply_delay_keys:
-            data1, data2 = self.__correct_time_delay(self.delay_second, data1, data2)
+        if key2 in self.apply_lag_keys:
+            data1, data2 = self.__correct_lag_time(
+                data1=data1, data2=data2, lag_second=self.lag_second
+            )
 
         # トレンド除去
         data1 = self.__detrend(data1, True)
@@ -283,7 +285,7 @@ class SpectrumCalculator:
                 type=self.window_type, data_length=data_length
             )
             column_data *= window
-            window_scale = np.mean(window**2)
+            window_scale = float(np.mean(window**2))
 
         # FFTの計算
         fft_result = np.fft.rfft(column_data)
@@ -357,11 +359,11 @@ class SpectrumCalculator:
             # 線形スケールの場合はそのまま返す
             return freqs, power_spectrum
 
-    def __correct_time_delay(
+    def __correct_lag_time(
         self,
         data1: np.ndarray,
         data2: np.ndarray,
-        delay_second: float,
+        lag_second: float,
     ) -> tuple:
         """
         相互相関関数を用いて遅れ時間を補正する
@@ -370,7 +372,7 @@ class SpectrumCalculator:
         Args:
             data1 (np.ndarray): 基準データ
             data2 (np.ndarray): 遅れているデータ
-            delay_second (float): data1からdata2が遅れている時間（秒）。負の値は許可されない。
+            lag_second (float): data1からdata2が遅れている時間（秒）。負の値は許可されない。
 
         Returns:
             tuple: (data1, data2)
@@ -378,17 +380,17 @@ class SpectrumCalculator:
                 - data2 (np.ndarray): 補正された遅れているデータ
 
         Raises:
-            ValueError: delay_secondが負の値の場合
+            ValueError: lag_secondが負の値の場合
         """
-        if delay_second < 0:
-            raise ValueError("delay_second must be non-negative.")
+        if lag_second < 0:
+            raise ValueError("lag_second must be non-negative.")
 
-        # delay_secondをサンプリング周波数でスケーリングしてインデックスに変換
-        delay_index: int = int(delay_second * self.fs)
+        # lag_secondをサンプリング周波数でスケーリングしてインデックスに変換
+        lag_index: int = int(lag_second * self.fs)
 
         # データ1とデータ2の共通部分を抽出
-        data1 = data1[delay_index:]
-        data2 = data2[:-delay_index]
+        data1 = data1[lag_index:]
+        data2 = data2[:-lag_index]
 
         return data1, data2
 

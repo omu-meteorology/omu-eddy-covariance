@@ -2,10 +2,10 @@ import os
 from omu_eddy_covariance import TransferFunctionCalculator
 
 # 変数定義
-base_path = "/home/connect0459/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
-tf_dir_name: str = "tf"
-# tf_file_name: str = "TF_Ultra.2024.08.06.csv"
-tf_file_name: str = "TF_Ultra.2024.08.06-detrend.csv"
+# base_path = r"C:\Users\nakao\workspace\sac\transfer_function\data\ultra\2024.10.07"
+base_path = r"C:\Users\nakao\workspace\sac\ultra\data\2024.10.07\Ultra_Eddy\tf"
+tf_file_name: str = "TF_Ultra.2024.10.07.csv"
+# tf_file_name: str = "TF_Ultra.2024.10.07-detrend.csv"
 
 show_cospectra_plot: bool = True
 # show_cospectra_plot: bool = False
@@ -19,7 +19,7 @@ key_wc2h6: str = " f*cospec_wq/wq closed"
 
 # メイン処理
 try:
-    file_path: str = os.path.join(base_path, tf_dir_name, tf_file_name)
+    file_path: str = os.path.join(base_path, tf_file_name)
     tfc = TransferFunctionCalculator(file_path, " f", 0.01, 1)
 
     # コスペクトルのプロット

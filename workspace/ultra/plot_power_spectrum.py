@@ -82,8 +82,8 @@ if __name__ == "__main__":
     calculator = SpectrumCalculator(
         df=df,
         fs=10,
-        apply_delay_keys=["Ultra_CH4_ppm_C", "Ultra_C2H6_ppb"],
-        delay_second=11.95,
+        apply_lag_keys=["Ultra_CH4_ppm_C", "Ultra_C2H6_ppb"],
+        lag_second=11.95,
     )
     plot_power_spectrum(
         calculator,
