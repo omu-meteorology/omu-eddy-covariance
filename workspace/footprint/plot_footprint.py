@@ -148,7 +148,7 @@ if __name__ == "__main__":
     )  # ローカル
 
     # フットプリントとホットスポットの可視化
-    ffa.plot_flux_footprint(
+    ffa.plot_flux_footprint_with_hotspots(
         x_list=x_list_r,  # メートル単位のx座標
         y_list=y_list_r,  # メートル単位のy座標
         c_list=c_list_r,

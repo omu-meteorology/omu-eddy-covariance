@@ -490,6 +490,69 @@ class FluxFootprintAnalyzer:
         cbar_labelpad: int = 20,
         cmap: str = "jet",
         function: callable = np.mean,
+        lat_correction: float = 1,
+        lon_correction: float = 1,
+        output_path: str = "",
+        satellite_image: ImageFile | None = None,
+        xy_max: float = 5000,
+    ) -> None:
+        """
+        Google Maps上にフットプリントデータをプロットします。
+
+        このメソッドは、指定されたフットプリントデータのみをGoogle Maps上に可視化します。
+
+        引数:
+            x_list (list[float]): フットプリントのx座標リスト（メートル単位）。
+            y_list (list[float]): フットプリントのy座標リスト（メートル単位）。
+            c_list (list[float]): フットプリントの強度を示す値のリスト。
+            center_lat (float): プロットの中心となる緯度。
+            center_lon (float): プロットの中心となる経度。
+            cmap (str): 使用するカラーマップの名前。
+            vmin (float): カラーバーの最小値。
+            vmax (float): カラーバーの最大値。
+            function (callable, optional): フットプリントの集約関数（デフォルトはnp.mean）。
+            cbar_label (str, optional): カラーバーのラベル。
+            cbar_labelpad (int, optional): カラーバーラベルのパディング。
+            lon_correction (float, optional): 経度方向の補正係数（デフォルトは1）。
+            lat_correction (float, optional): 緯度方向の補正係数（デフォルトは1）。
+            output_path (str, optional): プロット画像の保存先パス。
+            satellite_image (ImageFile | None, optional): 使用する衛星画像。指定がない場合はデフォルトの画像が生成されます。
+            xy_max (float, optional): 表示範囲の最大値（デフォルトは4000）。
+        """
+        self.plot_flux_footprint_with_hotspots(
+            x_list=x_list,
+            y_list=y_list,
+            c_list=c_list,
+            center_lat=center_lat,
+            center_lon=center_lon,
+            vmin=vmin,
+            vmax=vmax,
+            cbar_label=cbar_label,
+            cbar_labelpad=cbar_labelpad,
+            cmap=cmap,
+            function=function,
+            hotspots=None,  # hotspotsをNoneに設定
+            hotspot_colors=None,
+            lat_correction=lat_correction,
+            lon_correction=lon_correction,
+            output_path=output_path,
+            satellite_image=satellite_image,
+            xy_max=xy_max,
+        )
+
+    def plot_flux_footprint_with_hotspots(
+        self,
+        x_list: list[float],
+        y_list: list[float],
+        c_list: list[float],
+        center_lat: float,
+        center_lon: float,
+        vmin: float,
+        vmax: float,
+        cbar_label: str = "",
+        cbar_labelpad: int = 20,
+        cmap: str = "jet",
+        function: callable = np.mean,
         hotspots: list[HotspotData] | None = None,
         hotspot_colors: dict[str, str] | None = None,
         lat_correction: float = 1,
