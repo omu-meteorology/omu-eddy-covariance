@@ -6,10 +6,9 @@ import jpholiday
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from PIL import Image
 from PIL.ImageFile import ImageFile
-from tqdm import tqdm
-from typing import Optional
 from datetime import datetime
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 from omu_eddy_covariance import HotspotData
@@ -398,88 +397,87 @@ class FluxFootprintAnalyzer:
 
         return filtered_df
 
-    def get_satellite_image(
+    def get_satellite_image_by_api(
         self,
-        api_key: Optional[str] = None,
-        center_lat: Optional[float] = None,
-        center_lon: Optional[float] = None,
-        zoom: int = 13,
+        api_key: str,
+        center_lat: float,
+        center_lon: float,
+        output_path: str,
         scale: int = 1,
         size: tuple[int, int] = (2160, 2160),
-        output_path: Optional[str] = None,
-        local_image_path: Optional[str] = None,
+        zoom: int = 13,
     ) -> ImageFile:
         """
-        Google Maps Static APIまたはローカルファイルから衛星画像を取得します。
+        Google Maps Static APIを使用して衛星画像を取得します。
 
         Args:
-            api_key (Optional[str]): Google Maps Static APIのキー。指定されていない場合はローカル画像を使用。
-            center_lat (Optional[float]): 中心の緯度。APIキーが指定されている場合に必須。
-            center_lon (Optional[float]): 中心の経度。APIキーが指定されている場合に必須。
-            zoom (int, optional): ズームレベル（0-21）。デフォルトは13。
-            size (tuple[int, int], optional): 画像サイズ (幅, 高さ)。デフォルトは(2160, 2160)。
-            scale (int, optional): 画像の解像度スケール（1か2）。デフォルトは1。
-            output_path (Optional[str], optional): 画像の保存パス。デフォルトはNone。
-            local_image_path (Optional[str], optional): ローカル画像のパス。デフォルトはNone。
+            api_key (str): Google Maps Static APIのキー
+            center_lat (float): 中心の緯度
+            center_lon (float): 中心の経度
+            output_path (str): 画像の保存パス。
+            scale (int, optional): 画像の解像度スケール（1か2）。デフォルトは1
+            size (tuple[int, int], optional): 画像サイズ (幅, 高さ)。デフォルトは(2160, 2160)
+            zoom (int, optional): ズームレベル（0-21）。デフォルトは13
 
         Returns:
             ImageFile: 取得した衛星画像
 
         Raises:
-            ValueError: APIキーが指定されているが、center_latまたはcenter_lonがNoneの場合。
-            FileNotFoundError: local_image_pathが指定されているが、ファイルが存在しない場合。
-            Exception: 画像の取得に失敗した場合。
+            requests.RequestException: API呼び出しに失敗した場合
         """
-        if api_key:
-            if center_lat is None or center_lon is None:
-                raise ValueError(
-                    "APIキーが指定されている場合、center_latとcenter_lonは必須です。"
-                )
+        base_url = "https://maps.googleapis.com/maps/api/staticmap"
+        params = {
+            "center": f"{center_lat},{center_lon}",
+            "zoom": zoom,
+            "size": f"{size[0]}x{size[1]}",
+            "maptype": "satellite",
+            "scale": scale,
+            "key": api_key,
+        }
 
-            base_url = "https://maps.googleapis.com/maps/api/staticmap"
-            params = {
-                "center": f"{center_lat},{center_lon}",
-                "zoom": zoom,
-                "size": f"{size[0]}x{size[1]}",
-                "maptype": "satellite",
-                "scale": scale,
-                "key": api_key,
-            }
+        try:
+            response = requests.get(base_url, params=params)
+            response.raise_for_status()
 
-            try:
-                response = requests.get(base_url, params=params)
-                response.raise_for_status()
+            image = Image.open(io.BytesIO(response.content))
+            image.save(output_path)
+            self.logger.info(f"衛星画像を保存しました: {output_path}")
 
-                image = Image.open(io.BytesIO(response.content))
-
-                if output_path:
-                    image.save(output_path)
-                    self.logger.info(f"衛星画像を保存しました: {output_path}")
-
-                self.__got_satellite_image = True
-                return image
-
-            except requests.RequestException as e:
-                self.logger.error(f"衛星画像の取得に失敗しました: {str(e)}")
-                raise
-
-        elif local_image_path:
-            if not os.path.exists(local_image_path):
-                raise FileNotFoundError(
-                    f"指定されたローカル画像が存在しません: {local_image_path}"
-                )
-
-            image = Image.open(local_image_path)
-            self.logger.info(f"ローカル画像を使用しました: {local_image_path}")
             self.__got_satellite_image = True
             return image
 
-        else:
-            raise ValueError(
-                "api_keyまたはlocal_image_pathのいずれかを指定する必要があります。"
+        except requests.RequestException as e:
+            self.logger.error(f"衛星画像の取得に失敗しました: {str(e)}")
+            raise
+
+    def get_satellite_image_by_local(
+        self,
+        local_image_path: str,
+    ) -> ImageFile:
+        """
+        ローカルファイルから衛星画像を読み込みます。
+
+        Args:
+            local_image_path (str): ローカル画像のパス
+
+        Returns:
+            ImageFile: 読み込んだ衛星画像
+
+        Raises:
+            FileNotFoundError: 指定されたパスにファイルが存在しない場合
+        """
+        if not os.path.exists(local_image_path):
+            raise FileNotFoundError(
+                f"指定されたローカル画像が存在しません: {local_image_path}"
             )
 
-    def plot_flux_footprint_with_hotspots(
+        image = Image.open(local_image_path)
+        self.logger.info(f"ローカル画像を使用しました: {local_image_path}")
+
+        self.__got_satellite_image = True
+        return image
+
+    def plot_flux_footprint(
         self,
         x_list: list[float],
         y_list: list[float],
@@ -594,6 +592,7 @@ class FluxFootprintAnalyzer:
         # 8. ホットスポットの描画
         spot_handles = []
 
+        # ホットスポットが指定されているときのみ作図
         if hotspots is not None:
             default_colors = {"bio": "blue", "gas": "red", "comb": "green"}
 
@@ -681,7 +680,7 @@ class FluxFootprintAnalyzer:
             cbar.set_label(cbar_label, rotation=270, labelpad=cbar_labelpad)
 
         # 12. ホットスポットの凡例追加
-        if spot_handles:
+        if hotspots is not None and spot_handles:
             legend = ax_data.legend(
                 handles=spot_handles,
                 loc="upper left",

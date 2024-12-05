@@ -136,15 +136,19 @@ if __name__ == "__main__":
     )
 
     # 航空写真の取得
-    # image = ffa.get_satellite_image(
-    #     api_key=gms_api_key, center_lat=center_lan, center_lon=center_lon, zoom=13
-    # ) # API
-    image = ffa.get_satellite_image(
+    # image = ffa.get_satellite_image_by_api(
+    #     api_key=gms_api_key,
+    #     center_lat=center_lan,
+    #     center_lon=center_lon,
+    #     output_path="/home/connect0459/labo/omu-eddy-covariance/storage/assets/images/SAC-zoom_13.png",
+    #     zoom=13,
+    # )  # API
+    image = ffa.get_satellite_image_by_local(
         local_image_path="/home/connect0459/labo/omu-eddy-covariance/storage/assets/images/SAC-zoom_13.png"
     )  # ローカル
 
     # フットプリントとホットスポットの可視化
-    ffa.plot_flux_footprint_with_hotspots(
+    ffa.plot_flux_footprint(
         x_list=x_list_r,  # メートル単位のx座標
         y_list=y_list_r,  # メートル単位のy座標
         c_list=c_list_r,
