@@ -32,39 +32,6 @@ class EddyDataPreprocessor:
             log_level = DEBUG
         self.logger: Logger = EddyDataPreprocessor.setup_logger(logger, log_level)
 
-    @staticmethod
-    def setup_logger(logger: Logger | None, log_level: int = INFO) -> Logger:
-        """
-        ロガーを設定します。
-
-        このメソッドは、ロギングの設定を行い、ログメッセージのフォーマットを指定します。
-        ログメッセージには、日付、ログレベル、メッセージが含まれます。
-
-        渡されたロガーがNoneまたは不正な場合は、新たにロガーを作成し、標準出力に
-        ログメッセージが表示されるようにStreamHandlerを追加します。ロガーのレベルは
-        引数で指定されたlog_levelに基づいて設定されます。
-
-        引数:
-            logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
-            log_level (int): ロガーのログレベル。デフォルトはINFO。
-
-        戻り値:
-            Logger: 設定されたロガーオブジェクト。
-        """
-        if logger is not None and isinstance(logger, Logger):
-            return logger
-        # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
-        new_logger: Logger = getLogger()
-        # 既存のハンドラーをすべて削除
-        for handler in new_logger.handlers[:]:
-            new_logger.removeHandler(handler)
-        new_logger.setLevel(log_level)  # ロガーのレベルを設定
-        ch = StreamHandler()
-        ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
-        new_logger.addHandler(ch)  # StreamHandlerの追加
-        return new_logger
-
     def add_uvw_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         DataFrameに水平風速u、v、鉛直風速wの列を追加する関数。
@@ -89,20 +56,26 @@ class EddyDataPreprocessor:
         wind_z_array: np.ndarray = np.array(processed_df["Uz"].values)
 
         # 平均風向を計算
-        wind_direction: float = self.__wind_direction(wind_x_array, wind_y_array)
+        wind_direction: float = EddyDataPreprocessor._wind_direction(
+            wind_x_array, wind_y_array
+        )
 
         # 水平方向に座標回転を行u, v成分を求める
-        wind_u_array, wind_v_array = self.__horizontal_wind_speed(
+        wind_u_array, wind_v_array = EddyDataPreprocessor._horizontal_wind_speed(
             wind_x_array, wind_y_array, wind_direction
         )
         wind_w_array: np.ndarray = wind_z_array  # wはz成分そのまま
 
         # u, wから風の迎角を計算
-        wind_inclination: float = self.__wind_inclination(wind_u_array, wind_w_array)
+        wind_inclination: float = EddyDataPreprocessor._wind_inclination(
+            wind_u_array, wind_w_array
+        )
 
         # 2回座標回転を行い、u, wを求める
-        wind_u_array_rotated, wind_w_array_rotated = self.__vertical_rotation(
-            wind_u_array, wind_w_array, wind_inclination
+        wind_u_array_rotated, wind_w_array_rotated = (
+            EddyDataPreprocessor._vertical_rotation(
+                wind_u_array, wind_w_array, wind_inclination
+            )
         )
 
         processed_df["wind_u"] = wind_u_array_rotated
@@ -162,7 +135,7 @@ class EddyDataPreprocessor:
 
         # メイン処理
         # ファイル名に含まれる数字に基づいてソート
-        csv_files = self.__get_sorted_files(
+        csv_files = EddyDataPreprocessor._get_sorted_files(
             input_dir, input_files_pattern, input_files_suffix
         )
         if not csv_files:
@@ -179,7 +152,7 @@ class EddyDataPreprocessor:
             else:
                 df = pd.read_csv(path, skiprows=skiprows)
             df = self.add_uvw_columns(df)
-            lags_list = self.__calculate_lag_time(
+            lags_list = EddyDataPreprocessor._calculate_lag_time(
                 df,
                 key1,
                 key2_list,
@@ -437,7 +410,7 @@ class EddyDataPreprocessor:
         latest_date: datetime = datetime.min
 
         # csvファイル名のリスト
-        csv_files: list[str] = self.__get_sorted_files(
+        csv_files: list[str] = EddyDataPreprocessor._get_sorted_files(
             input_dir, input_file_pattern, input_files_suffix
         )
 
@@ -522,8 +495,8 @@ class EddyDataPreprocessor:
             ratio_path: str = os.path.join(calc_py_dir, ratio_filename)
             ratio_df.to_csv(ratio_path, index=False)
 
-    def __calculate_lag_time(
-        self,
+    @staticmethod
+    def _calculate_lag_time(
         df: pd.DataFrame,
         key1: str,
         key2_list: list[str],
@@ -562,9 +535,8 @@ class EddyDataPreprocessor:
             lags_list.append(lag)
         return lags_list
 
-    def __get_sorted_files(
-        self, directory: str, pattern: str, suffix: str
-    ) -> list[str]:
+    @staticmethod
+    def _get_sorted_files(directory: str, pattern: str, suffix: str) -> list[str]:
         """
         指定されたディレクトリ内のファイルを、ファイル名に含まれる数字に基づいてソートして返す。
 
@@ -585,8 +557,9 @@ class EddyDataPreprocessor:
         )
         return files
 
-    def __horizontal_wind_speed(
-        self, x_array: np.ndarray, y_array: np.ndarray, wind_dir: float
+    @staticmethod
+    def _horizontal_wind_speed(
+        x_array: np.ndarray, y_array: np.ndarray, wind_dir: float
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         風速のu成分とv成分を計算する関数
@@ -601,11 +574,10 @@ class EddyDataPreprocessor:
         """
         # スカラー風速の計算
         scalar_hypotenuse: np.ndarray = np.sqrt(x_array**2 + y_array**2)
-
-        instantaneous_wind_directions: np.ndarray = np.arctan2(y_array, x_array)
         # CSAT3では以下の補正が必要
-        instantaneous_wind_directions = 0 - instantaneous_wind_directions
-
+        instantaneous_wind_directions = EddyDataPreprocessor._wind_direction(
+            x_array=x_array, y_array=y_array
+        )
         # ベクトル風速の計算
         vector_u: np.ndarray = scalar_hypotenuse * np.cos(
             instantaneous_wind_directions - wind_dir
@@ -613,11 +585,43 @@ class EddyDataPreprocessor:
         vector_v: np.ndarray = scalar_hypotenuse * np.sin(
             instantaneous_wind_directions - wind_dir
         )
-
         return vector_u, vector_v
 
-    def __vertical_rotation(
-        self,
+    @staticmethod
+    def setup_logger(logger: Logger | None, log_level: int = INFO) -> Logger:
+        """
+        ロガーを設定します。
+
+        このメソッドは、ロギングの設定を行い、ログメッセージのフォーマットを指定します。
+        ログメッセージには、日付、ログレベル、メッセージが含まれます。
+
+        渡されたロガーがNoneまたは不正な場合は、新たにロガーを作成し、標準出力に
+        ログメッセージが表示されるようにStreamHandlerを追加します。ロガーのレベルは
+        引数で指定されたlog_levelに基づいて設定されます。
+
+        引数:
+            logger (Logger | None): 使用するロガー。Noneの場合は新しいロガーを作成します。
+            log_level (int): ロガーのログレベル。デフォルトはINFO。
+
+        戻り値:
+            Logger: 設定されたロガーオブジェクト。
+        """
+        if logger is not None and isinstance(logger, Logger):
+            return logger
+        # 渡されたロガーがNoneまたは正しいものでない場合は独自に設定
+        new_logger: Logger = getLogger()
+        # 既存のハンドラーをすべて削除
+        for handler in new_logger.handlers[:]:
+            new_logger.removeHandler(handler)
+        new_logger.setLevel(log_level)  # ロガーのレベルを設定
+        ch = StreamHandler()
+        ch_formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
+        new_logger.addHandler(ch)  # StreamHandlerの追加
+        return new_logger
+
+    @staticmethod
+    def _vertical_rotation(
         u_array: np.ndarray,
         w_array: np.ndarray,
         wind_inc: float,
@@ -636,26 +640,30 @@ class EddyDataPreprocessor:
         # 迎角を用いて鉛直方向に座標回転
         u_rotated = u_array * np.cos(wind_inc) + w_array * np.sin(wind_inc)
         w_rotated = w_array * np.cos(wind_inc) - u_array * np.sin(wind_inc)
-
         return u_rotated, w_rotated
 
-    def __wind_direction(self, x_array: np.ndarray, y_array: np.ndarray) -> float:
+    @staticmethod
+    def _wind_direction(
+        x_array: np.ndarray, y_array: np.ndarray, correction_angle: float = 0.0
+    ) -> float:
         """
         水平方向の平均風向を計算する関数
 
         Parameters:
             x_array (numpy.ndarray): 西方向の風速成分
             y_array (numpy.ndarray): 南北方向の風速成分
+            correction_angle (float): 風向補正角度（ラジアン）。デフォルトは0.0。CSAT3の場合は0.0を指定。
 
         Returns:
             wind_direction (float): 風向 (radians)
         """
         wind_direction: float = np.arctan2(np.mean(y_array), np.mean(x_array))
-        # CSAT3では以下の補正が必要
-        wind_direction = 0 - wind_direction
+        # 補正角度を適用
+        wind_direction = correction_angle - wind_direction
         return wind_direction
 
-    def __wind_inclination(self, u_array: np.ndarray, w_array: np.ndarray) -> float:
+    @staticmethod
+    def _wind_inclination(u_array: np.ndarray, w_array: np.ndarray) -> float:
         """
         平均風向に対する迎角を計算する関数
 

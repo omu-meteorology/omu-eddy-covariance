@@ -38,7 +38,10 @@ def test_get_rh_directory():
     """
     assert FftFileReorganizer.get_rh_directory(5.5) == "RH10"
     assert FftFileReorganizer.get_rh_directory(15.7) == "RH20"
-    assert FftFileReorganizer.get_rh_directory(95.0) == "RH95"
+    assert FftFileReorganizer.get_rh_directory(80.1) == "RH90"  # 80.1は90に切り上げ
+    assert FftFileReorganizer.get_rh_directory(86.0) == "RH90"  # 86.0も90に切り上げ
+    assert FftFileReorganizer.get_rh_directory(91.2) == "RH100"  # 91.2は100に切り上げ
+    assert FftFileReorganizer.get_rh_directory(0.0) == "RH0"
     assert FftFileReorganizer.get_rh_directory(-1.0) == "bad_data"
     assert FftFileReorganizer.get_rh_directory(101.0) == "bad_data"
 

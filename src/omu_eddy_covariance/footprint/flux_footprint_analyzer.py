@@ -31,7 +31,6 @@ class FluxFootprintAnalyzer:
     """
 
     EARTH_RADIUS_METER: int = 6371000  # 地球の半径（メートル）
-    KARMAN: float = 0.4  # フォン・カルマン定数 (pp.210)
 
     def __init__(
         self,
@@ -62,11 +61,10 @@ class FluxFootprintAnalyzer:
             "Wind direction",
             "sigmaV",
         ]  # 必要なカラムのキー名
-        self.__weekday_key: str = "is_weekday"
-        self.__z_m: float = z_m  # 測定高度
-
+        self._weekday_key: str = "ffa_is_weekday"
+        self._z_m: float = z_m  # 測定高度
         # 状態を管理するフラグ
-        self.__got_satellite_image: bool = False
+        self._got_satellite_image: bool = False
 
         # 図表の初期設定
         FluxFootprintAnalyzer.setup_plot_params(labelsize, ticksize, plot_params)
@@ -185,13 +183,15 @@ class FluxFootprintAnalyzer:
         datelist: np.ndarray = np.array(df.index.date)
 
         # 各日付が平日かどうかを判定し、リストに格納
-        numbers: list[int] = [self.__is_weekday(date) for date in datelist]
+        numbers: list[int] = [
+            FluxFootprintAnalyzer.is_weekday(date) for date in datelist
+        ]
 
         # weekday_keyに基づいてデータフレームに平日情報を追加
-        df.loc[:, self.__weekday_key] = numbers  # .locを使用して値を設定
+        df.loc[:, self._weekday_key] = numbers  # .locを使用して値を設定
 
         # 値が1のもの(平日)をコピーする
-        data_weekday: pd.DataFrame = df[df[self.__weekday_key] == 1].copy()
+        data_weekday: pd.DataFrame = df[df[self._weekday_key] == 1].copy()
         # 特定の時間帯を抽出
         data_weekday = data_weekday.between_time(
             start_time, end_time
@@ -215,7 +215,13 @@ class FluxFootprintAnalyzer:
             data_weekday[col] = pd.to_numeric(data_weekday[col], errors="coerce")
 
         # 地面修正量dの計算
-        Z_d: float = self.__calculate_ground_correction(data_weekday)
+        z_m: float = self._z_m
+        Z_d: float = FluxFootprintAnalyzer._calculate_ground_correction(
+            z_m=z_m,
+            wind_speed=data_weekday["WS vector"].values,
+            friction_velocity=data_weekday["u*"].values,
+            stability_parameter=data_weekday["z/L"].values,
+        )
 
         x_list: list[float] = []
         y_list: list[float] = []
@@ -232,16 +238,22 @@ class FluxFootprintAnalyzer:
                 self.logger.warning(f"#N/A fields are exist.: i = {i}")
                 continue
             elif dUstar < 5.0 and dUstar != 0.0 and dU > 0.1:
-                phi_m, phi_c, n = self.__calculate_stability_parameters(dzL)
-                m, U, r, mu, ksi = self.__calculate_footprint_parameters(
-                    dUstar, dU, Z_d, phi_m, phi_c, n
+                phi_m, phi_c, n = FluxFootprintAnalyzer._calculate_stability_parameters(
+                    dzL=dzL
+                )
+                m, U, r, mu, ksi = (
+                    FluxFootprintAnalyzer._calculate_footprint_parameters(
+                        dUstar=dUstar, dU=dU, Z_d=Z_d, phi_m=phi_m, phi_c=phi_c, n=n
+                    )
                 )
 
-                # ソースエリアの計算
-                x80: float = self.__source_area_KM2001(ksi, mu, dU, sigmaV, Z_d)
+                # 80%ソースエリアの計算
+                x80: float = FluxFootprintAnalyzer._source_area_KM2001(
+                    ksi=ksi, mu=mu, dU=dU, sigmaV=sigmaV, Z_d=Z_d, max_ratio=0.8
+                )
 
                 if not np.isnan(x80):
-                    x1, y1, flux1 = self.__prepare_plot_data(
+                    x1, y1, flux1 = FluxFootprintAnalyzer._prepare_plot_data(
                         x80,
                         ksi,
                         mu,
@@ -252,8 +264,8 @@ class FluxFootprintAnalyzer:
                         data_weekday[flux_key].iloc[i],
                         plot_count=plot_count,
                     )
-                    x1_, y1_ = self.__rotate_coordinates(
-                        x1, y1, data_weekday["radian"].iloc[i]
+                    x1_, y1_ = FluxFootprintAnalyzer._rotate_coordinates(
+                        x=x1, y=y1, radian=data_weekday["radian"].iloc[i]
                     )
 
                     x_list.extend(x1_)
@@ -285,7 +297,7 @@ class FluxFootprintAnalyzer:
         """
         if source_type == "csv":
             # 既存のCSV処理ロジック
-            return self.__combine_all_csv(data_source)
+            return self._combine_all_csv(data_source)
         elif source_type == "monthly":
             # MonthlyConverterからのデータを処理
             if not isinstance(data_source, pd.DataFrame):
@@ -316,7 +328,7 @@ class FluxFootprintAnalyzer:
                 )
 
             # 平日/休日の判定用カラムを追加
-            df[self.__weekday_key] = df.index.map(self.__is_weekday)
+            df[self._weekday_key] = df.index.map(FluxFootprintAnalyzer.is_weekday)
 
             # Dateを除外したカラムで欠損値の処理
             df = df.dropna(subset=check_columns)
@@ -327,75 +339,6 @@ class FluxFootprintAnalyzer:
             return df
         else:
             raise ValueError("source_typeは'csv'または'monthly'である必要があります")
-
-    def __combine_all_csv(
-        self, csv_dir_path: str, suffix: str = ".csv"
-    ) -> pd.DataFrame:
-        """
-        指定されたディレクトリ内の全CSVファイルを読み込み、処理し、結合します。
-        Monthlyシートを結合することを想定しています。
-
-        引数:
-            csv_dir_path (str): CSVファイルが格納されているディレクトリのパス。
-            suffix (str, optional): 読み込むファイルの拡張子。デフォルトは".csv"。
-
-        戻り値:
-            pandas.DataFrame: 結合および処理済みのデータフレーム。
-
-        注意:
-            - ディレクトリ内に少なくとも1つのCSVファイルが必要です。
-        """
-        csv_files = [f for f in os.listdir(csv_dir_path) if f.endswith(suffix)]
-        if not csv_files:
-            raise ValueError("指定されたディレクトリにCSVファイルが見つかりません。")
-
-        df_array: list[pd.DataFrame] = []
-        for csv_file in csv_files:
-            file_path: str = os.path.join(csv_dir_path, csv_file)
-            df: pd.DataFrame = self.__prepare_csv(file_path)
-            df_array.append(df)
-
-        # 結合
-        df_combined: pd.DataFrame = pd.concat(df_array, join="outer")
-        df_combined = df_combined.loc[~df_combined.index.duplicated(), :]
-
-        # 平日と休日の判定に使用するカラムを作成
-        df_combined[self.__weekday_key] = df_combined.index.map(
-            self.__is_weekday
-        )  # 共通の関数を使用
-
-        return df_combined
-
-    def filter_data(
-        self,
-        df: pd.DataFrame,
-        start_date: str | None = None,
-        end_date: str | None = None,
-        months: list[int] | None = None,
-    ) -> pd.DataFrame:
-        """
-        指定された期間や月でデータをフィルタリングするメソッド。
-
-        Args:
-            df (pd.DataFrame): フィルタリングするデータフレーム
-            start_date (str | None): フィルタリングの開始日（'YYYY-MM-DD'形式）。デフォルトはNone。
-            end_date (str | None): フィルタリングの終了日（'YYYY-MM-DD'形式）。デフォルトはNone。
-            months (list[int] | None): フィルタリングする月のリスト（例：[1, 2, 12]）。デフォルトはNone。
-
-        Returns:
-            pd.DataFrame: フィルタリングされたデータフレーム
-        """
-        filtered_df: pd.DataFrame = df.copy()
-
-        # 期間でフィルタリング
-        if start_date is not None or end_date is not None:
-            filtered_df = filtered_df.loc[start_date:end_date]
-
-        # 月でフィルタリング
-        if months is not None:
-            filtered_df = filtered_df[filtered_df.index.month.isin(months)]
-
-        return filtered_df
 
     def get_satellite_image_from_api(
         self,
@@ -446,7 +389,7 @@ class FluxFootprintAnalyzer:
             # 画像ファイルに変換
             image = Image.open(io.BytesIO(response.content))
             image.save(output_path)
-            self.__got_satellite_image = True
+            self._got_satellite_image = True
             self.logger.info(f"リモート画像を取得し、保存しました: {output_path}")
             return image
         except requests.RequestException as e:
@@ -474,7 +417,7 @@ class FluxFootprintAnalyzer:
                 f"指定されたローカル画像が存在しません: {local_image_path}"
             )
         image = Image.open(local_image_path)
-        self.__got_satellite_image = True
+        self._got_satellite_image = True
         self.logger.info(f"ローカル画像を使用しました: {local_image_path}")
         return image
 
@@ -604,7 +547,7 @@ class FluxFootprintAnalyzer:
             return
 
         # 2. フラグチェック
-        if not self.__got_satellite_image:
+        if not self._got_satellite_image:
             raise ValueError(
                 "`get_satellite_image_from_api`または`get_satellite_image_from_local`が実行されていません。"
             )
@@ -785,117 +728,43 @@ class FluxFootprintAnalyzer:
 
         plt.close()
 
-    def __calculate_footprint_parameters(
-        self, dUstar: float, dU: float, Z_d: float, phi_m: float, phi_c: float, n: float
-    ) -> tuple[float, float, float, float, float]:
+    def _combine_all_csv(self, csv_dir_path: str, suffix: str = ".csv") -> pd.DataFrame:
         """
-        フットプリントパラメータを計算します。
+        指定されたディレクトリ内の全CSVファイルを読み込み、処理し、結合します。
+        Monthlyシートを結合することを想定しています。
 
-        Args:
-            dUstar (float): 摩擦速度
-            dU (float): 風速
-            Z_d (float): 地面修正後の測定高度
-            phi_m (float): 運動量の安定度関数
-            phi_c (float): スカラーの安定度関数
-            n (float): 安定度パラメータ
+        引数:
+            csv_dir_path (str): CSVファイルが格納されているディレクトリのパス。
+            suffix (str, optional): 読み込むファイルの拡張子。デフォルトは".csv"。
 
-        Returns:
-            tuple[float, float, float, float, float]:
-                m (べき指数),
-                U (基準高度での風速),
-                r (べき指数の補正項),
-                mu (形状パラメータ),
-                ksi (フラックス長さスケール)
+        戻り値:
+            pandas.DataFrame: 結合および処理済みのデータフレーム。
+
+        注意:
+            - ディレクトリ内に少なくとも1つのCSVファイルが必要です。
         """
-        KARMAN: float = self.KARMAN
-        # パラメータの計算
-        m: float = dUstar / KARMAN * phi_m / dU
-        U: float = dU / pow(Z_d, m)
-        r: float = 2.0 + m - n
-        mu: float = (1.0 + m) / r
-        kz: float = KARMAN * dUstar * Z_d / phi_c
-        k: float = kz / pow(Z_d, n)
-        ksi: float = U * pow(Z_d, r) / r / r / k
-        return m, U, r, mu, ksi
+        csv_files = [f for f in os.listdir(csv_dir_path) if f.endswith(suffix)]
+        if not csv_files:
+            raise ValueError("指定されたディレクトリにCSVファイルが見つかりません。")
 
-    def __calculate_ground_correction(self, data: pd.DataFrame) -> float:
-        """
-        地面修正量を計算します（Pennypacker and Baldocchi, 2016）。
+        df_array: list[pd.DataFrame] = []
+        for csv_file in csv_files:
+            file_path: str = os.path.join(csv_dir_path, csv_file)
+            df: pd.DataFrame = self._prepare_csv(file_path)
+            df_array.append(df)
 
-        この関数は、与えられ��データフレームを使用して地面修正量を計算します。
-        計算は以下のステップで行われます：
-        1. 変位高さ（d）を計算
-        2. 中立条件外のデータを除外
-        3. 平均変位高さを計算
-        4. 地面修正量を返す
+        # 結合
+        df_combined: pd.DataFrame = pd.concat(df_array, join="outer")
+        df_combined = df_combined.loc[~df_combined.index.duplicated(), :]
 
-        Args:
-            data (pd.DataFrame): 風速や摩擦速度などのデータを含むDataFrame
+        # 平日と休日の判定に使用するカラムを作成
+        df_combined[self._weekday_key] = df_combined.index.map(
+            FluxFootprintAnalyzer.is_weekday
+        )  # 共通の関数を使用
 
-        Returns:
-            float: 計算された地面修正量
-        """
-        z: float = self.__z_m
-        # 変位高さ（d）の計算
-        data["d"] = 0.6 * (
-            z / (0.6 + 0.1 * (np.exp((self.KARMAN * data["WS vector"]) / data["u*"])))
-        )
+        return df_combined
 
-        # 中立条件外のデータを除外（中立条件：-0.1 < z/L < 0.1）
-        data.loc[((data["z/L"] < -0.1) | (0.1 < data["z/L"])), "d"] = np.nan
-
-        # 平均変位高さを計算
-        d: float = data["d"].mean()
-
-        # 地面修正量を返す
-        return z - d
-
-    def __calculate_stability_parameters(
-        self, dzL: float
-    ) -> tuple[float, float, float]:
-        """
-        安定性パラメータを計算します。
-
-        大気安定度に基づいて、運動量とスカラーの安定度関数、および安定度パラメータを計算します。
-
-        Args:
-            dzL (float): 無次元高度 (z/L)、ここで z は測定高度、L はモニン・オブコフ長
-
-        Returns:
-            tuple[float, float, float]:
-                phi_m (float): 運動量の安定度関数
-                phi_c (float): スカラーの安定度関数
-                n (float): 安定度パラメータ
-        """
-        phi_m: float = 0
-        phi_c: float = 0
-        n: float = 0
-        if dzL > 0.0:
-            # 安定成層の場合
-            dzL = min(dzL, 2.0)
-            phi_m = 1.0 + 5.0 * dzL
-            phi_c = 1.0 + 5.0 * dzL
-            n = 1.0 / (1.0 + 5.0 * dzL)
-        else:
-            # 不安定成層の場合
-            phi_m = pow(1.0 - 16.0 * dzL, -0.25)
-            phi_c = pow(1.0 - 16.0 * dzL, -0.50)
-            n = (1.0 - 24.0 * dzL) / (1.0 - 16.0 * dzL)
-        return phi_m, phi_c, n
-
-    def __is_weekday(self, date: datetime) -> int:
-        """
-        指定された日付が平日であるかどうかを判定します。
-
-        Args:
-            date (datetime): 判定する日付。
-
-        Returns:
-            int: 平日であれば1、そうでなければ0。
-        """
-        return 1 if not jpholiday.is_holiday(date) and date.weekday() < 5 else 0
-
-    def __prepare_csv(self, file_path: str) -> pd.DataFrame:
+    def _prepare_csv(self, file_path: str) -> pd.DataFrame:
         """
         フラックスデータを含むCSVファイルを読み込み、処理します。
 
@@ -935,8 +804,191 @@ class FluxFootprintAnalyzer:
         df.set_index("Date", inplace=True)
         return df
 
-    def __prepare_plot_data(
-        self,
+    @staticmethod
+    def _calculate_footprint_parameters(
+        dUstar: float, dU: float, Z_d: float, phi_m: float, phi_c: float, n: float
+    ) -> tuple[float, float, float, float, float]:
+        """
+        フットプリントパラメータを計算します。
+
+        Args:
+            dUstar (float): 摩擦速度
+            dU (float): 風速
+            Z_d (float): 地面修正後の測定高度
+            phi_m (float): 運動量の安定度関数
+            phi_c (float): スカラーの安定度関数
+            n (float): 安定度パラメータ
+
+        Returns:
+            tuple[float, float, float, float, float]:
+                m (べき指数),
+                U (基準高度での風速),
+                r (べき指数の補正項),
+                mu (形状パラメータ),
+                ksi (フラックス長さスケール)
+        """
+        KARMAN: float = 0.4  # フォン・カルマン定数
+        # パラメータの計算
+        m: float = dUstar / KARMAN * phi_m / dU
+        U: float = dU / pow(Z_d, m)
+        r: float = 2.0 + m - n
+        mu: float = (1.0 + m) / r
+        kz: float = KARMAN * dUstar * Z_d / phi_c
+        k: float = kz / pow(Z_d, n)
+        ksi: float = U * pow(Z_d, r) / r / r / k
+        return m, U, r, mu, ksi
+
+    @staticmethod
+    def _calculate_ground_correction(
+        z_m: float,
+        wind_speed: np.ndarray,
+        friction_velocity: np.ndarray,
+        stability_parameter: np.ndarray,
+    ) -> float:
+        """
+        地面修正量を計算します（Pennypacker and Baldocchi, 2016）。
+
+        この関数は、与えられた気象データを使用して地面修正量を計算します。
+        計算は以下のステップで行われます：
+        1. 変位高さ（d）を計算
+        2. 中立条件外のデータを除外
+        3. 平均変位高さを計算
+        4. 地面修正量を返す
+
+        Args:
+            z_m (float): 観測地点の高度
+            wind_speed (np.ndarray): 風速データ配列 (WS vector)
+            friction_velocity (np.ndarray): 摩擦速度データ配列 (u*)
+            stability_parameter (np.ndarray): 安定度パラメータ配列 (z/L)
+
+        Returns:
+            float: 計算された地面修正量
+        """
+        KARMAN: float = 0.4  # フォン・カルマン定数
+        z: float = z_m
+
+        # 変位高さ（d）の計算
+        displacement_height = 0.6 * (
+            z / (0.6 + 0.1 * (np.exp((KARMAN * wind_speed) / friction_velocity)))
+        )
+
+        # 中立条件外のデータをマスク（中立条件：-0.1 < z/L < 0.1）
+        neutral_condition_mask = (stability_parameter < -0.1) | (
+            0.1 < stability_parameter
+        )
+        displacement_height[neutral_condition_mask] = np.nan
+
+        # 平均変位高さを計算
+        d: float = np.nanmean(displacement_height)
+
+        # 地面修正量を返す
+        return z - d
+
+    @staticmethod
+    def _calculate_stability_parameters(dzL: float) -> tuple[float, float, float]:
+        """
+        安定性パラメータを計算します。
+        大気安定度に基づいて、運動量とスカラーの安定度関数、および安定度パラメータを計算します。
+
+        Args:
+            dzL (float): 無次元高度 (z/L)、ここで z は測定高度、L はモニン・オブコフ長
+
+        Returns:
+            tuple[float, float, float]:
+                phi_m (float): 運動量の安定度関数
+                phi_c (float): スカラーの安定度関数
+                n (float): 安定度パラメータ
+        """
+        phi_m: float = 0
+        phi_c: float = 0
+        n: float = 0
+        if dzL > 0.0:
+            # 安定成層の場合
+            dzL = min(dzL, 2.0)
+            phi_m = 1.0 + 5.0 * dzL
+            phi_c = 1.0 + 5.0 * dzL
+            n = 1.0 / (1.0 + 5.0 * dzL)
+        else:
+            # 不安定成層の場合
+            phi_m = pow(1.0 - 16.0 * dzL, -0.25)
+            phi_c = pow(1.0 - 16.0 * dzL, -0.50)
+            n = (1.0 - 24.0 * dzL) / (1.0 - 16.0 * dzL)
+        return phi_m, phi_c, n
+
+    @staticmethod
+    def filter_data(
+        df: pd.DataFrame,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        months: list[int] | None = None,
+    ) -> pd.DataFrame:
+        """
+        指定された期間や月でデータをフィルタリングするメソッド。
+
+        Args:
+            df (pd.DataFrame): フィルタリングするデータフレーム
+            start_date (str | None): フィルタリングの開始日（'YYYY-MM-DD'形式）。デフォルトはNone。
+            end_date (str | None): フィルタリングの終了日（'YYYY-MM-DD'形式）。デフォルトはNone。
+            months (list[int] | None): フィルタリングする月のリスト（例：[1, 2, 12]）。デフォルトはNone。
+
+        Returns:
+            pd.DataFrame: フィルタリングされたデータフレーム
+
+        Raises:
+            ValueError: インデックスがDatetimeIndexでない場合、または日付の形式が不正な場合
+        """
+        # インデックスの検証
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise ValueError(
+                "DataFrameのインデックスはDatetimeIndexである必要があります"
+            )
+
+        filtered_df: pd.DataFrame = df.copy()
+
+        # 日付形式の検証と変換
+        try:
+            if start_date is not None:
+                start_date = pd.to_datetime(start_date)
+            if end_date is not None:
+                end_date = pd.to_datetime(end_date)
+        except ValueError as e:
+            raise ValueError(
+                "日付の形式が不正です。'YYYY-MM-DD'形式で指定してください"
+            ) from e
+
+        # 期間でフィルタリング
+        if start_date is not None or end_date is not None:
+            filtered_df = filtered_df.loc[start_date:end_date]
+
+        # 月のバリデーション
+        if months is not None:
+            if not all(isinstance(m, int) and 1 <= m <= 12 for m in months):
+                raise ValueError(
+                    "monthsは1から12までの整数のリストである必要があります"
+                )
+            filtered_df = filtered_df[filtered_df.index.month.isin(months)]
+
+        # フィルタリング後のデータが空でないことを確認
+        if filtered_df.empty:
+            raise ValueError("フィルタリング後のデータが空になりました")
+
+        return filtered_df
+
+    @staticmethod
+    def is_weekday(date: datetime) -> int:
+        """
+        指定された日付が平日であるかどうかを判定します。
+
+        Args:
+            date (datetime): 判定する日付。
+
+        Returns:
+            int: 平日であれば1、そうでなければ0。
+        """
+        return 1 if not jpholiday.is_holiday(date) and date.weekday() < 5 else 0
+
+    @staticmethod
+    def _prepare_plot_data(
         x80: float,
         ksi: float,
         mu: float,
@@ -965,6 +1017,7 @@ class FluxFootprintAnalyzer:
             tuple[np.ndarray, np.ndarray, np.ndarray]:
                 x座標、y座標、フラックス値の配列のタプル
         """
+        KARMAN: float = 0.4  # フォン・カルマン定数 (pp.210)
         x_lim: int = int(x80)
 
         """
@@ -988,7 +1041,7 @@ class FluxFootprintAnalyzer:
         # 風速プロファイルを計算
         Ux: np.ndarray = (
             (math.gamma(mu) / math.gamma(1 / r))
-            * ((r**2 * self.KARMAN) / U) ** (m / r)
+            * ((r**2 * KARMAN) / U) ** (m / r)
             * U
             * x1 ** (m / r)
         )
@@ -1002,8 +1055,9 @@ class FluxFootprintAnalyzer:
 
         return x1, y1, flux1
 
-    def __rotate_coordinates(
-        self, x: np.ndarray, y: np.ndarray, radian: float
+    @staticmethod
+    def _rotate_coordinates(
+        x: np.ndarray, y: np.ndarray, radian: float
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         座標を指定された角度で回転させます。
@@ -1024,8 +1078,8 @@ class FluxFootprintAnalyzer:
         y_: np.ndarray = x * np.sin(radian1) + y * np.cos(radian1)
         return x_, y_
 
-    def __source_area_KM2001(
-        self,
+    @staticmethod
+    def _source_area_KM2001(
         ksi: float,
         mu: float,
         dU: float,
@@ -1036,8 +1090,8 @@ class FluxFootprintAnalyzer:
         """
         Kormann and Meixner (2001)のフットプリントモデルに基づいてソースエリアを計算します。
 
-        このメソッドは、与えられたパラメータを使用して、フラックスの80%寄与距離を計算します。
-        計算は反復的に行われ、寄与率が80%に達するまで、または最大反復回数に達するまで続けられます。
+        このメソッドは、与えられたパラメータを使用して、フラックスの寄与距離を計算します。
+        計算は反復的に行われ、寄与率が'max_ratio'に達するまで、または最大反復回数に達するまで続けられます。
 
         Args:
             ksi (float): フラックス長さスケール

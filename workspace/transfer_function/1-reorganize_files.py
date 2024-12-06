@@ -2,8 +2,8 @@ import os
 from omu_eddy_covariance import FftFileReorganizer
 
 # 変数定義
-base_path = "/home/connect0459/workspace/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
-flag_file_name: str = "Flg-202409101132_202410071100.csv"
+base_path = "/home/connect0459/labo/omu-eddy-covariance/workspace/transfer_function/private/2024.08.06"
+flag_file_name: str = "Flg-202406211500_202408061100.csv"
 input_dir_names: list[str] = ["fft", "fft-detrend"]
 output_dir_names: list[str] = ["sorted", "sorted-detrend"]
 

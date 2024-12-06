@@ -38,13 +38,13 @@ class MonthlyConverter:
             log_level = DEBUG
         self.logger: Logger = MonthlyConverter.setup_logger(logger, log_level)
 
-        self.__directory = Path(directory)
-        if not self.__directory.exists():
-            raise NotADirectoryError(f"Directory not found: {self.__directory}")
+        self._directory = Path(directory)
+        if not self._directory.exists():
+            raise NotADirectoryError(f"Directory not found: {self._directory}")
 
         # Excelファイルのパスを保持
-        self.__excel_files: dict[str, pd.ExcelFile] = {}
-        self.__file_pattern: str = file_pattern
+        self._excel_files: dict[str, pd.ExcelFile] = {}
+        self._file_pattern: str = file_pattern
 
     @staticmethod
     def setup_logger(logger: Logger | None, log_level: int = INFO) -> Logger:
@@ -83,9 +83,9 @@ class MonthlyConverter:
         """
         すべてのExcelファイルをクローズする
         """
-        for excel_file in self.__excel_files.values():
+        for excel_file in self._excel_files.values():
             excel_file.close()
-        self.__excel_files.clear()
+        self._excel_files.clear()
 
     def get_available_dates(self) -> list[str]:
         """
@@ -95,9 +95,9 @@ class MonthlyConverter:
             list[str]: 'yyyy.MM'形式の日付リスト
         """
         dates = []
-        for file_name in self.__directory.glob(self.__file_pattern):
+        for file_name in self._directory.glob(self._file_pattern):
             try:
-                date = self.__extract_date(file_name.name)
+                date = self._extract_date(file_name.name)
                 dates.append(date.strftime(self.FILE_DATE_FORMAT))
             except ValueError:
                 continue
@@ -113,12 +113,12 @@ class MonthlyConverter:
         Returns:
             list[str]: シート名のリスト
         """
-        if file_name not in self.__excel_files:
-            file_path = self.__directory / file_name
+        if file_name not in self._excel_files:
+            file_path = self._directory / file_name
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
-            self.__excel_files[file_name] = pd.ExcelFile(file_path)
-        return self.__excel_files[file_name].sheet_names
+            self._excel_files[file_name] = pd.ExcelFile(file_path)
+        return self._excel_files[file_name].sheet_names
 
     def read_sheets(
         self,
@@ -150,18 +150,18 @@ class MonthlyConverter:
             sheet_names = [sheet_names]
 
         # 指定された日付範囲のExcelファイルを読み込む
-        self.__load_excel_files(start_date, end_date)
+        self._load_excel_files(start_date, end_date)
 
-        if not self.__excel_files:
+        if not self._excel_files:
             raise ValueError("No Excel files found matching the criteria")
 
         dfs: list[pd.DataFrame] = []
 
         # ファイルを日付順にソート
         sorted_files = (
-            sorted(self.__excel_files.items(), key=lambda x: self.__extract_date(x[0]))
+            sorted(self._excel_files.items(), key=lambda x: self._extract_date(x[0]))
             if sort_by_date
-            else self.__excel_files.items()
+            else self._excel_files.items()
         )
 
         for file_name, excel_file in sorted_files:
@@ -182,7 +182,7 @@ class MonthlyConverter:
                         ],
                     )
                     # 月初日を含む完全な日付形式に変更
-                    file_date = self.__extract_date(file_name)
+                    file_date = self._extract_date(file_name)
                     df["date"] = file_date.replace(day=1)  # 月の1日を設定
                     df["year"] = file_date.year
                     df["month"] = file_date.month
@@ -214,7 +214,7 @@ class MonthlyConverter:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
 
-    def __extract_date(self, file_name: str) -> datetime:
+    def _extract_date(self, file_name: str) -> datetime:
         """
         ファイル名から日付を抽出する
 
@@ -228,7 +228,7 @@ class MonthlyConverter:
         date_str = ".".join(file_name.split(".")[-3:-1])  # "yyyy.MM"の部分を取得
         return datetime.strptime(date_str, self.FILE_DATE_FORMAT)
 
-    def __load_excel_files(
+    def _load_excel_files(
         self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> None:
         """
@@ -251,9 +251,9 @@ class MonthlyConverter:
         # 既存のファイルをクリア
         self.close()
 
-        for excel_path in self.__directory.glob(self.__file_pattern):
+        for excel_path in self._directory.glob(self._file_pattern):
             try:
-                file_date = self.__extract_date(excel_path.name)
+                file_date = self._extract_date(excel_path.name)
 
                 # 日付範囲チェック
                 if start_dt and file_date < start_dt:
@@ -261,8 +261,8 @@ class MonthlyConverter:
                 if end_dt and file_date > end_dt:
                     continue
 
-                if excel_path.name not in self.__excel_files:
-                    self.__excel_files[excel_path.name] = pd.ExcelFile(excel_path)
+                if excel_path.name not in self._excel_files:
+                    self._excel_files[excel_path.name] = pd.ExcelFile(excel_path)
 
             except ValueError as e:
                 self.logger.warning(

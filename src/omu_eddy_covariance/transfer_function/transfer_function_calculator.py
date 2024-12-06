@@ -28,54 +28,11 @@ class TransferFunctionCalculator:
             cutoff_freq_low (float): カットオフ周波数の最低値
             cutoff_freq_high (float): カットオフ周波数の最高値
         """
-        self.__freq_key: str = freq_key
-        self.__cutoff_freq_low: float = cutoff_freq_low
-        self.__cutoff_freq_high: float = cutoff_freq_high
-        self.__df: pd.DataFrame = self.__load_data(file_path)
+        self._freq_key: str = freq_key
+        self._cutoff_freq_low: float = cutoff_freq_low
+        self._cutoff_freq_high: float = cutoff_freq_high
+        self._df: pd.DataFrame = self._load_data(file_path)
         TransferFunctionCalculator.setup_plot_params()
-
-    @staticmethod
-    def setup_plot_params() -> None:
-        """
-        Matplotlibのプロットパラメータを設定する。
-
-        日本語フォントの設定やグラフの外観設定を行う。
-        """
-        plt.rcParams["font.sans-serif"] = ["MS Gothic"] + plt.rcParams[
-            "font.sans-serif"
-        ]
-        plt.rcParams.update(
-            {
-                "axes.edgecolor": "black",
-                "axes.labelcolor": "black",
-                "text.color": "black",
-                "xtick.color": "black",
-                "ytick.color": "black",
-                "grid.color": "gray",
-                "axes.grid": False,
-                "ytick.major.size": 0,
-                "ytick.direction": "out",
-                "ytick.major.width": 0,
-                "axes.linewidth": 1.5,
-                "grid.linewidth": 1.0,
-                "font.size": 16,
-                "axes.labelsize": 20,
-            }
-        )
-
-    @classmethod
-    def transfer_function(cls, x: np.ndarray, a: float) -> np.ndarray:
-        """
-        伝達関数を計算する。
-
-        Args:
-            x (np.ndarray): 周波数の配列。
-            a (float): 伝達関数の係数。
-
-        Returns:
-            np.ndarray: 伝達関数の値。
-        """
-        return np.exp(-np.log(np.sqrt(2)) * np.power(x / a, 2))
 
     def calculate_transfer_function(
         self, reference_key: str, target_key: str
@@ -93,7 +50,7 @@ class TransferFunctionCalculator:
         df_processed: pd.DataFrame = self.process_data(
             reference_key=reference_key, target_key=target_key
         )
-        df_cutoff: pd.DataFrame = self.__cutoff_df(df_processed)
+        df_cutoff: pd.DataFrame = self._cutoff_df(df_processed)
 
         array_x = np.array(df_cutoff.index)
         array_y = np.array(df_cutoff["target"] / df_cutoff["reference"])
@@ -142,8 +99,8 @@ class TransferFunctionCalculator:
             window_size (int, optional): 移動平均の窓サイズ。デフォルトは5。
         """
         # データの取得と移動平均の適用
-        data1 = self.__df[self.__df[key1] > 0].groupby(self.__freq_key)[key1].median()
-        data2 = self.__df[self.__df[key2] > 0].groupby(self.__freq_key)[key2].median()
+        data1 = self._df[self._df[key1] > 0].groupby(self._freq_key)[key1].median()
+        data2 = self._df[self._df[key2] > 0].groupby(self._freq_key)[key2].median()
 
         data1 = data1.rolling(window=window_size, center=True, min_periods=1).mean()
         data2 = data2.rolling(window=window_size, center=True, min_periods=1).mean()
@@ -250,7 +207,7 @@ class TransferFunctionCalculator:
             output_basename (str, optional): 保存するファイル名のベース。デフォルトは"tf"。
             show_plot (bool, optional): プロットを表示するかどうか。デフォルトはTrue。
         """
-        df_cutoff: pd.DataFrame = self.__cutoff_df(df_processed)
+        df_cutoff: pd.DataFrame = self._cutoff_df(df_processed)
 
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
@@ -263,7 +220,7 @@ class TransferFunctionCalculator:
         )
 
         x_fit = np.logspace(
-            np.log10(self.__cutoff_freq_low), np.log10(self.__cutoff_freq_high), 1000
+            np.log10(self._cutoff_freq_low), np.log10(self._cutoff_freq_high), 1000
         )
         y_fit = self.transfer_function(x_fit, a)
         ax.plot(x_fit, y_fit, "-", label=f"フィット (a = {a:.4f})")
@@ -293,20 +250,20 @@ class TransferFunctionCalculator:
         Returns:
             pd.DataFrame: 処理されたデータフレーム。
         """
-        freq_key: str = self.__freq_key
+        freq_key: str = self._freq_key
 
         # データ型の確認と変換
-        self.__df[freq_key] = pd.to_numeric(self.__df[freq_key], errors="coerce")
-        self.__df[reference_key] = pd.to_numeric(
-            self.__df[reference_key], errors="coerce"
+        self._df[freq_key] = pd.to_numeric(self._df[freq_key], errors="coerce")
+        self._df[reference_key] = pd.to_numeric(
+            self._df[reference_key], errors="coerce"
         )
-        self.__df[target_key] = pd.to_numeric(self.__df[target_key], errors="coerce")
+        self._df[target_key] = pd.to_numeric(self._df[target_key], errors="coerce")
 
         # NaNを含む行を削除
-        self.__df = self.__df.dropna(subset=[freq_key, reference_key, target_key])
+        self._df = self._df.dropna(subset=[freq_key, reference_key, target_key])
 
         # グループ化と中央値の計算
-        grouped = self.__df.groupby(freq_key)
+        grouped = self._df.groupby(freq_key)
         reference_data = grouped[reference_key].median()
         target_data = grouped[target_key].median()
 
@@ -325,16 +282,16 @@ class TransferFunctionCalculator:
 
         return df_processed
 
-    def __cutoff_df(self, df) -> pd.DataFrame:
+    def _cutoff_df(self, df) -> pd.DataFrame:
         """
         カットオフ周波数に基づいてDataFrameを加工するメソッド
         """
         df_cutoff: pd.DataFrame = df.loc[
-            (self.__cutoff_freq_low <= df.index) & (df.index <= self.__cutoff_freq_high)
+            (self._cutoff_freq_low <= df.index) & (df.index <= self._cutoff_freq_high)
         ]
         return df_cutoff
 
-    def __load_data(self, file_path: str) -> pd.DataFrame:
+    def _load_data(self, file_path: str) -> pd.DataFrame:
         """
         CSVファイルからデータを読み込む。
 
@@ -349,3 +306,46 @@ class TransferFunctionCalculator:
         df = pd.read_csv(file_path, header=None, skiprows=1)
         df.columns = header
         return df
+
+    @staticmethod
+    def setup_plot_params() -> None:
+        """
+        Matplotlibのプロットパラメータを設定する。
+
+        日本語フォントの設定やグラフの外観設定を行う。
+        """
+        plt.rcParams["font.sans-serif"] = ["MS Gothic"] + plt.rcParams[
+            "font.sans-serif"
+        ]
+        plt.rcParams.update(
+            {
+                "axes.edgecolor": "black",
+                "axes.labelcolor": "black",
+                "text.color": "black",
+                "xtick.color": "black",
+                "ytick.color": "black",
+                "grid.color": "gray",
+                "axes.grid": False,
+                "ytick.major.size": 0,
+                "ytick.direction": "out",
+                "ytick.major.width": 0,
+                "axes.linewidth": 1.5,
+                "grid.linewidth": 1.0,
+                "font.size": 16,
+                "axes.labelsize": 20,
+            }
+        )
+
+    @classmethod
+    def transfer_function(cls, x: np.ndarray, a: float) -> np.ndarray:
+        """
+        伝達関数を計算する。
+
+        Args:
+            x (np.ndarray): 周波数の配列。
+            a (float): 伝達関数の係数。
+
+        Returns:
+            np.ndarray: 伝達関数の値。
+        """
+        return np.exp(-np.log(np.sqrt(2)) * np.power(x / a, 2))

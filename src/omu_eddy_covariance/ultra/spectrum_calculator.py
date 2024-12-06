@@ -100,13 +100,13 @@ class SpectrumCalculator:
 
         # 遅れ時間の補正
         if key2 in self.apply_lag_keys:
-            data1, data2 = self.__correct_lag_time(
-                data1=data1, data2=data2, lag_second=self.lag_second
+            data1, data2 = SpectrumCalculator._correct_lag_time(
+                data1=data1, data2=data2, fs=self.fs, lag_second=self.lag_second
             )
 
         # トレンド除去
-        data1 = self.__detrend(data1, True)
-        data2 = self.__detrend(data2, True)
+        data1 = SpectrumCalculator._detrend(data=data1, fs=self.fs, first=True)
+        data2 = SpectrumCalculator._detrend(data=data2, fs=self.fs, first=True)
 
         # データ長
         data_length: int = len(data1)
@@ -118,7 +118,7 @@ class SpectrumCalculator:
         # 窓関数の適用
         window_scale = 1.0
         if self.apply_window:
-            window = self.__generate_window_function(
+            window = SpectrumCalculator._generate_window_function(
                 type=self.window_type, data_length=data_length
             )
             data1 *= window
@@ -274,14 +274,16 @@ class SpectrumCalculator:
         # データ長
         data_length: int = len(column_data)
         # トレンド除去
-        column_data = self.__detrend(column_data, True)
+        column_data = SpectrumCalculator._detrend(
+            data=column_data, fs=self.fs, first=True
+        )
         # データの分散を計算（窓関数適用前）
         variance = np.var(column_data)
 
         # 窓関数の適用
         window_scale: float = 1.0
         if self.apply_window:
-            window = self.__generate_window_function(
+            window = SpectrumCalculator._generate_window_function(
                 type=self.window_type, data_length=data_length
             )
             column_data *= window
@@ -359,10 +361,11 @@ class SpectrumCalculator:
             # 線形スケールの場合はそのまま返す
             return freqs, power_spectrum
 
-    def __correct_lag_time(
-        self,
+    @staticmethod
+    def _correct_lag_time(
         data1: np.ndarray,
         data2: np.ndarray,
+        fs: float,
         lag_second: float,
     ) -> tuple:
         """
@@ -372,6 +375,7 @@ class SpectrumCalculator:
         Args:
             data1 (np.ndarray): 基準データ
             data2 (np.ndarray): 遅れているデータ
+            fs (float): サンプリング周波数
             lag_second (float): data1からdata2が遅れている時間（秒）。負の値は許可されない。
 
         Returns:
@@ -384,24 +388,23 @@ class SpectrumCalculator:
         """
         if lag_second < 0:
             raise ValueError("lag_second must be non-negative.")
-
         # lag_secondをサンプリング周波数でスケーリングしてインデックスに変換
-        lag_index: int = int(lag_second * self.fs)
-
+        lag_index: int = int(lag_second * fs)
         # データ1とデータ2の共通部分を抽出
         data1 = data1[lag_index:]
         data2 = data2[:-lag_index]
-
         return data1, data2
 
-    def __detrend(
-        self, data: np.ndarray, first: bool = True, second: bool = False
+    @staticmethod
+    def _detrend(
+        data: np.ndarray, fs: float, first: bool = True, second: bool = False
     ) -> np.ndarray:
         """
         データから一次トレンドおよび二次トレンドを除去します。
 
         Args:
             data (np.ndarray): 入力データ
+            fs (float): サンプリング周波数
             first (bool, optional): 一次トレンドを除去するかどうか. デフォルトはTrue.
             second (bool, optional): 二次トレンドを除去するかどうか. デフォルトはFalse.
 
@@ -414,8 +417,9 @@ class SpectrumCalculator:
         if not (first or second):
             raise ValueError("少なくとも一次または二次トレンドの除去を指定してください")
 
-        time: np.ndarray = np.arange(len(data))
-        detrended_data: np.ndarray = data.copy()  # 元データを保護
+        # サンプリング周波数を考慮した時間軸の生成
+        time: np.ndarray = np.arange(len(data)) / fs
+        detrended_data: np.ndarray = data.copy()
 
         # 一次トレンドの除去
         if first:
@@ -431,7 +435,8 @@ class SpectrumCalculator:
 
         return detrended_data
 
-    def __generate_window_function(self, type: str, data_length: int) -> np.ndarray:
+    @staticmethod
+    def _generate_window_function(self, type: str, data_length: int) -> np.ndarray:
         """
         指定された種類の窓関数を適用する
 
