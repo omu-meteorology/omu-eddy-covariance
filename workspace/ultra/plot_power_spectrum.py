@@ -1,7 +1,6 @@
 import os
 import matplotlib.pyplot as plt
-from omu_eddy_covariance import EddyDataPreprocessor
-from omu_eddy_covariance import SpectrumCalculator
+from omu_eddy_covariance import EddyDataPreprocessor, SpectrumCalculator
 
 
 def plot_power_spectrum(

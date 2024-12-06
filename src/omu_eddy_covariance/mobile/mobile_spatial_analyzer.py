@@ -738,7 +738,9 @@ class MobileSpatialAnalyzer:
                             angle=angle,
                             avg_lat=current_lat,
                             avg_lon=current_lon,
-                            correlation=correlation,
+                            correlation=max(
+                                -1, min(1, correlation)
+                            ),  # correlationを-1から1の範囲に制限
                             ratio=ratios.iloc[i],
                             section=section,
                             source=ratios.index[i].strftime("%Y-%m-%d %H:%M:%S"),

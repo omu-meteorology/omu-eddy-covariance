@@ -142,9 +142,9 @@ class FftFileReorganizer:
         self.logger.info("ファイルのコピーが完了しました。")
 
         if self.__warnings:
-            self.logger.warn("Warnings:")
+            self.logger.warning("Warnings:")
             for warning in self.__warnings:
-                self.logger.warn(warning)
+                self.logger.warning(warning)
 
     def __copy_files(self, valid_files):
         """

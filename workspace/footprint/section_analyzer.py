@@ -310,44 +310,44 @@ class FluxSpatialAnalyzer:
     #     )
 
     #     return correlation, p_value
-    
+
     def _calculate_spatial_correlation(
         self, footprint_values: list[float], hotspots: list[HotspotData]
     ) -> tuple[float, float]:
         """
         フットプリント強度とホットスポット分布の空間相関を計算
-        
+
         Args:
             footprint_values: セクター内のフットプリント強度値
             hotspots: セクター内のホットスポットデータ
-            
+
         Returns:
             Tuple[float, float]: (相関係数, p値)
         """
         if not footprint_values or not hotspots:
             return 0, 1.0
-            
+
         # セクターを等間隔のグリッドに分割
         grid_size = 10  # グリッドの数
-        
+
         # グリッドごとの統計量を計算
         grid_footprint = np.zeros(grid_size)
         grid_hotspot = np.zeros(grid_size)
-        
+
         # フットプリント値をグリッドに割り当て
         for i, value in enumerate(footprint_values):
             grid_index = i % grid_size  # 単純な例として
             grid_footprint[grid_index] += value
-            
+
         # ホットスポットをグリッドに割り当て
         for spot in hotspots:
             # 実際の実装ではホットスポットの座標を使用してグリッドを決定
             grid_index = hash(str(spot)) % grid_size  # 単純な例として
             grid_hotspot[grid_index] += 1
-        
+
         # グリッドベースでスピアマンの順位相関を計算
         correlation, p_value = stats.spearmanr(grid_footprint, grid_hotspot)
-        
+
         return correlation, p_value
 
     def __classify_footprint_to_sections(

@@ -7,18 +7,14 @@ authors = [{ name = "connect0459", email = "connect0459@gmail.com" }]
 # PILの代わりにfork先のpillowをインストール
 # 詳細は<https://pillow.readthedocs.io/en/stable/>を参照
 dependencies = [
-  "contextily>=1.6.2",
-  "folium>=0.18.0",
-  "geopandas>=1.0.1",
+  "folium>=0.18.0",  # 地図
   "jpholiday",
   "matplotlib",
   "numpy",
   "openpyxl>=3.1.5",
   "pandas",
-  "pillow",
-  "pyproj>=3.7.0",
+  "pillow",          # 画像
   "scipy",
-  "shapely>=2.0.6",
   "tqdm",
 ]
 readme = "README.md"
@@ -64,8 +60,12 @@ dev-dependencies = [
   "build>=1.2.2.post1",
   "hatchling>=1.25.0",
   "ipykernel>=6.29.5",
-  "pytest>=7.4.0",
+  "pytest>=8.3.4",
   "python-dotenv>=1.0.1",
   "ruff>=0.6.8",
   "twine>=5.1.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -229,7 +229,7 @@ class FluxFootprintAnalyzer:
             dzL: float = data_weekday["z/L"].iloc[i]
 
             if pd.isna(dUstar) or pd.isna(dU) or pd.isna(sigmaV) or pd.isna(dzL):
-                self.logger.warn(f"#N/A fields are exist.: i = {i}")
+                self.logger.warning(f"#N/A fields are exist.: i = {i}")
                 continue
             elif dUstar < 5.0 and dUstar != 0.0 and dU > 0.1:
                 phi_m, phi_c, n = self.__calculate_stability_parameters(dzL)

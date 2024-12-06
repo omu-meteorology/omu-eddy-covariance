@@ -404,7 +404,7 @@ if __name__ == "__main__":
             labels_c2h6=["Ultra"],
             label_only_ch4=True,
             show_label=False,
-            show_legend=(month == "09" or month=="07"),
+            show_legend=(month == "09" or month == "07"),
             colors_ch4=["black", "red", "blue"],
             colors_c2h6=["black"],
             filename=f"diurnal-pattern-slide-{month}.png",

@@ -5,7 +5,7 @@ from .mobile.mobile_spatial_analyzer import (
     MobileSpatialAnalyzer,
     MSAInputConfig,
 )
-from .transfer_function.fft_file_reorganizer import FftFileReorganizer
+from .transfer_function.fft_files_reorganizer import FftFileReorganizer
 from .transfer_function.transfer_function_calculator import TransferFunctionCalculator
 from .ultra.eddydata_preprocessor import EddyDataPreprocessor
 from .ultra.spectrum_calculator import SpectrumCalculator

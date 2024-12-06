@@ -265,6 +265,6 @@ class MonthlyConverter:
                     self.__excel_files[excel_path.name] = pd.ExcelFile(excel_path)
 
             except ValueError as e:
-                self.logger.warn(
+                self.logger.warning(
                     f"Could not parse date from file {excel_path.name}: {e}"
                 )

@@ -1,5 +1,6 @@
 from omu_eddy_covariance import EddyDataPreprocessor
 
+
 if __name__ == "__main__":
     target_home: str = (
         "/home/z23641k/labo/omu-eddy-covariance/workspace/ultra/private/data"
