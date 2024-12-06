@@ -22,8 +22,8 @@ center_lon=135.4829511120712,
 class MSAInputConfig:
     """入力ファイルの設定を保持するデータクラス"""
 
-    lag: float  # 測器の遅れ時間（秒）
     fs: float  # サンプリング周波数（Hz）
+    lag: float  # 測器の遅れ時間（秒）
     path: Path | str  # ファイルパス
 
     def __post_init__(self) -> None:

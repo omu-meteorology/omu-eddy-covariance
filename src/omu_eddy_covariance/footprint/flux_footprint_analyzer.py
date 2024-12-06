@@ -397,7 +397,7 @@ class FluxFootprintAnalyzer:
 
         return filtered_df
 
-    def get_satellite_image_by_api(
+    def get_satellite_image_from_api(
         self,
         api_key: str,
         center_lat: float,
@@ -411,13 +411,13 @@ class FluxFootprintAnalyzer:
         Google Maps Static APIを使用して衛星画像を取得します。
 
         Args:
-            api_key (str): Google Maps Static APIのキー
-            center_lat (float): 中心の緯度
-            center_lon (float): 中心の経度
-            output_path (str): 画像の保存パス。
-            scale (int, optional): 画像の解像度スケール（1か2）。デフォルトは1
-            size (tuple[int, int], optional): 画像サイズ (幅, 高さ)。デフォルトは(2160, 2160)
-            zoom (int, optional): ズームレベル（0-21）。デフォルトは13
+            api_key (str): Google Maps Static APIのキー。
+            center_lat (float): 中心の緯度。
+            center_lon (float): 中心の経度。
+            output_path (str): 画像の保存先パス。拡張子は'.png'のみ許可される。
+            scale (int, optional): 画像の解像度スケール（1か2）。デフォルトは1。
+            size (tuple[int, int], optional): 画像サイズ (幅, 高さ)。デフォルトは(2160, 2160)。
+            zoom (int, optional): ズームレベル（0-21）。デフォルトは13。
 
         Returns:
             ImageFile: 取得した衛星画像
@@ -425,6 +425,11 @@ class FluxFootprintAnalyzer:
         Raises:
             requests.RequestException: API呼び出しに失敗した場合
         """
+        # バリデーション
+        if not output_path.endswith(".png"):
+            raise ValueError("出力ファイル名は'.png'で終わる必要があります。")
+
+        # HTTPリクエストの定義
         base_url = "https://maps.googleapis.com/maps/api/staticmap"
         params = {
             "center": f"{center_lat},{center_lon}",
@@ -438,19 +443,17 @@ class FluxFootprintAnalyzer:
         try:
             response = requests.get(base_url, params=params)
             response.raise_for_status()
-
+            # 画像ファイルに変換
             image = Image.open(io.BytesIO(response.content))
             image.save(output_path)
-            self.logger.info(f"衛星画像を保存しました: {output_path}")
-
             self.__got_satellite_image = True
+            self.logger.info(f"リモート画像を取得し、保存しました: {output_path}")
             return image
-
         except requests.RequestException as e:
             self.logger.error(f"衛星画像の取得に失敗しました: {str(e)}")
             raise
 
-    def get_satellite_image_by_local(
+    def get_satellite_image_from_local(
         self,
         local_image_path: str,
     ) -> ImageFile:
@@ -470,11 +473,9 @@ class FluxFootprintAnalyzer:
             raise FileNotFoundError(
                 f"指定されたローカル画像が存在しません: {local_image_path}"
             )
-
         image = Image.open(local_image_path)
-        self.logger.info(f"ローカル画像を使用しました: {local_image_path}")
-
         self.__got_satellite_image = True
+        self.logger.info(f"ローカル画像を使用しました: {local_image_path}")
         return image
 
     def plot_flux_footprint(
@@ -492,7 +493,8 @@ class FluxFootprintAnalyzer:
         function: callable = np.mean,
         lat_correction: float = 1,
         lon_correction: float = 1,
-        output_path: str = "",
+        output_dir: str | None = None,
+        output_filename: str = "footprint.png",
         satellite_image: ImageFile | None = None,
         xy_max: float = 5000,
     ) -> None:
@@ -515,7 +517,8 @@ class FluxFootprintAnalyzer:
             cbar_labelpad (int, optional): カラーバーラベルのパディング。
             lon_correction (float, optional): 経度方向の補正係数（デフォルトは1）。
             lat_correction (float, optional): 緯度方向の補正係数（デフォルトは1）。
-            output_path (str, optional): プロット画像の保存先パス。
+            output_dir (str | None, optional): プロット画像の保存先パス。
+            output_filename (str): プロット画像の保存ファイル名（拡張子を含む）。デフォルトは'footprint.png'。
             satellite_image (ImageFile | None, optional): 使用する衛星画像。指定がない場合はデフォルトの画像が生成されます。
             xy_max (float, optional): 表示範囲の最大値（デフォルトは4000）。
         """
@@ -535,7 +538,8 @@ class FluxFootprintAnalyzer:
             hotspot_colors=None,
             lat_correction=lat_correction,
             lon_correction=lon_correction,
-            output_path=output_path,
+            output_dir=output_dir,
+            output_filename=output_filename,
             satellite_image=satellite_image,
             xy_max=xy_max,
         )
@@ -557,7 +561,8 @@ class FluxFootprintAnalyzer:
         hotspot_colors: dict[str, str] | None = None,
         lat_correction: float = 1,
         lon_correction: float = 1,
-        output_path: str = "",
+        output_dir: str | None = None,
+        output_filename: str = "footprint.png",
         satellite_image: ImageFile | None = None,
         xy_max: float = 5000,
     ) -> None:
@@ -583,35 +588,48 @@ class FluxFootprintAnalyzer:
             hotspot_colors (dict[str, str] | None, optional): ホットスポットの色を指定する辞書。
             lon_correction (float, optional): 経度方向の補正係数（デフォルトは1）。
             lat_correction (float, optional): 緯度方向の補正係数（デフォルトは1）。
-            output_path (str, optional): プロット画像の保存先パス。
+            output_dir (str | None, optional): プロット画像の保存先パス。
+            output_filename (str): プロット画像の保存ファイル名（拡張子を含む）。デフォルトは'footprint.png'。
             satellite_image (ImageFile | None, optional): 使用する衛星画像。指定がない場合はデフォルトの画像が生成されます。
-            xy_max (float, optional): 表示範囲の最大値（デフォルトは4000）。
+            xy_max (float, optional): 表示範囲の最大値（デフォルトは5000）。
         """
-        # 1. フラグチェック
-        if not self.__got_satellite_image:
-            raise ValueError("`get_satellite_image`が実行されていません。")
+        # 1. 引数のバリデーション
+        valid_extensions: list[str] = [".png", ".jpg", ".jpeg", ".pdf", ".svg"]
+        _, file_extension = os.path.splitext(output_filename)
+        if file_extension.lower() not in valid_extensions:
+            quoted_extensions: list[str] = [f'"{ext}"' for ext in valid_extensions]
+            self.logger.error(
+                f"`output_filename`は有効な拡張子ではありません。プロットを保存するには、次のいずれかを指定してください: {','.join(quoted_extensions)}"
+            )
+            return
 
-        # 2. 衛星画像の取得
+        # 2. フラグチェック
+        if not self.__got_satellite_image:
+            raise ValueError(
+                "`get_satellite_image_from_api`または`get_satellite_image_from_local`が実行されていません。"
+            )
+
+        # 3. 衛星画像の取得
         if satellite_image is None:
             satellite_image = Image.new("RGB", (2160, 2160), "lightgray")
 
-        # 3. 座標変換のための定数
-        meters_per_lat = self.EARTH_RADIUS_METER * (
+        # 4. 座標変換のための定数
+        meters_per_lat: float = self.EARTH_RADIUS_METER * (
             math.pi / 180
         )  # 緯度1度あたりのメートル
-        meters_per_lon = meters_per_lat * math.cos(
+        meters_per_lon: float = meters_per_lat * math.cos(
             math.radians(center_lat)
         )  # 経度1度あたりのメートル
 
-        # 4. フットプリントデータの座標変換
+        # 5. フットプリントデータの座標変換
         # メートル単位からの緯度経度への変換
         x_deg = np.array(x_list) / meters_per_lon
         y_deg = np.array(y_list) / meters_per_lat
 
-        # 4. フットプリントデータの座標変換
+        # 6. フットプリントデータの座標変換
         # 補正係数を適用した座標変換
-        meters_per_lat = self.EARTH_RADIUS_METER * (math.pi / 180)
-        meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
+        meters_per_lat: float = self.EARTH_RADIUS_METER * (math.pi / 180)
+        meters_per_lon: float = meters_per_lat * math.cos(math.radians(center_lat))
 
         x_deg = np.array(x_list) / meters_per_lon * lon_correction
         y_deg = np.array(y_list) / meters_per_lat * lat_correction
@@ -619,11 +637,11 @@ class FluxFootprintAnalyzer:
         lons = center_lon + x_deg
         lats = center_lat + y_deg
 
-        # 5. 表示範囲の計算
-        x_range = xy_max / meters_per_lon
-        y_range = xy_max / meters_per_lat
+        # 7. 表示範囲の計算
+        x_range: float = xy_max / meters_per_lon
+        y_range: float = xy_max / meters_per_lat
 
-        map_boundaries = (
+        map_boundaries: tuple[float, float, float, float] = (
             center_lon - x_range,  # left_lon
             center_lon + x_range,  # right_lon
             center_lat - y_range,  # bottom_lat
@@ -631,12 +649,12 @@ class FluxFootprintAnalyzer:
         )
         left_lon, right_lon, bottom_lat, top_lat = map_boundaries
 
-        # 6. プロットの作成
+        # 8. プロットの作成
         plt.rcParams["axes.edgecolor"] = "None"
         fig: plt.Figure = plt.figure(figsize=(10, 8), dpi=300)
         ax_data: plt.Axes = fig.add_axes([0.05, 0.1, 0.8, 0.8])
 
-        # 7. フットプリントの描画
+        # 9. フットプリントの描画
         hexbin = ax_data.hexbin(
             lons,
             lats,
@@ -652,16 +670,19 @@ class FluxFootprintAnalyzer:
             reduce_C_function=function,
         )
 
-        # 8. ホットスポットの描画
+        # 10. ホットスポットの描画
         spot_handles = []
-
         # ホットスポットが指定されているときのみ作図
         if hotspots is not None:
-            default_colors = {"bio": "blue", "gas": "red", "comb": "green"}
+            default_colors: dict[str, str] = {
+                "bio": "blue",
+                "gas": "red",
+                "comb": "green",
+            }
 
             # 座標変換のための定数
-            meters_per_lat = self.EARTH_RADIUS_METER * (math.pi / 180)
-            meters_per_lon = meters_per_lat * math.cos(math.radians(center_lat))
+            meters_per_lat: float = self.EARTH_RADIUS_METER * (math.pi / 180)
+            meters_per_lon: float = meters_per_lat * math.cos(math.radians(center_lat))
 
             for spot_type, color in (hotspot_colors or default_colors).items():
                 spots_lon = []
@@ -675,8 +696,8 @@ class FluxFootprintAnalyzer:
                         )
 
                         # 中心からの相対距離を計算
-                        dx = (spot.avg_lon - center_lon) * meters_per_lon
-                        dy = (spot.avg_lat - center_lat) * meters_per_lat
+                        dx: float = (spot.avg_lon - center_lon) * meters_per_lon
+                        dy: float = (spot.avg_lat - center_lat) * meters_per_lat
 
                         # 補正前の相対座標をログ出力
                         self.logger.debug(
@@ -684,12 +705,12 @@ class FluxFootprintAnalyzer:
                         )
 
                         # 補正を適用
-                        corrected_dx = dx * lon_correction
-                        corrected_dy = dy * lat_correction
+                        corrected_dx: float = dx * lon_correction
+                        corrected_dy: float = dy * lat_correction
 
                         # 補正後の緯度経度を計算
-                        adjusted_lon = center_lon + corrected_dx / meters_per_lon
-                        adjusted_lat = center_lat + corrected_dy / meters_per_lat
+                        adjusted_lon: float = center_lon + corrected_dx / meters_per_lon
+                        adjusted_lat: float = center_lat + corrected_dy / meters_per_lat
 
                         # 変換後の緯度経度をログ出力
                         self.logger.debug(
@@ -717,7 +738,7 @@ class FluxFootprintAnalyzer:
                     )
                     spot_handles.append(handle)
 
-        # 9. 背景画像の設定
+        # 11. 背景画像の設定
         ax_img = ax_data.twiny().twinx()
         ax_img.imshow(
             satellite_image,
@@ -725,7 +746,7 @@ class FluxFootprintAnalyzer:
             aspect="equal",
         )
 
-        # 10. 軸の設定
+        # 12. 軸の設定
         for ax in [ax_data, ax_img]:
             ax.set_xlim(left_lon, right_lon)
             ax.set_ylim(bottom_lat, top_lat)
@@ -736,13 +757,13 @@ class FluxFootprintAnalyzer:
         ax_data.patch.set_alpha(0)
         ax_img.set_zorder(1)
 
-        # 11. カラーバーの追加
+        # 13. カラーバーの追加
         cbar_ax: plt.Axes = fig.add_axes([0.88, 0.1, 0.03, 0.8])
         cbar = fig.colorbar(hexbin, cax=cbar_ax)
         if cbar_label:
             cbar.set_label(cbar_label, rotation=270, labelpad=cbar_labelpad)
 
-        # 12. ホットスポットの凡例追加
+        # 14. ホットスポットの凡例追加
         if hotspots is not None and spot_handles:
             legend = ax_data.legend(
                 handles=spot_handles,
@@ -752,20 +773,11 @@ class FluxFootprintAnalyzer:
             )
             legend.get_frame().set_alpha(0.8)
 
-        # 13. 画像の保存
-        if output_path:
-            valid_extensions = [".png", ".jpg", ".jpeg", ".pdf", ".svg"]
-            _, file_extension = os.path.splitext(output_path)
-
-            if file_extension.lower() not in valid_extensions:
-                quoted_extensions = [f'"{ext}"' for ext in valid_extensions]
-                self.logger.error(
-                    f"`output_path`は有効な拡張子ではありません。プロットを保存するには、次のいずれかを指定してください: {','.join(quoted_extensions)}"
-                )
-                return
-
+        # 15. 画像の保存
+        if output_dir:
+            output_path: str = os.path.join(output_dir, output_filename)
+            self.logger.info("プロットを保存中...")
             try:
-                self.logger.info("プロットを保存中...")
                 fig.savefig(output_path, bbox_inches="tight")
                 self.logger.info(f"プロットが正常に保存されました: {output_path}")
             except Exception as e:

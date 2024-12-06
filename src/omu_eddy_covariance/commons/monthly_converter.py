@@ -127,22 +127,24 @@ class MonthlyConverter:
         skiprows: int | list[int] = [1],
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        include_end_date: bool = False,
+        include_end_date: bool = True,
         sort_by_date: bool = True,
     ) -> pd.DataFrame:
         """
-        指定されたシートを読み込み、DataFrameとして返却する。
-        デフォルトでは2行目（単位の行）はスキップする。
+        指定されたシートを読み込み、DataFrameとして返却します。
+        デフォルトでは2行目（単位の行）はスキップされます。
 
         Args:
-            sheet_names (str | list[str]): 読み込むシート名。文字列または文字列のリスト
-            start_date (str | None): 開始日 ('yyyy-MM-dd')。この日付の'00:00:00'のデータが開始行となる。
-            end_date (str | None): 終了日 ('yyyy-MM-dd')。この日付をデータに含めるかはinclude_end_dateフラグによって変化する。
-            include_end_date (bool): 終了日を含めるかどうか。デフォルトはFalse。
-            sort_by_date (bool): ファイルの日付でソートするかどうかデフォルトはTrue。
+            sheet_names (str | list[str]): 読み込むシート名。文字列または文字列のリストを指定できます。
+            header (int): データのヘッダー行を指定します。デフォルトは0。
+            skiprows (int | list[int]): スキップする行数。デフォルトでは1行目をスキップします。
+            start_date (str | None): 開始日 ('yyyy-MM-dd')。この日付の'00:00:00'のデータが開始行となります。
+            end_date (str | None): 終了日 ('yyyy-MM-dd')。この日付をデータに含めるかはinclude_end_dateフラグによって変わります。
+            include_end_date (bool): 終了日を含めるかどうか。デフォルトはTrueです。
+            sort_by_date (bool): ファイルの日付でソートするかどうか。デフォルトはTrueです。
 
         Returns:
-            pd.DataFrame: 結合されたDataFrame
+            pd.DataFrame: 読み込まれたデータを結合したDataFrameを返します。
         """
         if isinstance(sheet_names, str):
             sheet_names = [sheet_names]
@@ -264,5 +266,5 @@ class MonthlyConverter:
 
             except ValueError as e:
                 self.logger.warn(
-                    f"Warning: Could not parse date from file {excel_path.name}: {e}"
+                    f"Could not parse date from file {excel_path.name}: {e}"
                 )
