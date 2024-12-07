@@ -57,12 +57,12 @@ class FluxSpatialAnalyzer:
         results = []
 
         # フットプリントデータをセクターごとに分類
-        footprint_sections = self.__classify_footprint_to_sections(
+        footprint_sections = self._classify_footprint_to_sections(
             footprint_x, footprint_y, footprint_values
         )
 
         # ホットスポットデータをセクターごとに分類
-        hotspot_sections = self.__classify_hotspots_to_sections(hotspots)
+        hotspot_sections = self._classify_hotspots_to_sections(hotspots)
 
         # 各セクターで分析を実行
         for section in range(self.num_sections):
@@ -76,7 +76,7 @@ class FluxSpatialAnalyzer:
             # 統計的有意性の検定
             if section_footprint and hotspot_count > 0:
                 # フットプリント強度とホットスポット位置の相関を計算
-                correlation, p_value = self.__calculate_spatial_correlation(
+                correlation, p_value = self._calculate_spatial_correlation(
                     section_footprint, hotspot_sections.get(section, [])
                 )
             else:
@@ -281,36 +281,6 @@ class FluxSpatialAnalyzer:
         plt.tight_layout()
         return fig
 
-    # def __calculate_spatial_correlation(
-    #     self, footprint_values: list[float], hotspots: list[HotspotData]
-    # ) -> tuple[float, float]:
-    #     """
-    #     フットプリント強度とホットスポット分布の空間相関を計算
-
-    #     Returns:
-    #         tuple[float, float]: (相関係数, p値)
-    #     """
-    #     if not footprint_values or not hotspots:
-    #         return 0, 1.0
-
-    #     # フットプリント強度の分布を正規化
-    #     normalized_footprint = np.array(footprint_values)
-    #     normalized_footprint = (
-    #         normalized_footprint - np.mean(normalized_footprint)
-    #     ) / np.std(normalized_footprint)
-
-    #     # ホットスポットの分布を二値化配列として作成
-    #     hotspot_distribution = np.zeros(len(footprint_values))
-    #     for i in range(len(hotspots)):
-    #         hotspot_distribution[i] = 1
-
-    #     # スピアマンの順位相関係数を計算
-    #     correlation, p_value = stats.spearmanr(
-    #         normalized_footprint, hotspot_distribution
-    #     )
-
-    #     return correlation, p_value
-
     def _calculate_spatial_correlation(
         self, footprint_values: list[float], hotspots: list[HotspotData]
     ) -> tuple[float, float]:
@@ -350,7 +320,7 @@ class FluxSpatialAnalyzer:
 
         return correlation, p_value
 
-    def __classify_footprint_to_sections(
+    def _classify_footprint_to_sections(
         self, x: list[float], y: list[float], values: list[float]
     ) -> dict[int, list[float]]:
         """
@@ -400,7 +370,7 @@ class FluxSpatialAnalyzer:
 
         return sections
 
-    def __classify_hotspots_to_sections(
+    def _classify_hotspots_to_sections(
         self, hotspots: list[HotspotData]
     ) -> dict[int, list[HotspotData]]:
         """

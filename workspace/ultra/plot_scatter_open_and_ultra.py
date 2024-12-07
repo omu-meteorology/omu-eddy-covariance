@@ -40,12 +40,12 @@ class FluxPlotter:
         self.logger = FluxPlotter.setup_logger(logger, log_level)
 
         # DataFrameの初期化
-        self.__df: pd.DataFrame | None = None
+        self._df: pd.DataFrame | None = None
 
     @property
     def df(self) -> pd.DataFrame | None:
         """処理済みのDataFrameを取得"""
-        return self.__df
+        return self._df
 
     def load_data(self, file_path: str) -> None:
         """
@@ -70,7 +70,7 @@ class FluxPlotter:
         ]
         df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
 
-        self.__df = df
+        self._df = df
 
         self.logger.info(f"Data loaded and processed successfully: {len(df)} rows")
 
@@ -85,12 +85,12 @@ class FluxPlotter:
         戻り値:
             pd.DataFrame: 有効なデータのみを含むDataFrame
         """
-        if self.__df is None:
+        if self._df is None:
             raise ValueError(
                 "No data loaded. Please load data first using load_data()."
             )
 
-        return self.__df.copy().dropna(subset=[x_col, y_col])
+        return self._df.copy().dropna(subset=[x_col, y_col])
 
     def plot_combined_diurnal_patterns(
         self,
@@ -114,7 +114,7 @@ class FluxPlotter:
 
         例：0時の値は、その月の0:00-0:59のすべてのデータの平均値
         """
-        df = self.__df.copy()
+        df = self._df.copy()
         if df is None:
             raise ValueError("No data loaded. Please load data first using load_data()")
 
@@ -251,7 +251,7 @@ class FluxPlotter:
         axis_range: tuple = (-50, 200),
     ) -> None:
         """散布図と回帰直線をプロットする"""
-        if self.__df is None:
+        if self._df is None:
             raise ValueError(
                 "No data loaded. Please load data first using load_data()."
             )

@@ -53,7 +53,7 @@ class FluxFootprintAnalyzer:
             logging_debug (bool): ログレベルを"DEBUG"に設定するかどうか。デフォルトはFalseで、Falseの場合はINFO以上のレベルのメッセージが出力されます。
         """
         # 定数や共通の変数
-        self.__required_columns: list[str] = [
+        self._required_columns: list[str] = [
             "Date",
             "WS vector",
             "u*",
@@ -306,7 +306,7 @@ class FluxFootprintAnalyzer:
             df = data_source.copy()
 
             # required_columnsからDateを除外して欠損値チェックを行う
-            check_columns = [col for col in self.__required_columns if col != "Date"]
+            check_columns = [col for col in self._required_columns if col != "Date"]
 
             # インデックスがdatetimeであることを確認
             if not isinstance(df.index, pd.DatetimeIndex) and "Date" not in df.columns:
@@ -789,9 +789,9 @@ class FluxFootprintAnalyzer:
         # 取得したヘッダーをデータフレームに設定
         df.columns = header
 
-        # self.__required_columnsのカラムが存在するか確認
+        # self._required_columnsのカラムが存在するか確認
         missing_columns: list[str] = [
-            col for col in self.__required_columns if col not in df.columns.tolist()
+            col for col in self._required_columns if col not in df.columns.tolist()
         ]
         if missing_columns:
             raise ValueError(

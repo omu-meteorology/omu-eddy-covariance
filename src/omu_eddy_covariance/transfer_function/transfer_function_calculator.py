@@ -31,7 +31,7 @@ class TransferFunctionCalculator:
         self._freq_key: str = freq_key
         self._cutoff_freq_low: float = cutoff_freq_low
         self._cutoff_freq_high: float = cutoff_freq_high
-        self._df: pd.DataFrame = self._load_data(file_path)
+        self._df: pd.DataFrame = TransferFunctionCalculator._load_data(file_path)
         TransferFunctionCalculator.setup_plot_params()
 
     def calculate_transfer_function(
@@ -291,7 +291,22 @@ class TransferFunctionCalculator:
         ]
         return df_cutoff
 
-    def _load_data(self, file_path: str) -> pd.DataFrame:
+    @classmethod
+    def transfer_function(cls, x: np.ndarray, a: float) -> np.ndarray:
+        """
+        伝達関数を計算する。
+
+        Args:
+            x (np.ndarray): 周波数の配列。
+            a (float): 伝達関数の係数。
+
+        Returns:
+            np.ndarray: 伝達関数の値。
+        """
+        return np.exp(-np.log(np.sqrt(2)) * np.power(x / a, 2))
+
+    @staticmethod
+    def _load_data(file_path: str) -> pd.DataFrame:
         """
         CSVファイルからデータを読み込む。
 
@@ -335,17 +350,3 @@ class TransferFunctionCalculator:
                 "axes.labelsize": 20,
             }
         )
-
-    @classmethod
-    def transfer_function(cls, x: np.ndarray, a: float) -> np.ndarray:
-        """
-        伝達関数を計算する。
-
-        Args:
-            x (np.ndarray): 周波数の配列。
-            a (float): 伝達関数の係数。
-
-        Returns:
-            np.ndarray: 伝達関数の値。
-        """
-        return np.exp(-np.log(np.sqrt(2)) * np.power(x / a, 2))
