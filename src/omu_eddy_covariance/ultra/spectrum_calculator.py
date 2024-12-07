@@ -436,7 +436,7 @@ class SpectrumCalculator:
         return detrended_data
 
     @staticmethod
-    def _generate_window_function(self, type: str, data_length: int) -> np.ndarray:
+    def _generate_window_function(type: str, data_length: int) -> np.ndarray:
         """
         指定された種類の窓関数を適用する
 

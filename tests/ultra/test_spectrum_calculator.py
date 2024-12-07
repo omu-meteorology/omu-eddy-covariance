@@ -94,10 +94,7 @@ def test_detrend():
     trend = 2 * t + 1
     signal = np.sin(2 * np.pi * 1 * t) + trend
 
-    df = pd.DataFrame({"test": signal})
-    calculator = SpectrumCalculator(df=df, apply_lag_keys=[], lag_second=0.0, fs=10.0)
-
-    detrended = calculator._SpectrumCalculator__detrend(signal)
+    detrended = SpectrumCalculator._detrend(signal, 10)
 
     # トレンドが除去されていることを確認
     assert np.abs(np.mean(detrended)) < 0.1
@@ -108,19 +105,11 @@ def test_window_function():
     """
     # 窓関数の生成が正しく機能することを確認
     """
-    df = pd.DataFrame({"test": np.zeros(100)})
-    calculator = SpectrumCalculator(df=df, apply_lag_keys=[], lag_second=0.0, fs=10.0)
 
     # 各種窓関数のテスト
-    window_hamming = calculator._SpectrumCalculator__generate_window_function(
-        "hamming", 100
-    )
-    window_hanning = calculator._SpectrumCalculator__generate_window_function(
-        "hanning", 100
-    )
-    window_blackman = calculator._SpectrumCalculator__generate_window_function(
-        "blackman", 100
-    )
+    window_hamming = SpectrumCalculator._generate_window_function("hamming", 100)
+    window_hanning = SpectrumCalculator._generate_window_function("hanning", 100)
+    window_blackman = SpectrumCalculator._generate_window_function("blackman", 100)
 
     # 数値誤差を考慮した許容値を設定
     eps = 1e-15
@@ -142,12 +131,6 @@ def test_lag_correction():
     signal1 = np.sin(2 * np.pi * 1 * t)
     signal2 = np.sin(2 * np.pi * 1 * (t - 0.1))  # 0.1秒の遅れ
 
-    df = pd.DataFrame({"signal1": signal1, "signal2": signal2})
-
-    calculator = SpectrumCalculator(
-        df=df, apply_lag_keys=["signal2"], lag_second=0.1, fs=10.0
-    )
-
     # 負の遅れ時間でエラーが発生することを確認
     with pytest.raises(ValueError):
-        calculator._SpectrumCalculator__correct_lag_time(signal1, signal2, -0.1)
+        SpectrumCalculator._correct_lag_time(signal1, signal2, 10, -0.1)
