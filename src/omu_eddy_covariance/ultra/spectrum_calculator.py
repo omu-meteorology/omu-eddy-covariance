@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from scipy import signal
 
 
 class SpectrumCalculator:
@@ -247,16 +248,17 @@ class SpectrumCalculator:
             # 線形スケールの場合はそのまま返す
             return freqs, cospectrum, quad_spectrum, correlation_coefficient
 
-    def calculate_powerspectrum(
+    def calculate_power_spectrum_density(
         self,
         key: str,
+        dimensionless: bool = True,
         frequency_weighted: bool = True,
         interpolate_points: bool = True,
-        smooth: bool = False,
+        smooth: bool = True,
     ) -> tuple:
         """
         DataFrameから指定されたkeyのパワースペクトルと周波数軸を計算する
-        fft.cと同様のロジックで実装
+        scipy.signal.welchを使用してパワースペクトルを計算
 
         Args:
             key (str): データの列名
@@ -269,97 +271,49 @@ class SpectrumCalculator:
                 - freqs (np.ndarray): 周波数軸（対数スケールの場合は対数変換済み）
                 - power_spectrum (np.ndarray): パワースペクトル（対数スケールの場合は対数変換済み）
         """
-        # keyに一致するデータを取得
-        column_data: np.ndarray = np.array(self.df[key].values)
-        # データ長
-        data_length: int = len(column_data)
-        # トレンド除去
-        column_data = SpectrumCalculator._detrend(
-            data=column_data, fs=self.fs, first=True
+        # データの取得とトレンド除去
+        data = np.array(self.df[key].values)
+        data = SpectrumCalculator._detrend(data, self.fs)
+
+        # welchメソッドでパワースペクトル計算
+        freqs, psd = signal.welch(
+            data, fs=self.fs, window=self.window_type, nperseg=1024, scaling="density"
         )
-        # データの分散を計算（窓関数適用前）
-        variance = np.var(column_data)
 
-        # 窓関数の適用
-        window_scale: float = 1.0
-        if self.apply_window:
-            window = SpectrumCalculator._generate_window_function(
-                type=self.window_type, data_length=data_length
-            )
-            column_data *= window
-            window_scale = float(np.mean(window**2))
-
-        # FFTの計算
-        fft_result = np.fft.rfft(column_data)
-
-        # 周波数軸の作成
-        freqs: np.ndarray = np.fft.rfftfreq(data_length, 1.0 / self.fs)
-
-        # fft.cと同様のスペクトル計算ロジック
-        power_spectrum: np.ndarray = np.zeros(len(freqs))
-        for i in range(1, len(freqs)):  # 0Hz成分を除外
-            z = fft_result[i]
-            z_star = np.conj(z)
-
-            # x = z + z*
-            x = z + z_star
-            x_re = x.real
-            x_im = x.imag
-
-            # パワースペクトルの計算 (sc = 0.5)
-            power_spectrum[i] = (
-                (x_re * x_re + x_im * x_im) * 0.5 / (data_length * window_scale)
-            )
-
-        # 無次元化
-        if self.dimensionless:
-            power_spectrum /= variance
-
-        # 周波数の重みづけ
+        # 周波数の重みづけ（0Hz除外の前に実施）
         if frequency_weighted:
-            power_spectrum[1:] *= freqs[1:]  # 0Hz成分を除外
+            psd = freqs * psd
 
-        # 3点移動平均によるスペクトルの平滑化
+        # 無次元化（0Hz除外の前に実施）
+        if dimensionless:
+            variance = np.var(data)
+            psd /= variance
+
+        # スムージング（0Hz除外の前に実施）
         if smooth:
-            smoothed_spectrum = np.zeros_like(power_spectrum)
-            # 端点の処理
-            smoothed_spectrum[0] = 0.5 * (power_spectrum[0] + power_spectrum[1])
-            smoothed_spectrum[-1] = 0.5 * (power_spectrum[-2] + power_spectrum[-1])
-            # 中間点の平滑化
-            for i in range(1, len(power_spectrum) - 1):
-                smoothed_spectrum[i] = (
-                    0.25 * power_spectrum[i - 1]
-                    + 0.5 * power_spectrum[i]
-                    + 0.25 * power_spectrum[i + 1]
-                )
-            power_spectrum = smoothed_spectrum
-
-        # 0Hz成分を除外
-        nonzero_mask = freqs != 0
-        freqs = freqs[nonzero_mask]
-        power_spectrum = power_spectrum[nonzero_mask]
+            psd = self._smooth_spectrum(psd)
 
         if interpolate_points:
-            # 対数変換
-            log_freqs = np.log10(freqs)
-            log_power = np.log10(power_spectrum)
+            # 補間処理（0Hz除外の前に実施）
+            log_freq_min = np.log10(0.001)
+            log_freq_max = np.log10(freqs[-1])
+            log_freq_resampled = np.logspace(log_freq_min, log_freq_max, 30)
 
-            # 周波数軸の最小値と最大値を取得
-            min_freq = np.min(log_freqs)
-            max_freq = np.max(log_freqs)
+            psd_resampled = np.interp(
+                log_freq_resampled, freqs, psd, left=np.nan, right=np.nan
+            )
 
-            # 等間隔なplots個の点を生成（対数軸上で等間隔）
-            interp_log_freqs = np.linspace(min_freq, max_freq, self.plots)
-            interp_freqs = 10**interp_log_freqs
+            # NaNを除外
+            valid_mask = ~np.isnan(psd_resampled)
+            freqs = log_freq_resampled[valid_mask]
+            psd = psd_resampled[valid_mask]
 
-            # 生成した周波数に対応するパワースペクトルの値を対数軸上で線形補間
-            interp_log_power = np.interp(interp_log_freqs, log_freqs, log_power)
-            interp_power_spectrum = 10**interp_log_power
+        # 0Hz成分を最後に除外
+        nonzero_mask = freqs != 0
+        freqs = freqs[nonzero_mask]
+        psd = psd[nonzero_mask]
 
-            return interp_freqs, interp_power_spectrum
-        else:
-            # 線形スケールの場合はそのまま返す
-            return freqs, power_spectrum
+        return freqs, psd
 
     @staticmethod
     def _correct_lag_time(
@@ -414,23 +368,25 @@ class SpectrumCalculator:
         Raises:
             ValueError: first と second の両方がFalseの場合
         """
+
         if not (first or second):
             raise ValueError("少なくとも一次または二次トレンドの除去を指定してください")
 
-        # サンプリング周波数を考慮した時間軸の生成
-        time: np.ndarray = np.arange(len(data)) / fs
         detrended_data: np.ndarray = data.copy()
 
         # 一次トレンドの除去
         if first:
-            coeffs_first = np.polyfit(time, detrended_data, 1)
-            trend_first = np.polyval(coeffs_first, time)
-            detrended_data = detrended_data - trend_first
+            detrended_data = signal.detrend(detrended_data)
 
         # 二次トレンドの除去
         if second:
-            coeffs_second = np.polyfit(time, detrended_data, 2)
-            trend_second = np.polyval(coeffs_second, time)
+            # 二次トレンドを除去するために、まず一次トレンドを除去
+            detrended_data = signal.detrend(detrended_data, type="linear")
+            # 二次トレンドを除去するために、二次多項式フィッティングを行う
+            coeffs_second = np.polyfit(
+                np.arange(len(detrended_data)), detrended_data, 2
+            )
+            trend_second = np.polyval(coeffs_second, np.arange(len(detrended_data)))
             detrended_data = detrended_data - trend_second
 
         return detrended_data
@@ -460,3 +416,22 @@ class SpectrumCalculator:
         else:
             print('Warning: Invalid argument "type". Return hanning window.')
             return np.hanning(data_length)
+
+    @staticmethod
+    def _smooth_spectrum(spectrum: np.ndarray) -> np.ndarray:
+        """
+        3点移動平均によるスペクトルの平滑化を行う
+        """
+        smoothed = np.zeros_like(spectrum)
+
+        # 端点の処理
+        smoothed[0] = 0.5 * (spectrum[0] + spectrum[1])
+        smoothed[-1] = 0.5 * (spectrum[-2] + spectrum[-1])
+
+        # 中間点の平滑化
+        for i in range(1, len(spectrum) - 1):
+            smoothed[i] = (
+                0.25 * spectrum[i - 1] + 0.5 * spectrum[i] + 0.25 * spectrum[i + 1]
+            )
+
+        return smoothed

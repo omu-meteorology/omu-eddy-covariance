@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import timedelta
 from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
-from omu_eddy_covariance import HotspotData
+from ..commons.hotspot_data import HotspotData
 
 """
 堺市役所の位置情報

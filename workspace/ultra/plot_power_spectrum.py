@@ -24,7 +24,7 @@ def plot_power_spectrum(
     plt.figure(figsize=(10, 8))
 
     # パワースペクトルの計算
-    freqs, power_spectrum = calculator.calculate_powerspectrum(
+    freqs, power_spectrum = calculator.calculate_power_spectrum_density(
         key=key,
         frequency_weighted=frequency_weighted,
         smooth=True,

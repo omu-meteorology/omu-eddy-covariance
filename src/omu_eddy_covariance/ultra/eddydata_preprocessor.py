@@ -255,6 +255,7 @@ class EddyDataPreprocessor:
         ],
         metadata_rows: int = 4,
         skiprows: list[int] = [0, 2, 3],
+        is_already_resampled: bool = False,
     ) -> tuple[pd.DataFrame, list[str]]:
         """
         CSVファイルを読み込み、前処理を行う
@@ -277,62 +278,63 @@ class EddyDataPreprocessor:
                 デフォルトは["Ux", "Uy", "Uz", "Tv", "diag_sonic", "CO2_new", "H2O", "diag_irga", "cell_tmpr", "cell_press", "Ultra_CH4_ppm", "Ultra_C2H6_ppb", "Ultra_H2O_ppm", "Ultra_CH4_ppm_C", "Ultra_C2H6_ppb_C"]。
             metadata_rows (int, optional): メタデータとして読み込む行数。デフォルトは4。
             skiprows (list[int], optional): スキップする行インデックスのリスト。デフォルトは[0, 2, 3]のため、1, 3, 4行目がスキップされる。
+            is_already_resampled (bool): 既にリサンプリング&欠損補間されているか。Trueの場合はfloat変換などの処理のみ適用する。
 
         Returns:
             tuple[pd.DataFrame, list[str]]: 前処理済みのデータフレームとメタデータのリスト
         """
-        # メタデータを読み込む（最初の数行）
+        # メタデータを読み込む
         metadata: list[str] = []
         with open(filepath, "r") as f:
             for _ in range(metadata_rows):
                 line = f.readline().strip()
-                # クォーテーションを削除
                 metadata.append(line.replace('"', ""))
 
-        # CSVファイルを読み込む（skiprowsで除外したDataFrameの一行目がヘッダーとなる）
+        # CSVファイルを読み込む
         df: pd.DataFrame = pd.read_csv(filepath, skiprows=skiprows)
 
         # 数値データをfloat型に変換する
-        df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
-
-        # μ秒がない場合は".0"を追加する
-        df[index_column] = df[index_column].apply(
-            lambda x: f"{x}.0" if "." not in x else x
-        )
-        # TIMESTAMPをDateTimeインデックスに設定する
-        df[index_column] = pd.to_datetime(df[index_column], format=index_format)
-        # インデックスをセット
-        df = df.set_index(index_column)
-
-        # リサンプリング前の有効数字を取得
-        decimal_places = {}
         for col in numeric_columns:
             if col in df.columns:
-                # 各列の最大有効数字を取得
-                max_decimals = (
-                    df[col].astype(str).str.extract(r"\.(\d+)")[0].str.len().max()
-                )
-                decimal_places[col] = int(max_decimals) if pd.notna(max_decimals) else 0
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # {self.fs}Hzでリサンプリングする
-        resampling_period: int = int(1000 / self.fs)  # ms単位で算出
-        # numeric_only=Trueは数値型のみ欠損補間を行う
-        df_resampled: pd.DataFrame = df.resample(f"{resampling_period}ms").mean(
-            numeric_only=True
-        )
+        if not is_already_resampled:
+            # μ秒がない場合は".0"を追加する
+            df[index_column] = df[index_column].apply(
+                lambda x: f"{x}.0" if "." not in x else x
+            )
+            # TIMESTAMPをDateTimeインデックスに設定する
+            df[index_column] = pd.to_datetime(df[index_column], format=index_format)
+            df = df.set_index(index_column)
 
-        if interpolate:
-            # 補間を実行
-            df_resampled = df_resampled.interpolate()
-            # 有効数字を調整
-            for col, decimals in decimal_places.items():
-                if col in df_resampled.columns:
-                    df_resampled[col] = df_resampled[col].round(decimals)
+            # リサンプリング前の有効数字を取得
+            decimal_places = {}
+            for col in numeric_columns:
+                if col in df.columns:
+                    max_decimals = (
+                        df[col].astype(str).str.extract(r"\.(\d+)")[0].str.len().max()
+                    )
+                    decimal_places[col] = int(max_decimals) if pd.notna(max_decimals) else 0
 
-        # DateTimeインデックスを削除する
-        df = df_resampled.reset_index()
-        # ミリ秒を1桁にフォーマット
-        df[index_column] = df[index_column].dt.strftime("%Y-%m-%d %H:%M:%S.%f").str[:-5]
+            # リサンプリングを実行
+            resampling_period: int = int(1000 / self.fs)
+            df_resampled: pd.DataFrame = df.resample(f"{resampling_period}ms").mean(
+                numeric_only=True
+            )
+
+            if interpolate:
+                # 補間を実行
+                df_resampled = df_resampled.interpolate()
+                # 有効数字を調整
+                for col, decimals in decimal_places.items():
+                    if col in df_resampled.columns:
+                        df_resampled[col] = df_resampled[col].round(decimals)
+
+            # DateTimeインデックスを削除する
+            df = df_resampled.reset_index()
+            # ミリ秒を1桁にフォーマット
+            df[index_column] = df[index_column].dt.strftime("%Y-%m-%d %H:%M:%S.%f").str[:-5]
+
         return df, metadata
 
     def output_resampled_data(

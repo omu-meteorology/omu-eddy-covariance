@@ -25,7 +25,6 @@ class MonthlyConverter:
         """
         MonthlyConverterクラスのコンストラクタ
 
-
         Args:
             directory (str | Path): Excelファイルが格納されているディレクトリのパス
             file_pattern (str): ファイル名のパターン。デフォルトは'SA.Ultra.*.xlsx'。

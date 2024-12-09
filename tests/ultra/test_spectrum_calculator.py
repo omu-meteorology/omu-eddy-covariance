@@ -51,7 +51,7 @@ def test_power_spectrum(sample_data):
     df, fs = sample_data
     calculator = SpectrumCalculator(df=df, apply_lag_keys=[], lag_second=0.0, fs=fs)
 
-    freqs, power = calculator.calculate_powerspectrum(
+    freqs, power = calculator.calculate_power_spectrum_density(
         key="signal1", frequency_weighted=True, interpolate_points=False
     )
 

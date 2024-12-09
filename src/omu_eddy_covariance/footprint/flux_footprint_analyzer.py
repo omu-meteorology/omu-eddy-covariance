@@ -11,7 +11,7 @@ from PIL import Image
 from PIL.ImageFile import ImageFile
 from datetime import datetime
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
-from omu_eddy_covariance import HotspotData
+from ..commons.hotspot_data import HotspotData
 
 
 class FluxFootprintAnalyzer:
