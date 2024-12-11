@@ -67,7 +67,7 @@ class TransferFunctionCalculator:
         # 係数aとその標準誤差、および計算に用いたDataFrameを返す
         return popt[0], perr[0], df_processed
 
-    def create_plot_cospectra(
+    def create_plot_co_spectra(
         self,
         key1: str,
         key2: str,

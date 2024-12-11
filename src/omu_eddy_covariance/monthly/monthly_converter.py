@@ -1,6 +1,5 @@
 import pandas as pd
 from pathlib import Path
-from typing import Optional
 from datetime import datetime
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 
@@ -122,10 +121,11 @@ class MonthlyConverter:
     def read_sheets(
         self,
         sheet_names: str | list[str],
+        columns: list[str] | None = None,  # 新しいパラメータを追加
         header: int = 0,
         skiprows: int | list[int] = [1],
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         include_end_date: bool = True,
         sort_by_date: bool = True,
     ) -> pd.DataFrame:
@@ -135,6 +135,7 @@ class MonthlyConverter:
 
         Args:
             sheet_names (str | list[str]): 読み込むシート名。文字列または文字列のリストを指定できます。
+            columns (list[str] | None): 残すカラム名のリスト。Noneの場合は全てのカラムを保持します。
             header (int): データのヘッダー行を指定します。デフォルトは0。
             skiprows (int | list[int]): スキップする行数。デフォルトでは1行目をスキップします。
             start_date (str | None): 開始日 ('yyyy-MM-dd')。この日付の'00:00:00'のデータが開始行となります。
@@ -205,6 +206,17 @@ class MonthlyConverter:
                 combined_df["Date"] < end_dt
             ]  # 終了日の翌日0時より前のデータを全て含める
 
+        # カラムの選択
+        if columns is not None:
+            # 必須カラムを追加（date, year, month）
+            required_columns = ["Date", "date", "year", "month"]
+            selected_columns = list(set(columns + required_columns))
+            # 存在するカラムのみを選択
+            existing_columns = [
+                col for col in selected_columns if col in combined_df.columns
+            ]
+            combined_df = combined_df[existing_columns]
+
         return combined_df
 
     def __enter__(self) -> "MonthlyConverter":
@@ -228,7 +240,7 @@ class MonthlyConverter:
         return datetime.strptime(date_str, self.FILE_DATE_FORMAT)
 
     def _load_excel_files(
-        self, start_date: Optional[str] = None, end_date: Optional[str] = None
+        self, start_date: str | None = None, end_date: str | None = None
     ) -> None:
         """
         指定された日付範囲のExcelファイルを読み込む

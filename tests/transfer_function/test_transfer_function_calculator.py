@@ -104,11 +104,11 @@ def test_cutoff_df(calculator):
     assert df_cutoff.index.max() <= calculator._cutoff_freq_high
 
 
-def test_create_plot_cospectra(calculator, tmp_path):
+def test_create_plot_co_spectra(calculator, tmp_path):
     """コスペクトルプロット作成のテスト"""
     # プロットの保存と表示テスト
     output_dir = str(tmp_path)
-    calculator.create_plot_cospectra(
+    calculator.create_plot_co_spectra(
         "co1", "co2", output_dir=output_dir, show_plot=False
     )
 

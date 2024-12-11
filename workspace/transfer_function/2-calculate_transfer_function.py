@@ -9,8 +9,8 @@ tf_file_name: str = f"TF_Ultra.{date}-detrend.csv"
 
 output_dir: str = "C:\\Users\\nakao\\workspace\\sac\\transfer_function\\output"
 
-show_cospectra_plot: bool = True
-# show_cospectra_plot: bool = False
+show_co_spectra_plot: bool = True
+# show_co_spectra_plot: bool = False
 show_tf_plot: bool = True
 # show_tf_plot: bool = False
 
@@ -25,26 +25,26 @@ try:
     tfc = TransferFunctionCalculator(file_path, " f", 0.01, 1)
 
     # コスペクトルのプロット
-    tfc.create_plot_cospectra(
+    tfc.create_plot_co_spectra(
         key1=key_wt,
         key2=key_wch4,
         label1=r"$fC_{wTv}$ / $\overline{w^\prime Tv^\prime}$",
         label2=r"$fC_{wCH_{4}}$ / $\overline{w^\prime CH_{4}^\prime}$",
         color2="red",
         subplot_label="(a)",
-        show_plot=show_cospectra_plot,
+        show_plot=show_co_spectra_plot,
         output_dir=output_dir,
         output_basename=f"co_ch4-{date}",
     )
 
-    tfc.create_plot_cospectra(
+    tfc.create_plot_co_spectra(
         key1=key_wt,
         key2=key_wc2h6,
         label1=r"$fC_{wTv}$ / $\overline{w^\prime Tv^\prime}$",
         label2=r"$fC_{wC_{2}H_{6}}$ / $\overline{w^\prime C_{2}H_{6}^\prime}$",
         color2="orange",
         subplot_label="(b)",
-        show_plot=show_cospectra_plot,
+        show_plot=show_co_spectra_plot,
         output_dir=output_dir,
         output_basename=f"co_c2h6-{date}",
     )

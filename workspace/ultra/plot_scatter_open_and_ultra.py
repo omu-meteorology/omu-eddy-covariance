@@ -101,7 +101,7 @@ class FluxPlotter:
         colors_ch4: list[str],
         colors_c2h6: list[str],
         filename: str,
-        label_only_ch4: bool = False,
+        legend_only_ch4: bool = False,
         show_label: bool = True,
         show_legend: bool = True,
         subplot_fontsize: int = 20,
@@ -206,7 +206,7 @@ class FluxPlotter:
         if show_legend:
             all_lines = ch4_lines
             all_labels = labels_ch4
-            if not label_only_ch4:
+            if not legend_only_ch4:
                 all_lines += c2h6_lines
                 all_labels += labels_c2h6
             fig.legend(
@@ -402,7 +402,7 @@ if __name__ == "__main__":
             y_cols_c2h6=["Fc2h6_ultra"],
             labels_ch4=["Ultra", "Open Path", "G2401"],
             labels_c2h6=["Ultra"],
-            label_only_ch4=True,
+            legend_only_ch4=True,
             show_label=False,
             show_legend=(month == "09" or month == "07"),
             colors_ch4=["black", "red", "blue"],
