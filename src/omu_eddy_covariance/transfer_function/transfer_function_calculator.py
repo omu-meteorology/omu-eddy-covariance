@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -133,8 +134,8 @@ class TransferFunctionCalculator:
 
         if output_dir is not None:
             # プロットをPNG形式で保存
-            filename: str = f"{output_basename}-{key1}_{key2}.png"
-            fig.savefig(f"{output_dir}/{filename}", dpi=300)
+            filename: str = f"{output_basename}.png"
+            fig.savefig(os.path.join(output_dir, filename), dpi=300)
         if show_plot:
             plt.show()
 
@@ -177,7 +178,7 @@ class TransferFunctionCalculator:
         if output_dir is not None:
             # プロットをPNG形式で保存
             filename: str = f"{output_basename}-{reference_name}_{target_name}.png"
-            fig.savefig(f"{output_dir}/{filename}", dpi=300)
+            fig.savefig(os.path.join(output_dir, filename), dpi=300)
         if show_plot:
             plt.show()
 
@@ -233,7 +234,7 @@ class TransferFunctionCalculator:
         if output_dir is not None:
             # プロットをPNG形式で保存
             filename: str = f"{output_basename}-{reference_name}_{target_name}.png"
-            fig.savefig(f"{output_dir}/{filename}", dpi=300)
+            fig.savefig(os.path.join(output_dir, filename), dpi=300)
         if show_plot:
             plt.show()
 

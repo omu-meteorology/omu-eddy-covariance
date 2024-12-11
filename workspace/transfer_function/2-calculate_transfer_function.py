@@ -2,10 +2,12 @@ import os
 from omu_eddy_covariance import TransferFunctionCalculator
 
 # 変数定義
-# base_path = r"C:\Users\nakao\workspace\sac\transfer_function\data\ultra\2024.10.07"
-base_path = r"C:\Users\nakao\workspace\sac\ultra\data\2024.10.07\Ultra_Eddy\tf"
-tf_file_name: str = "TF_Ultra.2024.10.07.csv"
-# tf_file_name: str = "TF_Ultra.2024.10.07-detrend.csv"
+date: str = "2024.06.21"
+base_path = f"C:\\Users\\nakao\\workspace\\sac\\transfer_function\\data\\ultra\\{date}"
+# tf_file_name: str = f"TF_Ultra.{date}.csv"
+tf_file_name: str = f"TF_Ultra.{date}-detrend.csv"
+
+output_dir: str = "C:\\Users\\nakao\\workspace\\sac\\transfer_function\\output"
 
 show_cospectra_plot: bool = True
 # show_cospectra_plot: bool = False
@@ -31,6 +33,8 @@ try:
         color2="red",
         subplot_label="(a)",
         show_plot=show_cospectra_plot,
+        output_dir=output_dir,
+        output_basename=f"co_ch4-{date}",
     )
 
     tfc.create_plot_cospectra(
@@ -41,6 +45,8 @@ try:
         color2="orange",
         subplot_label="(b)",
         show_plot=show_cospectra_plot,
+        output_dir=output_dir,
+        output_basename=f"co_c2h6-{date}",
     )
 
     print("伝達関数を分析中...")
@@ -59,6 +65,8 @@ try:
         reference_name="wTv",
         target_name="wCH4",
         show_plot=show_tf_plot,
+        output_dir=output_dir,
+        output_basename=f"tf_ch4-{date}",
     )
     tfc.create_plot_transfer_function(
         a=a_wc2h6,
@@ -66,6 +74,8 @@ try:
         reference_name="wTv",
         target_name="wC2H6",
         show_plot=show_tf_plot,
+        output_dir=output_dir,
+        output_basename=f"tf_c2h6-{date}",
     )
 
     print(f"wCH4の係数 a: {a_wch4}")
