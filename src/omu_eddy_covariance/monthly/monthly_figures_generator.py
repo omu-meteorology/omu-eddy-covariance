@@ -91,16 +91,17 @@ class MonthlyFiguresGenerator:
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-    def plot_monthly_power_spectrum(
+    def plot_monthly_psd(
         self,
         input_dir: str,
         output_dir: str,
-        lag_second: float,
-        output_filename: str = "monthly_power.png",
-        file_pattern: str = "*.csv",
+        fs: float,
+        lag_second: float = 0,  # パワースペクトルの計算には関係ないので0とする
         are_inputs_resampled: bool = True,
+        file_pattern: str = "*.csv",
+        output_filename: str = "monthly_psd.png",
     ) -> None:
-        """月間の平均パワースペクトルを計算してプロットする
+        """月間の平均パワースペクトル密度を計算してプロットする
 
         Args:
             input_dir (str): データファイルが格納されているディレクトリ
@@ -124,16 +125,19 @@ class MonthlyFiguresGenerator:
             # 各ファイルごとにスペクトル計算
             calculator = SpectrumCalculator(
                 df=df,
-                fs=10,
+                fs=fs,
                 apply_lag_keys=["Ultra_CH4_ppm_C", "Ultra_C2H6_ppb"],
-                # lag_second=11.95,
                 lag_second=lag_second,
             )
 
             # 各変数のパワースペクトルを計算して保存
             for key in power_spectra.keys():
-                f, ps = calculator.calculate_power_spectrum_density(
-                    key=key, frequency_weighted=True, smooth=True
+                f, ps = calculator.calculate_power_spectrum(
+                    key=key,
+                    dimensionless=True,
+                    frequency_weighted=True,
+                    interpolate_points=True,
+                    scaling="density",
                 )
                 if freqs is None:
                     freqs = f
@@ -183,7 +187,6 @@ class MonthlyFiguresGenerator:
                 averaged_spectra[config["key"]],
                 c=config["color"],
                 s=100,
-                # alpha=0.5,
             )
 
             # 軸を対数スケールに設定

@@ -7,12 +7,12 @@ class SpectrumCalculator:
     def __init__(
         self,
         df: pd.DataFrame,
-        apply_lag_keys: list[str],
-        lag_second: float,
         fs: float,
+        lag_second: float,
+        apply_lag_keys: list[str],
         apply_window: bool = True,
-        dimensionless: bool = True,
         plots: int = 30,
+        window_type: str = "hamming",
     ):
         """
         データロガーから取得したデータファイルを用いて計算を行うクラス。
@@ -20,28 +20,27 @@ class SpectrumCalculator:
         Args:
             df (pd.DataFrame): pandasのデータフレーム。解析対象のデータを含む。
             apply_lag_keys (list[str]): コスペクトルの遅れ時間補正を適用するキーのリスト。
-            lag_second (float): 遅延時間（秒）。データの遅延を指定。
             fs (float): サンプリング周波数（Hz）。データのサンプリングレートを指定。
+            lag_second (float): 遅延時間（秒）。データの遅延を指定。
             apply_window (bool, optional): 窓関数を適用するフラグ。デフォルトはTrue。
-            dimensionless (bool, optional): Trueの場合、分散で割って無次元化を行う。デフォルトはTrue。
             plots (int): プロットする点の数。可視化のためのデータポイント数。
         """
-        self.apply_lag_keys: list[str] = apply_lag_keys
-        self.apply_window: bool = apply_window
-        self.lag_second: float = lag_second
-        self.dimensionless: bool = dimensionless
-        self.df: pd.DataFrame = df
-        self.fs: float = fs
-        self.plots: int = plots
-        self.window_type: str = "hamming"
+        self._df: pd.DataFrame = df
+        self._fs: float = fs
+        self._apply_lag_keys: list[str] = apply_lag_keys
+        self._apply_window: bool = apply_window
+        self._lag_second: float = lag_second
+        self._plots: int = plots
+        self._window_type: str = window_type
 
-    def calculate_cospectrum(
+    def calculate_co_spectrum(
         self,
         key1: str,
         key2: str,
+        dimensionless: bool = True,
         frequency_weighted: bool = True,
         interpolate_points: bool = True,
-        smooth: bool = False,
+        scaling: str = "spectrum",
     ) -> tuple:
         """
         DataFrameから指定されたkey1とkey2のコスペクトルを計算する
@@ -50,32 +49,35 @@ class SpectrumCalculator:
         Args:
             key1 (str): データの列名1
             key2 (str): データの列名2
+            dimensionless (bool, optional): Trueの場合、分散で割って無次元化を行う。デフォルトはTrue。
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
             interpolate_points (bool, optional): 等間隔なデータ点を生成するかどうか（対数軸上で等間隔）
-            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
+            scaling (str): "density"でスペクトル密度、"spectrum"でスペクトル。デフォルトは"spectrum"。
 
         Returns:
-            tuple: (freqs, cospectrum, correlation_coefficient)
+            tuple: (freqs, co_spectrum, corr_coef)
                 - freqs (np.ndarray): 周波数軸（対数スケールの場合は対数変換済み）
-                - cospectrum (np.ndarray): コスペクトル（対数スケールの場合は対数変換済み）
-                - correlation_coefficient (float): 変数の相関係数
+                - co_spectrum (np.ndarray): コスペクトル（対数スケールの場合は対数変換済み）
+                - corr_coef (float): 変数の相関係数
         """
-        freqs, cospectrum, _, correlation_coefficient = self.calculate_crossspectrum(
+        freqs, co_spectrum, _, corr_coef = self.calculate_cross_spectrum(
             key1=key1,
             key2=key2,
+            dimensionless=dimensionless,
             frequency_weighted=frequency_weighted,
             interpolate_points=interpolate_points,
-            smooth=smooth,
+            scaling=scaling,
         )
-        return freqs, cospectrum, correlation_coefficient
+        return freqs, co_spectrum, corr_coef
 
-    def calculate_crossspectrum(
+    def calculate_cross_spectrum(
         self,
         key1: str,
         key2: str,
+        dimensionless: bool = True,
         frequency_weighted: bool = True,
         interpolate_points: bool = True,
-        smooth: bool = False,
+        scaling: str = "spectrum",
     ) -> tuple:
         """
         DataFrameから指定されたkey1とkey2のコスペクトルとクアドラチャスペクトルを計算する
@@ -84,43 +86,50 @@ class SpectrumCalculator:
         Args:
             key1 (str): データの列名1
             key2 (str): データの列名2
+            dimensionless (bool, optional): Trueの場合、分散で割って無次元化を行う。デフォルトはTrue。
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
             interpolate_points (bool, optional): 等間隔なデータ点を生成するかどうか（対数軸上で等間隔）
-            smooth (bool, optional): スペクトルを平滑化するかどうか。デフォルトはFalse。
+            scaling (str): "density"でスペクトル密度、"spectrum"でスペクトル。デフォルトは"spectrum"。
 
         Returns:
-            tuple: (freqs, cospectrum, quadrature_spectrum, correlation_coefficient)
+            tuple: (freqs, co_spectrum, quadrature_spectrum, corr_coef)
                 - freqs (np.ndarray): 周波数軸（対数スケールの場合は対数変換済み）
-                - cospectrum (np.ndarray): コスペクトル（対数スケールの場合は対数変換済み）
+                - co_spectrum (np.ndarray): コスペクトル（対数スケールの場合は対数変換済み）
                 - quadrature_spectrum (np.ndarray): クアドラチャスペクトル（対数スケールの場合は対数変換済み）
-                - correlation_coefficient (float): 変数の相関係数
+                - corr_coef (float): 変数の相関係数
         """
+        # バリデーション
+        valid_scaling_options = ["density", "spectrum"]
+        if scaling not in valid_scaling_options:
+            raise ValueError(
+                f"'scaling'は次のパラメータから選択してください: {valid_scaling_options}"
+            )
+
+        fs: float = self._fs
+        df: pd.DataFrame = self._df.copy()
         # key1とkey2に一致するデータを取得
-        data1: np.ndarray = np.array(self.df[key1].values)
-        data2: np.ndarray = np.array(self.df[key2].values)
+        data1: np.ndarray = np.array(df[key1].values)
+        data2: np.ndarray = np.array(df[key2].values)
 
         # 遅れ時間の補正
-        if key2 in self.apply_lag_keys:
+        if key2 in self._apply_lag_keys:
             data1, data2 = SpectrumCalculator._correct_lag_time(
-                data1=data1, data2=data2, fs=self.fs, lag_second=self.lag_second
+                data1=data1, data2=data2, fs=fs, lag_second=self._lag_second
             )
 
         # トレンド除去
-        data1 = SpectrumCalculator._detrend(data=data1, fs=self.fs, first=True)
-        data2 = SpectrumCalculator._detrend(data=data2, fs=self.fs, first=True)
+        data1 = SpectrumCalculator._detrend(data=data1, fs=fs, first=True)
+        data2 = SpectrumCalculator._detrend(data=data2, fs=fs, first=True)
 
-        # データ長
-        data_length: int = len(data1)
-
-        # 共分散の計算
-        cov_matrix: np.ndarray = np.cov(data1, data2)
-        covariance: float = cov_matrix[0, 1]
+        # トレンド除去後のデータでパラメータを計算
+        data_length: int = len(data1)  # データ長
+        corr_coef: float = np.corrcoef(data1, data2)[0, 1]  # 相関係数の計算
 
         # 窓関数の適用
         window_scale = 1.0
-        if self.apply_window:
+        if self._apply_window:
             window = SpectrumCalculator._generate_window_function(
-                type=self.window_type, data_length=data_length
+                type=self._window_type, data_length=data_length
             )
             data1 *= window
             data2 *= window
@@ -131,10 +140,10 @@ class SpectrumCalculator:
         fft2 = np.fft.rfft(data2)
 
         # 周波数軸の作成
-        freqs: np.ndarray = np.fft.rfftfreq(data_length, 1.0 / self.fs)
+        freqs: np.ndarray = np.fft.rfftfreq(data_length, 1.0 / self._fs)
 
         # fft.cと同様のコスペクトル計算ロジック
-        cospectrum = np.zeros(len(freqs))
+        co_spectrum = np.zeros(len(freqs))
         quad_spectrum = np.zeros(len(freqs))
 
         for i in range(1, len(freqs)):  # 0Hz成分を除外
@@ -168,93 +177,64 @@ class SpectrumCalculator:
                 y1_re * y2_re + y1_im * y2_im, y1_im * y2_re - y1_re * y2_im
             )
 
-            # スケーリングを適用
-            cospectrum[i] = (conj_x1_x2.real) * 0.5 / (data_length * window_scale)
-            quad_spectrum[i] = (conj_y1_y2.real) * 0.5 / (data_length * window_scale)
+            # スケーリングパラメータを計算
+            scale_factor = 0.5 / (len(data1) * window_scale)  # spectrumの場合
+            # パワースペクトル密度の場合、周波数間隔で正規化
+            if scaling == "density":
+                df = freqs[1] - freqs[0]  # 周波数間隔
+                scale_factor = 0.5 / (len(data1) * window_scale * df)
 
-        # 無次元化
-        if self.dimensionless:
-            cospectrum /= covariance
-            quad_spectrum /= covariance
+            # スケーリングを適用
+            co_spectrum[i] = conj_x1_x2.real * scale_factor
+            quad_spectrum[i] = conj_y1_y2.real * scale_factor
 
         # 周波数の重みづけ
         if frequency_weighted:
-            cospectrum[1:] *= freqs[1:]
+            co_spectrum[1:] *= freqs[1:]
             quad_spectrum[1:] *= freqs[1:]
 
-        # 3点移動平均によるスペクトルの平滑化
-        if smooth:
-            smoothed_co = np.zeros_like(cospectrum)
-            smoothed_quad = np.zeros_like(quad_spectrum)
+        # 無次元化
+        if dimensionless:
+            cov_matrix: np.ndarray = np.cov(data1, data2)
+            covariance: float = cov_matrix[0, 1]  # 共分散
+            co_spectrum /= covariance
+            quad_spectrum /= covariance
 
-            # 端点の処理
-            smoothed_co[0] = 0.5 * (cospectrum[0] + cospectrum[1])
-            smoothed_co[-1] = 0.5 * (cospectrum[-2] + cospectrum[-1])
-            smoothed_quad[0] = 0.5 * (quad_spectrum[0] + quad_spectrum[1])
-            smoothed_quad[-1] = 0.5 * (quad_spectrum[-2] + quad_spectrum[-1])
+        if interpolate_points:
+            # 補間処理（0Hz除外の前に実施）
+            log_freq_min = np.log10(0.001)
+            log_freq_max = np.log10(freqs[-1])
+            log_freq_resampled = np.logspace(log_freq_min, log_freq_max, self._plots)
 
-            # 中間点の平滑化
-            for i in range(1, len(cospectrum) - 1):
-                smoothed_co[i] = (
-                    0.25 * cospectrum[i - 1]
-                    + 0.5 * cospectrum[i]
-                    + 0.25 * cospectrum[i + 1]
-                )
-                smoothed_quad[i] = (
-                    0.25 * quad_spectrum[i - 1]
-                    + 0.5 * quad_spectrum[i]
-                    + 0.25 * quad_spectrum[i + 1]
-                )
+            # コスペクトルとクアドラチャスペクトルの補間
+            co_resampled = np.interp(
+                log_freq_resampled, freqs, co_spectrum, left=np.nan, right=np.nan
+            )
+            quad_resampled = np.interp(
+                log_freq_resampled, freqs, quad_spectrum, left=np.nan, right=np.nan
+            )
 
-            cospectrum = smoothed_co
-            quad_spectrum = smoothed_quad
-
-        # 相関係数の計算
-        correlation_coefficient: float = np.corrcoef(data1, data2)[0, 1]
+            # NaNを除外
+            valid_mask = ~np.isnan(co_resampled)
+            freqs = log_freq_resampled[valid_mask]
+            co_spectrum = co_resampled[valid_mask]
+            quad_spectrum = quad_resampled[valid_mask]
 
         # 0Hz成分を除外
         nonzero_mask = freqs != 0
         freqs = freqs[nonzero_mask]
-        cospectrum = cospectrum[nonzero_mask]
+        co_spectrum = co_spectrum[nonzero_mask]
         quad_spectrum = quad_spectrum[nonzero_mask]
 
-        if interpolate_points:
-            # 対数変換（スペクトルは負の値を取りうるので絶対値を取る）
-            log_freqs = np.log10(freqs)
-            log_co = np.log10(np.abs(cospectrum))
-            log_quad = np.log10(np.abs(quad_spectrum))
+        return freqs, co_spectrum, quad_spectrum, corr_coef
 
-            # 周波数軸の最小値と最大値を取得
-            min_freq = np.min(log_freqs)
-            max_freq = np.max(log_freqs)
-
-            # 等間隔なplots個の点を生成（対数軸上で等間隔）
-            interp_log_freqs = np.linspace(min_freq, max_freq, self.plots)
-            interp_freqs = 10**interp_log_freqs
-
-            # 生成した周波数に対応するスペクトルの値を対数軸上で線形補間
-            interp_log_co = np.interp(interp_log_freqs, log_freqs, log_co)
-            interp_log_quad = np.interp(interp_log_freqs, log_freqs, log_quad)
-            interp_cospectrum = 10**interp_log_co
-            interp_quadrature_spectrum = 10**interp_log_quad
-
-            return (
-                interp_freqs,
-                interp_cospectrum,
-                interp_quadrature_spectrum,
-                correlation_coefficient,
-            )
-        else:
-            # 線形スケールの場合はそのまま返す
-            return freqs, cospectrum, quad_spectrum, correlation_coefficient
-
-    def calculate_power_spectrum_density(
+    def calculate_power_spectrum(
         self,
         key: str,
         dimensionless: bool = True,
         frequency_weighted: bool = True,
         interpolate_points: bool = True,
-        smooth: bool = True,
+        scaling: str = "spectrum",
     ) -> tuple:
         """
         DataFrameから指定されたkeyのパワースペクトルと周波数軸を計算する
@@ -262,58 +242,62 @@ class SpectrumCalculator:
 
         Args:
             key (str): データの列名
+            dimensionless (bool, optional): Trueの場合、分散で割って無次元化を行う。デフォルトはTrue。
             frequency_weighted (bool, optional): 周波数の重みづけを適用するかどうか。デフォルトはTrue。
             interpolate_points (bool, optional): 等間隔なデータ点を生成するかどうか（対数軸上で等間隔）
-            smooth (bool, optional): パワースペクトルを平滑化するかどうか。デフォルトはFalse。
+            scaling (str, optional): "density"でスペクトル密度、"spectrum"でスペクトル。デフォルトは"spectrum"。
 
         Returns:
             tuple: (freqs, power_spectrum)
                 - freqs (np.ndarray): 周波数軸（対数スケールの場合は対数変換済み）
                 - power_spectrum (np.ndarray): パワースペクトル（対数スケールの場合は対数変換済み）
         """
+        # バリデーション
+        valid_scaling_options = ["density", "spectrum"]
+        if scaling not in valid_scaling_options:
+            raise ValueError(
+                f"'scaling'は次のパラメータから選択してください: {valid_scaling_options}"
+            )
+
         # データの取得とトレンド除去
-        data = np.array(self.df[key].values)
-        data = SpectrumCalculator._detrend(data, self.fs)
+        data: np.ndarray = np.array(self._df[key].values)
+        data = SpectrumCalculator._detrend(data, self._fs)
 
         # welchメソッドでパワースペクトル計算
-        freqs, psd = signal.welch(
-            data, fs=self.fs, window=self.window_type, nperseg=1024, scaling="density"
+        freqs, power_spectrum = signal.welch(
+            data, fs=self._fs, window=self._window_type, nperseg=1024, scaling=scaling
         )
 
         # 周波数の重みづけ（0Hz除外の前に実施）
         if frequency_weighted:
-            psd = freqs * psd
+            power_spectrum = freqs * power_spectrum
 
-        # 無次元化（0Hz除外の前に実施）
+        # # 無次元化（0Hz除外の前に実施）
         if dimensionless:
             variance = np.var(data)
-            psd /= variance
-
-        # スムージング（0Hz除外の前に実施）
-        if smooth:
-            psd = self._smooth_spectrum(psd)
+            power_spectrum /= variance
 
         if interpolate_points:
             # 補間処理（0Hz除外の前に実施）
             log_freq_min = np.log10(0.001)
             log_freq_max = np.log10(freqs[-1])
-            log_freq_resampled = np.logspace(log_freq_min, log_freq_max, 30)
+            log_freq_resampled = np.logspace(log_freq_min, log_freq_max, self._plots)
 
-            psd_resampled = np.interp(
-                log_freq_resampled, freqs, psd, left=np.nan, right=np.nan
+            power_spectrum_resampled = np.interp(
+                log_freq_resampled, freqs, power_spectrum, left=np.nan, right=np.nan
             )
 
             # NaNを除外
-            valid_mask = ~np.isnan(psd_resampled)
+            valid_mask = ~np.isnan(power_spectrum_resampled)
             freqs = log_freq_resampled[valid_mask]
-            psd = psd_resampled[valid_mask]
+            power_spectrum = power_spectrum_resampled[valid_mask]
 
         # 0Hz成分を最後に除外
         nonzero_mask = freqs != 0
         freqs = freqs[nonzero_mask]
-        psd = psd[nonzero_mask]
+        power_spectrum = power_spectrum[nonzero_mask]
 
-        return freqs, psd
+        return freqs, power_spectrum
 
     @staticmethod
     def _correct_lag_time(
@@ -418,20 +402,29 @@ class SpectrumCalculator:
             return np.hanning(data_length)
 
     @staticmethod
-    def _smooth_spectrum(spectrum: np.ndarray) -> np.ndarray:
+    def _smooth_spectrum(
+        spectrum: np.ndarray, frequencies: np.ndarray, freq_threshold: float = 0.1
+    ) -> np.ndarray:
         """
-        3点移動平均によるスペクトルの平滑化を行う
+        高周波数領域のみ3点移動平均を適用する
         """
-        smoothed = np.zeros_like(spectrum)
+        smoothed = spectrum.copy()  # オリジナルデータのコピーを作成
 
-        # 端点の処理
-        smoothed[0] = 0.5 * (spectrum[0] + spectrum[1])
-        smoothed[-1] = 0.5 * (spectrum[-2] + spectrum[-1])
+        # 周波数閾値以上の部分のインデックスを取得
+        high_freq_mask = frequencies >= freq_threshold
 
-        # 中間点の平滑化
-        for i in range(1, len(spectrum) - 1):
-            smoothed[i] = (
-                0.25 * spectrum[i - 1] + 0.5 * spectrum[i] + 0.25 * spectrum[i + 1]
-            )
+        # 高周波数領域のみを処理
+        high_freq_indices = np.where(high_freq_mask)[0]
+        if len(high_freq_indices) > 2:  # 最低3点必要
+            for i in high_freq_indices[1:-1]:  # 端点を除く
+                smoothed[i] = (
+                    0.25 * spectrum[i - 1] + 0.5 * spectrum[i] + 0.25 * spectrum[i + 1]
+                )
+
+            # 高周波領域の端点の処理
+            first_idx = high_freq_indices[0]
+            last_idx = high_freq_indices[-1]
+            smoothed[first_idx] = 0.5 * (spectrum[first_idx] + spectrum[first_idx + 1])
+            smoothed[last_idx] = 0.5 * (spectrum[last_idx - 1] + spectrum[last_idx])
 
         return smoothed

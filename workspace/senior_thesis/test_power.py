@@ -9,7 +9,9 @@ def calculate_power_spectrum(data_path):
     df = pd.read_csv(data_path, skiprows=[0, 2, 3])
 
     # CH4データの取得
-    ch4_data = df["Ultra_CH4_ppm_C"].values
+    # key:str = "Ultra_CH4_ppm_C"
+    key:str = "Ultra_C2H6_ppb"
+    ch4_data = df[key].values
 
     # サンプリング周波数の計算（10Hzを想定）
     fs = 10.0
@@ -71,7 +73,7 @@ def calculate_power_spectrum(data_path):
     plt.tight_layout()
 
     plt.savefig(
-        "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/outputs/tests/test-power.png"
+        f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/outputs/tests/test-power-{key}.png"
     )
 
     # プロットを閉じる

@@ -20,17 +20,21 @@ if __name__ == "__main__":
             include_end_date=True,
         )
 
-        mfg = MonthlyFiguresGenerator()
-        mfg.plot_monthly_c1c2_fluxes_timeseries(
-            monthly_df=monthly_df, output_dir=output_dir
-        )
+    mfg = MonthlyFiguresGenerator()
+    mfg.plot_monthly_c1c2_fluxes_timeseries(
+        monthly_df=monthly_df, output_dir=output_dir
+    )
 
-        months_list: list[str] = ["05"]
-        for month in months_list:
-            # パワースペクトルのプロット
-            mfg.plot_monthly_power_spectrum(
-                input_dir=f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/data/eddy_csv-resampled-{month}",
-                output_dir=f"{output_dir}/power",
-                output_filename=f"monthly_power-{month}.png",
-                lag_second=10,
-            )
+    months_list: list[str] = ["05", "06", "07", "08", "09", "10", "11"]
+    tag: str = ""
+    # months_list: list[str] = ["05"]
+    # tag: str = "-test-psd-dless"
+    for month in months_list:
+        # パワースペクトルのプロット
+        mfg.plot_monthly_psd(
+            input_dir=f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/data/eddy_csv-resampled-{month}",
+            output_dir=f"{output_dir}/power",
+            output_filename=f"monthly_psd-{month}{tag}.png",
+            fs=10,
+            lag_second=10,
+        )

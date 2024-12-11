@@ -51,7 +51,7 @@ def test_power_spectrum(sample_data):
     df, fs = sample_data
     calculator = SpectrumCalculator(df=df, apply_lag_keys=[], lag_second=0.0, fs=fs)
 
-    freqs, power = calculator.calculate_power_spectrum_density(
+    freqs, power = calculator.calculate_power_spectrum(
         key="signal1", frequency_weighted=True, interpolate_points=False
     )
 
@@ -71,7 +71,7 @@ def test_cospectrum(sample_data):
     df, fs = sample_data
     calculator = SpectrumCalculator(df=df, apply_lag_keys=[], lag_second=0.0, fs=fs)
 
-    freqs, cospec, corr = calculator.calculate_cospectrum(
+    freqs, cospec, corr = calculator.calculate_co_spectrum(
         key1="signal1",
         key2="signal2",
         frequency_weighted=True,

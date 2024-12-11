@@ -476,7 +476,7 @@ start_date, end_date = "2024-06-01", "2024-10-31"
 if __name__ == "__main__":
     # Monthlyデータの読み込み
     with MonthlyConverter(
-        "/home/connect0459/labo/omu-eddy-covariance/workspace/private/monthly",
+        "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/monthly",
         file_pattern="SA.Ultra.*.xlsx",
     ) as converter:
         monthly_df = converter.read_sheets(
