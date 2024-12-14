@@ -118,127 +118,91 @@ class MonthlyFiguresGenerator:
         subplot_label_ch4: str | None = "(a)",
         subplot_label_c2h6: str | None = "(b)",
     ) -> None:
-        """
-        CH4とC2H6の日変化パターンを1つの図に並べてプロットする。
-        各時間の値は、その月の同じ時間帯のデータの平均値として計算される。
-
-        例: 0時の値は、その月の0:00-0:59のすべてのデータの平均値
-
-        Args:
-            df (pd.DataFrame): 日変化パターンをプロットするためのデータフレーム。
-            y_cols_ch4 (list[str]): CH4フラックスの列名リスト。
-            y_cols_c2h6 (list[str]): C2H6フラックスの列名リスト。
-            labels_ch4 (list[str]): CH4フラックスのラベルリスト。
-            labels_c2h6 (list[str]): C2H6フラックスのラベルリスト。
-            colors_ch4 (list[str]): CH4フラックスの色リスト。
-            colors_c2h6 (list[str]): C2H6フラックスの色リスト。
-            output_dir (str): 出力先ディレクトリ。
-            output_filename (str, optional): 出力ファイル名。デフォルトは"diurnal.png"。
-            legend_only_ch4 (bool, optional): CH4のみの凡例を表示するかどうか。デフォルトはFalse。
-            show_label (bool, optional): 軸ラベルを表示するかどうか。デフォルトはTrue。
-            show_legend (bool, optional): 凡例を表示するかどうか。デフォルトはTrue。
-            subplot_fontsize (int, optional): サブプロットのフォントサイズ。デフォルトは20。
-            subplot_label_ch4 (str | None, optional): CH4のサブプロットラベル。デフォルトは"(a)"。
-            subplot_label_c2h6 (str | None, optional): C2H6のサブプロットラベル。デフォルトは"(b)"。
-
-        Returns:
-            None
-        """
+        """CH4とC2H6の日変化パターンを1つの図に並べてプロットする"""
         os.makedirs(output_dir, exist_ok=True)
         output_path: str = os.path.join(output_dir, output_filename)
 
-        df = df.copy()
+        # データの準備
+        target_columns = y_cols_ch4 + y_cols_c2h6
+        hourly_means, time_points = self._prepare_diurnal_data(df, target_columns)
 
-        # 時間データの抽出と平均値の計算
-        self.logger.debug("Calculating hourly means")
-        df["hour"] = pd.to_datetime(df["Date"]).dt.hour
-
-        # 時間ごとの平均値を計算
-        hourly_means = (
-            df.groupby("hour")
-            .agg(
-                {
-                    **{col: "mean" for col in y_cols_ch4},
-                    **{col: "mean" for col in y_cols_c2h6},
-                }
-            )
-            .reset_index()
-        )
-
-        # 24時目のデータを0時のデータで補完
-        last_row = hourly_means.iloc[0:1].copy()
-        last_row["hour"] = 24
-        hourly_means = pd.concat([hourly_means, last_row], ignore_index=True)
-
-        # 24時間分のデータを作成（0-23時）
-        time_points = pd.date_range("2024-01-01", periods=25, freq="h")
-
+        # プロットの作成
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
         # CH4のプロット (左側)
+        ch4_lines = []
         for y_col, label, color in zip(y_cols_ch4, labels_ch4, colors_ch4):
-            ax1.plot(time_points, hourly_means[y_col], "-o", label=label, color=color)
+            line = ax1.plot(
+                time_points,
+                hourly_means["all"][y_col],
+                "-o",
+                label=label,
+                color=color,
+            )
+            ch4_lines.extend(line)
 
-        if show_label:
-            ax1.set_xlabel("Time")
-            ax1.set_ylabel(r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)")
+        # C2H6のプロット (右側)
+        c2h6_lines = []
+        for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
+            line = ax2.plot(
+                time_points,
+                hourly_means["all"][y_col],
+                "-o",
+                label=label,
+                color=color,
+            )
+            c2h6_lines.extend(line)
 
-        # CH4のプロット (左側)の軸設定
-        ax1.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))  # %-Hで先頭の0を削除
-        ax1.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
-        ax1.set_xlim(time_points[0], time_points[-1])
-        # 24時の表示を修正
-        ax1.set_xticks(time_points[::6])
-        ax1.set_xticklabels(["0", "6", "12", "18", "24"])
+        # 軸の設定
+        for ax, ylabel, subplot_label in [
+            (ax1, r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_ch4),
+            (ax2, r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_c2h6),
+        ]:
+            self._setup_diurnal_axes(
+                ax=ax,
+                time_points=time_points,
+                ylabel=ylabel,
+                subplot_label=subplot_label,
+                show_label=show_label,
+                show_legend=False,  # 個別の凡例は表示しない
+                subplot_fontsize=subplot_fontsize,
+            )
 
-        # CH4のy軸の設定
-        ch4_max = hourly_means[y_cols_ch4].max().max()
-        if ch4_max < 100:
-            ax1.set_ylim(0, 100)
+        # 軸の追加設定
+        ch4_min = min(
+            hourly_means["all"][y_cols_ch4].min().min() for y_col in y_cols_ch4
+        )
+        ch4_max = max(
+            hourly_means["all"][y_cols_ch4].max().max() for y_col in y_cols_ch4
+        )
 
+        ax1_ylim: tuple[float, float] = min(0, ch4_min - 5), max(100, ch4_max + 5)
+        ax1.set_ylim(ax1_ylim)
         ax1.yaxis.set_major_locator(MultipleLocator(20))
         ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.0f}"))
-        if subplot_label_ch4 is not None:
-            ax1.text(
-                0.02,
-                0.98,
-                subplot_label_ch4,
-                transform=ax1.transAxes,
-                va="top",
-                fontsize=subplot_fontsize,
-            )
 
-        # C2H6のプロット (右側)
-        for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
-            ax2.plot(time_points, hourly_means[y_col], "-o", label=label, color=color)
+        # C2H6の軸設定
+        c2h6_min = min(
+            hourly_means["all"][y_cols_c2h6].min().min() for y_col in y_cols_c2h6
+        )
+        c2h6_max = max(
+            hourly_means["all"][y_cols_c2h6].max().max() for y_col in y_cols_c2h6
+        )
 
-        if show_label:
-            ax2.set_xlabel("Time")
-            ax2.set_ylabel(r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)")
+        ax2_ylim: tuple[float, float] = min(0, c2h6_min - 0.5), max(3, c2h6_max + 0.5)
+        ax2.set_ylim(ax2_ylim)
+        ax2.yaxis.set_major_locator(MultipleLocator(1))
+        ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
 
-        # CH4のプロット (左側)
-        ch4_lines = []  # 凡例用にラインオブジェクトを保存
-        for y_col, label, color in zip(y_cols_ch4, labels_ch4, colors_ch4):
-            (line,) = ax1.plot(
-                time_points, hourly_means[y_col], "-o", label=label, color=color
-            )
-            ch4_lines.append(line)
+        plt.tight_layout()
 
-        # C2H6のプロット (右側)
-        c2h6_lines = []  # 凡例用にラインオブジェクトを保存
-        for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
-            (line,) = ax2.plot(
-                time_points, hourly_means[y_col], "-o", label=label, color=color
-            )
-            c2h6_lines.append(line)
-
-        # 個別の凡例を削除し、図の下部に共通の凡例を配置
+        # 共通の凡例
         if show_legend:
             all_lines = ch4_lines
-            all_labels = labels_ch4
+            all_labels = [line.get_label() for line in ch4_lines]
             if not legend_only_ch4:
                 all_lines += c2h6_lines
-                all_labels += labels_c2h6
+                all_labels += [line.get_label() for line in c2h6_lines]
             fig.legend(
                 all_lines,
                 all_labels,
@@ -246,33 +210,11 @@ class MonthlyFiguresGenerator:
                 bbox_to_anchor=(0.5, 0.02),
                 ncol=len(all_lines),
             )
-
-        # C2H6のプロット (右側)の軸設定
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))  # %-Hで先頭の0を削除
-        ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
-        ax2.set_xlim(time_points[0], time_points[-1])
-        # 24時の表示を修正
-        ax2.set_xticks(time_points[::6])
-        ax2.set_xticklabels(["0", "6", "12", "18", "24"])
-
-        ax2.yaxis.set_major_locator(MultipleLocator(1))
-        ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
-        if subplot_label_c2h6 is not None:
-            ax2.text(
-                0.02,
-                0.98,
-                subplot_label_c2h6,
-                transform=ax2.transAxes,
-                va="top",
-                fontsize=subplot_fontsize,
-            )
-
-        plt.tight_layout()
-        plt.subplots_adjust(bottom=0.25)  # 下部に凡例用のスペースを確保
+            plt.subplots_adjust(bottom=0.25)  # 下部に凡例用のスペースを確保
 
         fig.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
-        
+
     def plot_c1c2_fluxes_diurnal_patterns_by_date(
         self,
         df: pd.DataFrame,
@@ -286,148 +228,132 @@ class MonthlyFiguresGenerator:
         plot_holiday: bool = True,
         show_label: bool = True,
         show_legend: bool = True,
+        legend_only_ch4: bool = False,
         subplot_fontsize: int = 20,
         subplot_label_ch4: str | None = "(a)",
         subplot_label_c2h6: str | None = "(b)",
     ) -> None:
-        """
-        CH4とC2H6の日変化パターンを日付分類して1つの図に並べてプロットする。
-
-        Args:
-            df (pd.DataFrame): 日変化パターンをプロットするためのデータフレーム
-            y_col_ch4 (str): CH4フラックスの列名
-            y_col_c2h6 (str): C2H6フラックスの列名
-            output_dir (str): 出力先ディレクトリ
-            output_filename (str): 出力ファイル名。デフォルトは"diurnal_by_date.png"
-            plot_all (bool): 全日のデータをプロットするかどうか。デフォルトはTrue
-            plot_weekday (bool): 平日のデータをプロットするかどうか。デフォルトはTrue
-            plot_weekend (bool): 土日のデータをプロットするかどうか。デフォルトはTrue
-            plot_holiday (bool): 土日祝日のデータをプロットするかどうか。デフォルトはTrue
-            show_label (bool): 軸ラベルを表示するかどうか。デフォルトはTrue
-            show_legend (bool): 凡例を表示するかどうか。デフォルトはTrue
-            subplot_fontsize (int): サブプロットのフォントサイズ。デフォルトは20
-            subplot_label_ch4 (str | None): CH4のサブプロットラベル。デフォルトは"(a)"
-            subplot_label_c2h6 (str | None): C2H6のサブプロットラベル。デフォルトは"(b)"
-        """
+        """CH4とC2H6の日変化パターンを日付分類して1つの図に並べてプロットする"""
         os.makedirs(output_dir, exist_ok=True)
         output_path: str = os.path.join(output_dir, output_filename)
 
-        df = df.copy()
-        
-        # 時間データの抽出
-        df["hour"] = pd.to_datetime(df["Date"]).dt.hour
-        dates = pd.to_datetime(df["Date"])
-        
-        # 日付による分類
-        is_weekend = dates.dt.dayofweek.isin([5, 6])  # 5=土曜日, 6=日曜日
-        is_holiday = dates.map(lambda x: jpholiday.is_holiday(x.date()))
-        is_weekday = ~(is_weekend | is_holiday)
-        
-        # プロットスタイルの設定
+        # データの準備
+        target_columns = [y_col_ch4, y_col_c2h6]
+        hourly_means, time_points = self._prepare_diurnal_data(
+            df, target_columns, include_date_types=True
+        )
+
+        # プロットスタイルの設定（すべて実線に変更）
         styles = {
-            "all": {"color": "black", "linestyle": "-", "alpha": 1.0, "label": "All days"},
-            "weekday": {"color": "blue", "linestyle": "--", "alpha": 0.8, "label": "Weekdays"},
-            "weekend": {"color": "red", "linestyle": ":", "alpha": 0.8, "label": "Weekends"},
-            "holiday": {"color": "green", "linestyle": "-.", "alpha": 0.8, "label": "Weekends & Holidays"}
+            "all": {
+                "color": "black",
+                "linestyle": "-",
+                "alpha": 1.0,
+                "label": "All days",
+            },
+            "weekday": {
+                "color": "blue",
+                "linestyle": "-",
+                "alpha": 0.8,
+                "label": "Weekdays",
+            },
+            "weekend": {
+                "color": "red",
+                "linestyle": "-",
+                "alpha": 0.8,
+                "label": "Weekends",
+            },
+            "holiday": {
+                "color": "green",
+                "linestyle": "-",
+                "alpha": 0.8,
+                "label": "Weekends & Holidays",
+            },
         }
 
-        # 時間ごとの平均値を計算する関数
-        def calculate_hourly_means(data_df, columns, condition=None):
-            if condition is not None:
-                data_df = data_df[condition]
-            return data_df.groupby("hour")[columns].mean().reset_index()
-
-        # 各条件での平均値を計算
-        hourly_means = {}
-        if plot_all:
-            hourly_means["all"] = calculate_hourly_means(df, [y_col_ch4, y_col_c2h6])
-        if plot_weekday:
-            hourly_means["weekday"] = calculate_hourly_means(df, [y_col_ch4, y_col_c2h6], is_weekday)
-        if plot_weekend:
-            hourly_means["weekend"] = calculate_hourly_means(df, [y_col_ch4, y_col_c2h6], is_weekend)
-        if plot_holiday:
-            hourly_means["holiday"] = calculate_hourly_means(df, [y_col_ch4, y_col_c2h6], is_weekend | is_holiday)
-
-        # 24時目のデータを追加
-        for key in hourly_means:
-            last_row = hourly_means[key].iloc[0:1].copy()
-            last_row["hour"] = 24
-            hourly_means[key] = pd.concat([hourly_means[key], last_row], ignore_index=True)
-
-        # 24時間分のデータを作成
-        time_points = pd.date_range("2024-01-01", periods=25, freq="h")
+        # プロット対象の条件を選択
+        plot_conditions = {
+            "all": plot_all,
+            "weekday": plot_weekday,
+            "weekend": plot_weekend,
+            "holiday": plot_holiday,
+        }
+        selected_conditions = {
+            key: means
+            for key, means in hourly_means.items()
+            if key in plot_conditions and plot_conditions[key]
+        }
 
         # プロットの作成
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-        # CH4のプロット (左側)
-        for condition, means in hourly_means.items():
-            style = styles[condition]
-            ax1.plot(
-                time_points,
-                means[y_col_ch4],
-                color=style["color"],
-                linestyle=style["linestyle"],
-                alpha=style["alpha"],
-                label=style["label"],
-                marker="o",
-                markersize=4
-            )
+        # CH4とC2H6のプロット用のラインオブジェクトを保存
+        ch4_lines = []
+        c2h6_lines = []
 
-        # C2H6のプロット (右側)
-        for condition, means in hourly_means.items():
+        # CH4とC2H6のプロット
+        for condition, means in selected_conditions.items():
             style = styles[condition]
-            ax2.plot(
-                time_points,
-                means[y_col_c2h6],
-                color=style["color"],
-                linestyle=style["linestyle"],
-                alpha=style["alpha"],
-                label=style["label"],
-                marker="o",
-                markersize=4
-            )
+            # CH4プロット
+            line_ch4 = ax1.plot(time_points, means[y_col_ch4], marker="o", **style)
+            ch4_lines.extend(line_ch4)
+
+            # C2H6プロット
+            line_c2h6 = ax2.plot(time_points, means[y_col_c2h6], marker="o", **style)
+            c2h6_lines.extend(line_c2h6)
 
         # 軸の設定
         for ax, ylabel, subplot_label in [
             (ax1, r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_ch4),
             (ax2, r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_c2h6),
         ]:
-            if show_label:
-                ax.set_xlabel("Time")
-                ax.set_ylabel(ylabel)
+            self._setup_diurnal_axes(
+                ax=ax,
+                time_points=time_points,
+                ylabel=ylabel,
+                subplot_label=subplot_label,
+                show_label=show_label,
+                show_legend=False,
+                subplot_fontsize=subplot_fontsize,
+            )
 
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))
-            ax.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
-            ax.set_xlim(time_points[0], time_points[-1])
-            ax.set_xticks(time_points[::6])
-            ax.set_xticklabels(["0", "6", "12", "18", "24"])
+        # 軸の追加設定
+        ch4_min = min(means[y_col_ch4].min() for means in selected_conditions.values())
+        ch4_max = max(means[y_col_ch4].max() for means in selected_conditions.values())
 
-            if subplot_label:
-                ax.text(
-                    0.02,
-                    0.98,
-                    subplot_label,
-                    transform=ax.transAxes,
-                    va="top",
-                    fontsize=subplot_fontsize,
-                )
-            
-            if show_legend:
-                ax.legend()
-
-        # CH4のy軸の設定
-        ch4_max = max(means[y_col_ch4].max() for means in hourly_means.values())
-        if ch4_max < 100:
-            ax1.set_ylim(0, 100)
+        ax1_ylim: tuple[float, float] = min(0, ch4_min - 5), max(100, ch4_max + 5)
+        ax1.set_ylim(ax1_ylim)
         ax1.yaxis.set_major_locator(MultipleLocator(20))
         ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.0f}"))
 
-        # C2H6のy軸の設定
+        # C2H6の軸設定
+        c2h6_min = min(means[y_col_c2h6].min() for means in selected_conditions.values())
+        c2h6_max = max(means[y_col_c2h6].max() for means in selected_conditions.values())
+
+        ax2_ylim: tuple[float, float] = min(0, c2h6_min - 0.5), max(3, c2h6_max + 0.5)
+        ax2.set_ylim(ax2_ylim)
         ax2.yaxis.set_major_locator(MultipleLocator(1))
         ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
 
         plt.tight_layout()
+
+        # 共通の凡例を図の下部に配置
+        if show_legend:
+            lines_to_show = (
+                ch4_lines if legend_only_ch4 else ch4_lines[: len(selected_conditions)]
+            )
+            fig.legend(
+                lines_to_show,
+                [
+                    style["label"]
+                    for style in list(styles.values())[: len(lines_to_show)]
+                ],
+                loc="center",
+                bbox_to_anchor=(0.5, 0.02),
+                ncol=len(lines_to_show),
+            )
+            plt.subplots_adjust(bottom=0.25)  # 下部に凡例用のスペースを確保
+
         fig.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
@@ -461,59 +387,61 @@ class MonthlyFiguresGenerator:
 
         # 有効なデータの抽出
         df = MonthlyFiguresGenerator.get_valid_data(df, x_col, y_col)
-        
+
         # データの準備
         x = df[x_col].values
         y = df[y_col].values
-        
+
         # データの中心化
         x_mean = np.mean(x)
         y_mean = np.mean(y)
         x_c = x - x_mean
         y_c = y - y_mean
-        
+
         # TLS回帰の計算
         data_matrix = np.vstack((x_c, y_c))
         cov_matrix = np.cov(data_matrix)
         _, eigenvecs = linalg.eigh(cov_matrix)
         largest_eigenvec = eigenvecs[:, -1]
-        
+
         slope = largest_eigenvec[1] / largest_eigenvec[0]
         intercept = y_mean - slope * x_mean
-        
+
         # R²の計算
         y_pred = slope * x + intercept
         r_squared = 1 - np.sum((y - y_pred) ** 2) / np.sum((y - np.mean(y)) ** 2)
-        
+
         # プロットの作成
         fig, ax = plt.subplots(figsize=(6, 6))
-        
+
         # データ点のプロット
         ax.scatter(x, y, color="black")
-        
+
         # 回帰直線のプロット
         x_range = np.linspace(axis_range[0], axis_range[1], 150)
         y_range = slope * x_range + intercept
         ax.plot(x_range, y_range, "r", label="TLS regression")
-        
+
         if show_label:
             ax.set_xlabel(xlabel)
             ax.set_ylabel(ylabel)
-        
+
         # 軸の設定
         ax.set_xlim(axis_range)
         ax.set_ylim(axis_range)
-        
+
         # 1:1の関係を示す点線
         ax.plot(
             [axis_range[0], axis_range[1]],
             [axis_range[0], axis_range[1]],
             "k--",
-            alpha=0.5
+            alpha=0.5,
         )
-        
+
         # 回帰情報の表示
-        equation = f"y = {slope:.2f}x {'+' if intercept >= 0 else '-'} {abs(intercept):.2f}"
+        equation = (
+            f"y = {slope:.2f}x {'+' if intercept >= 0 else '-'} {abs(intercept):.2f}"
+        )
         position_x = 0.50
         ax.text(
             position_x,
@@ -522,7 +450,7 @@ class MonthlyFiguresGenerator:
             transform=ax.transAxes,
             va="top",
             ha="right",
-            color="red"
+            color="red",
         )
         ax.text(
             position_x,
@@ -531,12 +459,12 @@ class MonthlyFiguresGenerator:
             transform=ax.transAxes,
             va="top",
             ha="right",
-            color="red"
+            color="red",
         )
-        
+
         # 目盛り線の設定
         ax.grid(True, alpha=0.3)
-        
+
         fig.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
@@ -729,6 +657,108 @@ class MonthlyFiguresGenerator:
         )
         plt.close()
 
+    def _prepare_diurnal_data(
+        self,
+        df: pd.DataFrame,
+        target_columns: list[str],
+        include_date_types: bool = False,
+    ) -> tuple[dict[str, pd.DataFrame], pd.DatetimeIndex]:
+        """日変化パターンの計算に必要なデータを準備する
+
+        Args:
+            df (pd.DataFrame): 入力データフレーム
+            target_columns (list[str]): 計算対象の列名のリスト
+            include_date_types (bool): 日付タイプ（平日/休日など）の分類を含めるかどうか
+
+        Returns:
+            tuple[dict[str, pd.DataFrame], pd.DatetimeIndex]:
+                - 時間帯ごとの平均値を含むDataFrameの辞書
+                - 24時間分の時間点
+        """
+        df = df.copy()
+        df["hour"] = pd.to_datetime(df["Date"]).dt.hour
+
+        # 時間ごとの平均値を計算する関数
+        def calculate_hourly_means(data_df, condition=None):
+            if condition is not None:
+                data_df = data_df[condition]
+            return data_df.groupby("hour")[target_columns].mean().reset_index()
+
+        # 基本の全日データを計算
+        hourly_means = {"all": calculate_hourly_means(df)}
+
+        # 日付タイプによる分類が必要な場合
+        if include_date_types:
+            dates = pd.to_datetime(df["Date"])
+            is_weekend = dates.dt.dayofweek.isin([5, 6])
+            is_holiday = dates.map(lambda x: jpholiday.is_holiday(x.date()))
+            is_weekday = ~(is_weekend | is_holiday)
+
+            hourly_means.update(
+                {
+                    "weekday": calculate_hourly_means(df, is_weekday),
+                    "weekend": calculate_hourly_means(df, is_weekend),
+                    "holiday": calculate_hourly_means(df, is_weekend | is_holiday),
+                }
+            )
+
+        # 24時目のデータを追加
+        for key in hourly_means:
+            last_row = hourly_means[key].iloc[0:1].copy()
+            last_row["hour"] = 24
+            hourly_means[key] = pd.concat(
+                [hourly_means[key], last_row], ignore_index=True
+            )
+
+        # 24時間分のデータポイントを作成
+        time_points = pd.date_range("2024-01-01", periods=25, freq="h")
+
+        return hourly_means, time_points
+
+    def _setup_diurnal_axes(
+        self,
+        ax: plt.Axes,
+        time_points: pd.DatetimeIndex,
+        ylabel: str,
+        subplot_label: str | None = None,
+        show_label: bool = True,
+        show_legend: bool = True,
+        subplot_fontsize: int = 20,
+    ) -> None:
+        """日変化プロットの軸の設定を行う
+
+        Args:
+            ax (plt.Axes): 設定対象の軸
+            time_points (pd.DatetimeIndex): 時間軸のポイント
+            ylabel (str): y軸のラベル
+            subplot_label (str | None): サブプロットのラベル
+            show_label (bool): 軸ラベルを表示するかどうか
+            show_legend (bool): 凡例を表示するかどうか
+            subplot_fontsize (int): サブプロットのフォントサイズ
+        """
+        if show_label:
+            ax.set_xlabel("Time")
+            ax.set_ylabel(ylabel)
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))
+        ax.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
+        ax.set_xlim(time_points[0], time_points[-1])
+        ax.set_xticks(time_points[::6])
+        ax.set_xticklabels(["0", "6", "12", "18", "24"])
+
+        if subplot_label:
+            ax.text(
+                0.02,
+                0.98,
+                subplot_label,
+                transform=ax.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+
+        if show_legend:
+            ax.legend()
+
     @staticmethod
     def get_valid_data(df: pd.DataFrame, x_col: str, y_col: str) -> pd.DataFrame:
         """
@@ -776,3 +806,49 @@ class MonthlyFiguresGenerator:
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
         new_logger.addHandler(ch)  # StreamHandlerの追加
         return new_logger
+
+    @staticmethod
+    def setup_plot_params(
+        font_family: list[str] = ["Arial", "Dejavu Sans"],
+        font_size: float = 20,
+        legend_size: float = 20,
+        tick_size: float = 20,
+        title_size: float = 20,
+        plot_params=None,
+    ) -> None:
+        """
+        matplotlibのプロットパラメータを設定します。
+
+        引数:
+            font_family (list[str]): 使用するフォントファミリーのリスト。
+            font_size (float): 軸ラベルのフォントサイズ。
+            legend_size (float): 凡例のフォントサイズ。
+            tick_size (float): 軸目盛りのフォントサイズ。
+            title_size (float): タイトルのフォントサイズ。
+            plot_params (Optional[Dict[str, any]]): matplotlibのプロットパラメータの辞書。
+        """
+        # デフォルトのプロットパラメータ
+        default_params = {
+            "axes.linewidth": 1.0,
+            "axes.titlesize": title_size,  # タイトル
+            "grid.color": "gray",
+            "grid.linewidth": 1.0,
+            "font.family": font_family,
+            "font.size": font_size,  # 軸ラベル
+            "legend.fontsize": legend_size,  # 凡例
+            "text.color": "black",
+            "xtick.color": "black",
+            "ytick.color": "black",
+            "xtick.labelsize": tick_size,  # 軸目盛
+            "ytick.labelsize": tick_size,  # 軸目盛
+            "xtick.major.size": 0,
+            "ytick.major.size": 0,
+            "ytick.direction": "out",
+            "ytick.major.width": 1.0,
+        }
+
+        # plot_paramsが定義されている場合、デフォルトに追記
+        if plot_params:
+            default_params.update(plot_params)
+
+        plt.rcParams.update(default_params)  # プロットパラメータを更新
