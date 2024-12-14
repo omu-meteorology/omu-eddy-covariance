@@ -6,11 +6,11 @@ from omu_eddy_covariance import (
 )
 
 include_end_date: bool = True
-start_date, end_date = "2024-05-15", "2024-11-30"
-# months: list[int] = [5, 6, 7, 8, 9, 10, 11]
-# lags_list: list[int] = [9.2, 10.0, 10.0, 10.0, 11.7, 13.2, 15.5]
-months: list[int] = [6, 7, 8, 9, 10, 11]
-lags_list: list[int] = [10.0, 10.0, 10.0, 11.7, 13.2, 15.5]
+start_date, end_date = "2024-05-15", "2024-11-30" # yyyy-MM-ddで指定
+months: list[int] = [5, 6, 7, 8, 9, 10, 11]
+lags_list: list[int] = [9.2, 10.0, 10.0, 10.0, 11.7, 13.2, 15.5]
+# months: list[int] = [6, 7, 8, 9, 10, 11]
+# lags_list: list[int] = [10.0, 10.0, 10.0, 11.7, 13.2, 15.5]
 output_dir = (
     "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/outputs"
 )
@@ -88,6 +88,13 @@ if __name__ == "__main__":
             output_dir=(os.path.join(output_dir, "diurnal")),
             output_filename=f"diurnal-{month_str}.png",  # タグ付けしたファイル名
             subplot_fontsize=24,
+        )
+        
+        mfg.plot_c1c2_fluxes_diurnal_patterns_by_date(
+            df=df_month,
+            y_col_ch4="Fch4_ultra",
+            y_col_c2h6="Fc2h6_ultra",
+            output_dir=(os.path.join(output_dir, "diurnal_by_date")),
         )
 
         mfg.plot_c1c2_fluxes_scatter(
