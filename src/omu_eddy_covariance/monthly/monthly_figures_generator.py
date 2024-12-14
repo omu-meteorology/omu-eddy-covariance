@@ -300,15 +300,13 @@ class MonthlyFiguresGenerator:
         os.makedirs(output_dir, exist_ok=True)
         output_path: str = os.path.join(output_dir, output_filename)
 
-        numeric_df = MonthlyFiguresGenerator.get_valid_data(df, x_col, y_col)
+        df = MonthlyFiguresGenerator.get_valid_data(df, x_col, y_col)
 
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(numeric_df[x_col], numeric_df[y_col], color="black")
+        ax.scatter(df[x_col], df[y_col], color="black")
 
         # 線形回帰
-        slope, intercept, r_value, _, _ = stats.linregress(
-            numeric_df[x_col], numeric_df[y_col]
-        )
+        slope, intercept, r_value, _, _ = stats.linregress(df[x_col], df[y_col])
 
         # 近似直線
         x_range = np.linspace(axis_range[0], axis_range[1], 150)
@@ -545,34 +543,6 @@ class MonthlyFiguresGenerator:
             bbox_inches="tight",
         )
         plt.close()
-
-    @staticmethod
-    def extract_monthly_data(
-        df: pd.DataFrame, target_months: list[int], datetime_column: str = "Date"
-    ) -> pd.DataFrame:
-        """
-        指定された月のデータを抽出します。
-
-        Args:
-            df (pd.DataFrame): 入力データフレーム。
-            target_months (list[int]): 抽出したい月のリスト（1から12の整数）。
-            datetime_column (str, optional): 日付を含む列の名前。デフォルトは"Date"。
-
-        Returns:
-            pd.DataFrame: 指定された月のデータのみを含むデータフレーム。
-        """
-        # 入力チェック
-        if not all(1 <= month <= 12 for month in target_months):
-            raise ValueError("target_monthsは1から12の間である必要があります")
-
-        # datetime_column をDatetime型に変換（既にDatetime型の場合は変換されない）
-        df = df.copy()
-        df[datetime_column] = pd.to_datetime(df[datetime_column])
-
-        # 指定された月のデータを抽出
-        monthly_data = df[df[datetime_column].dt.month.isin(target_months)]
-
-        return monthly_data
 
     @staticmethod
     def get_valid_data(df: pd.DataFrame, x_col: str, y_col: str) -> pd.DataFrame:

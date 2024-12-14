@@ -122,6 +122,7 @@ class MonthlyConverter:
         self,
         sheet_names: str | list[str],
         columns: list[str] | None = None,  # 新しいパラメータを追加
+        datetime_key: str = "Date",
         header: int = 0,
         skiprows: int | list[int] = [1],
         start_date: str | None = None,
@@ -136,6 +137,7 @@ class MonthlyConverter:
         Args:
             sheet_names (str | list[str]): 読み込むシート名。文字列または文字列のリストを指定できます。
             columns (list[str] | None): 残すカラム名のリスト。Noneの場合は全てのカラムを保持します。
+            datetime_key (str): 日付と時刻の情報が含まれるカラム名。デフォルトは'Date'。
             header (int): データのヘッダー行を指定します。デフォルトは0。
             skiprows (int | list[int]): スキップする行数。デフォルトでは1行目をスキップします。
             start_date (str | None): 開始日 ('yyyy-MM-dd')。この日付の'00:00:00'のデータが開始行となります。
@@ -181,9 +183,10 @@ class MonthlyConverter:
                             "NAN",
                         ],
                     )
-                    # 月初日を含む完全な日付形式に変更
+
+                    # ファイル名から年月を取得し、Dateカラムの時刻情報と組み合わせて完全な日時を作成
                     file_date = self._extract_date(file_name)
-                    df["date"] = file_date.replace(day=1)  # 月の1日を設定
+                    # 年と月を追加
                     df["year"] = file_date.year
                     df["month"] = file_date.month
                     dfs.append(df)
@@ -192,10 +195,11 @@ class MonthlyConverter:
             raise ValueError(f"No sheets found matching: {sheet_names}")
 
         combined_df = pd.concat(dfs, ignore_index=True)
+        self.logger.debug("Columns:", combined_df.columns.tolist())
 
         if start_date:
             start_dt = pd.to_datetime(start_date)
-            combined_df = combined_df[combined_df["Date"] >= start_dt]
+            combined_df = combined_df[combined_df[datetime_key] >= start_dt]
 
         if end_date:
             end_dt = pd.to_datetime(end_date)
@@ -203,19 +207,18 @@ class MonthlyConverter:
             if include_end_date:
                 end_dt += pd.Timedelta(days=1)
             combined_df = combined_df[
-                combined_df["Date"] < end_dt
+                combined_df[datetime_key] < end_dt
             ]  # 終了日の翌日0時より前のデータを全て含める
 
         # カラムの選択
         if columns is not None:
-            # 必須カラムを追加（date, year, month）
-            required_columns = ["Date", "date", "year", "month"]
+            # 必須カラムを追加（datetime_key, "year", "month"）
+            required_columns = [datetime_key, "year", "month"]
+            # 引数のcolumnsがcombined_dfに存在するかを確認
+            if not all(col in combined_df.columns for col in columns):
+                raise ValueError(f"指定されたカラムが見つかりません: {columns}")
             selected_columns = list(set(columns + required_columns))
-            # 存在するカラムのみを選択
-            existing_columns = [
-                col for col in selected_columns if col in combined_df.columns
-            ]
-            combined_df = combined_df[existing_columns]
+            combined_df = combined_df[selected_columns]
 
         return combined_df
 
@@ -230,7 +233,7 @@ class MonthlyConverter:
         ファイル名から日付を抽出する
 
         Args:
-            file_name (str): "SA.Ultra.yyyy.MM.xlsx"形式のファイル名
+            file_name (str): "SA.Ultra.yyyy.MM.xlsx"または"SA.Picaro.yyyy.MM.xlsx"形式のファイル名
 
         Returns:
             datetime: 抽出された日付
@@ -279,3 +282,90 @@ class MonthlyConverter:
                 self.logger.warning(
                     f"Could not parse date from file {excel_path.name}: {e}"
                 )
+
+    @staticmethod
+    def extract_monthly_data(
+        df: pd.DataFrame,
+        target_months: list[int],
+        start_day: int | None = None,
+        end_day: int | None = None,
+        datetime_column: str = "Date",
+    ) -> pd.DataFrame:
+        """
+        指定された月と期間のデータを抽出します。
+
+        Args:
+            df (pd.DataFrame): 入力データフレーム。
+            target_months (list[int]): 抽出したい月のリスト（1から12の整数）。
+            start_day (int | None): 開始日（1から31の整数）。Noneの場合は月初め。
+            end_day (int | None): 終了日（1から31の整数）。Noneの場合は月末。
+            datetime_column (str, optional): 日付を含む列の名前。デフォルトは"Date"。
+
+        Returns:
+            pd.DataFrame: 指定された期間のデータのみを含むデータフレーム。
+        """
+        # 入力チェック
+        if not all(1 <= month <= 12 for month in target_months):
+            raise ValueError("target_monthsは1から12の間である必要があります")
+
+        if start_day is not None and not 1 <= start_day <= 31:
+            raise ValueError("start_dayは1から31の間である必要があります")
+
+        if end_day is not None and not 1 <= end_day <= 31:
+            raise ValueError("end_dayは1から31の間である必要があります")
+
+        if start_day is not None and end_day is not None and start_day > end_day:
+            raise ValueError("start_dayはend_day以下である必要があります")
+
+        # datetime_column をDatetime型に変換
+        df = df.copy()
+        df[datetime_column] = pd.to_datetime(df[datetime_column])
+
+        # 月でフィルタリング
+        monthly_data = df[df[datetime_column].dt.month.isin(target_months)]
+
+        # 日付範囲でフィルタリング
+        if start_day is not None:
+            monthly_data = monthly_data[
+                monthly_data[datetime_column].dt.day >= start_day
+            ]
+        if end_day is not None:
+            monthly_data = monthly_data[monthly_data[datetime_column].dt.day <= end_day]
+
+        return monthly_data
+    
+    @staticmethod
+    def merge_dataframes(
+        df1: pd.DataFrame,
+        df2: pd.DataFrame,
+        date_column: str = "Date"
+    ) -> pd.DataFrame:
+        """
+        2つのDataFrameを結合します。重複するカラム（Date, year, month）は除外されます。
+
+        Args:
+            df1 (pd.DataFrame): ベースとなるDataFrame
+            df2 (pd.DataFrame): 結合するDataFrame
+            date_column (str): 日付カラムの名前。デフォルトは"Date"
+
+        Returns:
+            pd.DataFrame: 結合されたDataFrame
+        """
+        # インデックスをリセット
+        df1 = df1.reset_index(drop=True)
+        df2 = df2.reset_index(drop=True)
+        
+        # 日付カラムを統一
+        df2[date_column] = df1[date_column]
+        
+        # 重複するカラムを除外（Date, year, monthを除く）
+        duplicate_cols = [date_column, "year", "month"]
+        unique_cols = [col for col in df2.columns if col not in duplicate_cols]
+        
+        # 結合
+        return pd.merge(
+            df1,
+            df2[unique_cols],
+            left_index=True,
+            right_index=True
+        )
