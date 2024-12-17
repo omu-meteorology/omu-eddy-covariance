@@ -33,7 +33,6 @@ class TransferFunctionCalculator:
         self._cutoff_freq_low: float = cutoff_freq_low
         self._cutoff_freq_high: float = cutoff_freq_high
         self._df: pd.DataFrame = TransferFunctionCalculator._load_data(file_path)
-        TransferFunctionCalculator.setup_plot_params()
 
     def calculate_transfer_function(
         self, reference_key: str, target_key: str
@@ -74,10 +73,12 @@ class TransferFunctionCalculator:
         color1: str = "gray",
         color2: str = "red",
         figsize: tuple[int, int] = (10, 8),
-        label1: str = "データ1",
-        label2: str = "データ2",
+        label1: str | None = None,
+        label2: str | None = None,
         output_dir: str | None = None,
         output_basename: str = "co",
+        add_legend: bool = True,
+        add_xy_labels: bool = True,
         show_plot: bool = True,
         subplot_label: str | None = "(a)",
         window_size: int = 5,  # 移動平均の窓サイズ
@@ -91,17 +92,18 @@ class TransferFunctionCalculator:
             color1 (str, optional): 1つ目のデータの色。デフォルトは'gray'。
             color2 (str, optional): 2つ目のデータの色。デフォルトは'red'。
             figsize (tuple[int, int], optional): プロットのサイズ。デフォルトは(10, 8)。
-            label1 (str, optional): 1つ目のデータのラベル名。デフォルトは"データ1"。
-            label2 (str, optional): 2つ目のデータのラベル名。デフォルトは"データ2"。
+            label1 (str, optional): 1つ目のデータのラベル名。デフォルトはNone。
+            label2 (str, optional): 2つ目のデータのラベル名。デフォルトはNone。
             output_dir (str | None, optional): プロットを保存するディレクトリ。デフォルトはNoneで、保存しない。
             output_basename (str, optional): 保存するファイル名のベース。デフォルトは"co"。
             show_plot (bool, optional): プロットを表示するかどうか。デフォルトはTrue。
             subplot_label (str | None, optional): 左上に表示するサブプロットラベル。デフォルトは"(a)"。
             window_size (int, optional): 移動平均の窓サイズ。デフォルトは5。
         """
+        df: pd.DataFrame = self._df.copy()
         # データの取得と移動平均の適用
-        data1 = self._df[self._df[key1] > 0].groupby(self._freq_key)[key1].median()
-        data2 = self._df[self._df[key2] > 0].groupby(self._freq_key)[key2].median()
+        data1 = df[df[key1] > 0].groupby(self._freq_key)[key1].median()
+        data2 = df[df[key2] > 0].groupby(self._freq_key)[key2].median()
 
         data1 = data1.rolling(window=window_size, center=True, min_periods=1).mean()
         data2 = data2.rolling(window=window_size, center=True, min_periods=1).mean()
@@ -109,30 +111,34 @@ class TransferFunctionCalculator:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
 
-        ax.plot(data1.index, data1, "o", color=color1, label=label1)
-        ax.plot(data2.index, data2, "o", color=color2, label=label2)
+        # マーカーサイズを設定して見やすくする
+        ax.plot(data1.index, data1, "o", color=color1, label=label1, markersize=12)
+        ax.plot(data2.index, data2, "o", color=color2, label=label2, markersize=12)
         ax.plot([0.01, 10], [10, 0.001], "-", color="black")
+        ax.text(0.25, 0.4, "-4/3")
 
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_xlim(0.0001, 10)
         ax.set_ylim(0.0001, 10)
-        ax.set_xlabel("f (Hz)", size=16)
-        ax.set_ylabel("無次元コスペクトル", size=16)
+        if add_xy_labels:
+            ax.set_xlabel("f (Hz)")
+            ax.set_ylabel("無次元コスペクトル")
 
-        ax.legend(
-            bbox_to_anchor=(0.05, 1),
-            loc="lower left",
-            fontsize=13,
-            ncol=3,
-            frameon=False,
-        )
+        if add_legend:
+            ax.legend(
+                bbox_to_anchor=(0.05, 1),
+                loc="lower left",
+                fontsize=16,
+                ncol=3,
+                frameon=False,
+            )
         if subplot_label is not None:
-            ax.text(0.00015, 3, subplot_label, fontsize=18)
-        ax.text(0.25, 0.4, "-4/3", fontsize=18)
+            ax.text(0.00015, 3, subplot_label)
         fig.tight_layout()
 
         if output_dir is not None:
+            os.makedirs(output_dir, exist_ok=True)
             # プロットをPNG形式で保存
             filename: str = f"{output_basename}.png"
             fig.savefig(os.path.join(output_dir, filename), dpi=300)
@@ -251,20 +257,19 @@ class TransferFunctionCalculator:
         Returns:
             pd.DataFrame: 処理されたデータフレーム。
         """
+        df: pd.DataFrame = self._df.copy()
         freq_key: str = self._freq_key
 
         # データ型の確認と変換
-        self._df[freq_key] = pd.to_numeric(self._df[freq_key], errors="coerce")
-        self._df[reference_key] = pd.to_numeric(
-            self._df[reference_key], errors="coerce"
-        )
-        self._df[target_key] = pd.to_numeric(self._df[target_key], errors="coerce")
+        df[freq_key] = pd.to_numeric(df[freq_key], errors="coerce")
+        df[reference_key] = pd.to_numeric(df[reference_key], errors="coerce")
+        df[target_key] = pd.to_numeric(df[target_key], errors="coerce")
 
         # NaNを含む行を削除
-        self._df = self._df.dropna(subset=[freq_key, reference_key, target_key])
+        df = df.dropna(subset=[freq_key, reference_key, target_key])
 
         # グループ化と中央値の計算
-        grouped = self._df.groupby(freq_key)
+        grouped = df.groupby(freq_key)
         reference_data = grouped[reference_key].median()
         target_data = grouped[target_key].median()
 
@@ -324,30 +329,47 @@ class TransferFunctionCalculator:
         return df
 
     @staticmethod
-    def setup_plot_params() -> None:
+    def setup_plot_params(
+        font_family: list[str] = ["Arial", "Dejavu Sans"],
+        font_size: float = 20,
+        legend_size: float = 20,
+        tick_size: float = 20,
+        title_size: float = 20,
+        plot_params=None,
+    ) -> None:
         """
-        Matplotlibのプロットパラメータを設定する。
+        matplotlibのプロットパラメータを設定します。
 
-        日本語フォントの設定やグラフの外観設定を行う。
+        引数:
+            font_family (list[str]): 使用するフォントファミリーのリスト。
+            font_size (float): 軸ラベルのフォントサイズ。
+            legend_size (float): 凡例のフォントサイズ。
+            tick_size (float): 軸目盛りのフォントサイズ。
+            title_size (float): タイトルのフォントサイズ。
+            plot_params (Optional[Dict[str, any]]): matplotlibのプロットパラメータの辞書。
         """
-        plt.rcParams["font.sans-serif"] = ["MS Gothic"] + plt.rcParams[
-            "font.sans-serif"
-        ]
-        plt.rcParams.update(
-            {
-                "axes.edgecolor": "black",
-                "axes.labelcolor": "black",
-                "text.color": "black",
-                "xtick.color": "black",
-                "ytick.color": "black",
-                "grid.color": "gray",
-                "axes.grid": False,
-                "ytick.major.size": 0,
-                "ytick.direction": "out",
-                "ytick.major.width": 0,
-                "axes.linewidth": 1.5,
-                "grid.linewidth": 1.0,
-                "font.size": 16,
-                "axes.labelsize": 20,
-            }
-        )
+        # デフォルトのプロットパラメータ
+        default_params = {
+            "axes.linewidth": 1.0,
+            "axes.titlesize": title_size,  # タイトル
+            "grid.color": "gray",
+            "grid.linewidth": 1.0,
+            "font.family": font_family,
+            "font.size": font_size,  # 軸ラベル
+            "legend.fontsize": legend_size,  # 凡例
+            "text.color": "black",
+            "xtick.color": "black",
+            "ytick.color": "black",
+            "xtick.labelsize": tick_size,  # 軸目盛
+            "ytick.labelsize": tick_size,  # 軸目盛
+            "xtick.major.size": 0,
+            "ytick.major.size": 0,
+            "ytick.direction": "out",
+            "ytick.major.width": 1.0,
+        }
+
+        # plot_paramsが定義されている場合、デフォルトに追記
+        if plot_params:
+            default_params.update(plot_params)
+
+        plt.rcParams.update(default_params)  # プロットパラメータを更新

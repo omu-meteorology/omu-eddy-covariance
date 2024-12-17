@@ -2,135 +2,146 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.font_manager import FontProperties
 from omu_eddy_covariance import TransferFunctionCalculator
 
-# font_size_label: int = 16
-# font_size_ticks: int = 14
-# plt.rcParams["axes.labelsize"] = font_size_label
-# plt.rcParams["xtick.labelsize"] = font_size_ticks
-# plt.rcParams["ytick.labelsize"] = font_size_ticks
-# 日本語フォントの設定
-# plt.rcParams["font.family"] = "MS Gothic"
 
-# ローカルフォントを読み込む場合
-font_path: str = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
-font_prop: FontProperties = FontProperties(fname=font_path)
-font_array: list[str] = [font_prop.get_name(), "Dejavu Sans"]
-
-# font_array: list[str] = ["Dejavu Sans"]
-
-# rcParamsでの全体的な設定
-plt.rcParams.update(
-    {
-        "font.family": font_array,
-        "font.size": 20,
-        "axes.labelsize": 20,
-        "axes.titlesize": 20,
-        "xtick.labelsize": 20,
-        "ytick.labelsize": 20,
-        "legend.fontsize": 20,
-    }
-)
-
-
-def plot_all_tf_curves(
-    file_path: str,
+def plot_tf_curve(
+    df: pd.DataFrame,
+    date_key: str,
+    coef_a_key: str,
+    gas_label: str,
+    base_color: str,
     output_dir: str | None = None,
     output_basename: str = "all_tf_curves",
     show_plot: bool = True,
+    add_xlabel: bool = True,
+    label_x: str = "f (Hz)",
+    label_y: str = "無次元コスペクトル比",
+    gas_name: str | None = None,  # 出力ファイル名用
 ):
     """
-    指定されたCSVファイルからch4とc2h6の伝達関数を計算し、別々のグラフにプロットする関数。
-
-    この関数は、与えられたCSVファイルから伝達関数の係数を読み込み、
-    ch4とc2h6それぞれの伝達関数曲線を計算して別々のグラフにプロットします。
-    各グラフには、全てのa値を用いた近似直線が描かれます。
+    伝達関数を計算し、グラフにプロットする関数。
 
     Args:
-        file_path (str): 伝達関数の係数が格納されたCSVファイルのパス。
+        df (pd.DataFrame): 伝達関数の係数が格納されたDataFrame
+        date_key (str): 日付が格納されているカラムの名前
+        coef_a_key (str): 係数が格納されているカラムの名前
+        gas_label (str): プロットに表示するガスのラベル（例: "CH$_4$"）
+        base_color (str): 平均値の線の色
+        output_dir (str | None): 出力ディレクトリ。Noneの場合は保存しない
+        output_basename (str): 出力ファイル名のベース
+        show_plot (bool): プロットを表示するかどうか
+        add_xlabel (bool): x軸ラベルを追加するかどうか
+        label_x (str): x軸のラベル
+        label_y (str): y軸のラベル
+        gas_name (str | None): 出力ファイル名に使用するガス名。Noneの場合はcoef_a_keyを使用
 
     Returns:
-        None: この関数は結果をプロットするだけで、値を返しません。
-
-    Note:
-        - CSVファイルには 'Date', 'a_ch4-used' と 'a_c2h6-used' カラムが必要です。
-        - プロットは対数スケールで表示され、グリッド線が追加されます。
-        - 結果は plt.show() を使用して表示されます。
+        None
     """
-    # CSVファイルを読み込む
-    df = pd.read_csv(file_path)
+    plt.figure(figsize=(10, 6))
 
-    # ガスの種類とそれに対応する色のリスト
-    gases = ["ch4", "c2h6"]
-    # ガスの表示ラベル（LaTeX記法）
-    gas_labels = ["CH$_4$", "C$_2$H$_6$"]
-    base_colors = ["red", "orange"]
+    # 色のグラデーションを作成
+    n_dates = len(df)
+    colors = plt.cm.Blues(np.linspace(0.3, 0.9, n_dates))
 
-    # 各ガスについてプロット
-    for gas, gas_label, base_color in zip(gases, gas_labels, base_colors):
-        plt.figure(figsize=(10, 6))
-
-        # 色のグラデーションを作成
-        n_dates = len(df)
-        colors = plt.cm.Blues(np.linspace(0.3, 0.9, n_dates))
-
-        # 全てのa値を用いて伝達関数をプロット
-        for _, (row, color) in enumerate(zip(df.iterrows(), colors)):
-            a = row[1][f"a_{gas}-used"]
-            date = row[1]["Date"]
-            x_fit = np.logspace(-3, 1, 1000)
-            y_fit = TransferFunctionCalculator.transfer_function(x_fit, a)
-            plt.plot(
-                x_fit,
-                y_fit,
-                "--",  # 破線に変更
-                color=color,
-                alpha=0.7,
-                label=f"{date} (a = {a:.3f})",
-            )
-
-        # 平均のa値を用いた伝達関数をプロット
-        a_mean = df[f"a_{gas}-used"].mean()
+    # 全てのa値を用いて伝達関数をプロット
+    for _, (row, color) in enumerate(zip(df.iterrows(), colors)):
+        a = row[1][coef_a_key]
+        date = row[1][date_key]
         x_fit = np.logspace(-3, 1, 1000)
-        y_fit = TransferFunctionCalculator.transfer_function(x_fit, a_mean)
+        y_fit = TransferFunctionCalculator.transfer_function(x_fit, a)
         plt.plot(
             x_fit,
             y_fit,
-            "-",
-            color=base_color,
-            linewidth=3,
-            label=f"平均 (a = {a_mean:.3f})",
+            "--",
+            color=color,
+            alpha=0.7,
+            label=f"{date} (a = {a:.3f})",
         )
 
-        # グラフの設定
-        plt.xscale("log")
-        plt.xlabel("f (Hz)")
-        plt.ylabel("コスペクトル比")
-        plt.legend(loc="lower left", fontsize=12)
-        plt.grid(True, which="both", ls="-", alpha=0.2)
-        plt.title(f"{gas_label}の伝達関数")
+    # 平均のa値を用いた伝達関数をプロット
+    a_mean = df[coef_a_key].mean()
+    x_fit = np.logspace(-3, 1, 1000)
+    y_fit = TransferFunctionCalculator.transfer_function(x_fit, a_mean)
+    plt.plot(
+        x_fit,
+        y_fit,
+        "-",
+        color=base_color,
+        linewidth=3,
+        label=f"平均 (a = {a_mean:.3f})",
+    )
 
-        # グラフの表示
-        plt.tight_layout()
+    # グラフの設定
+    label_y_formatted: str = f"{label_y}\n" f"({gas_label} / 顕熱)"
+    plt.xscale("log")
+    if add_xlabel:
+        plt.xlabel(label_x)
+    plt.ylabel(label_y_formatted)
+    plt.legend(loc="lower left", fontsize=14)
+    plt.grid(True, which="both", ls="-", alpha=0.2)
+    plt.tight_layout()
 
-        if output_dir is not None:
-            os.makedirs(output_dir, exist_ok=True)
-            output_path: str = os.path.join(output_dir, f"{output_basename}-{gas}.png")
-            plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    if output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
+        # 出力ファイル名用のガス名を決定
+        output_gas_name = gas_name if gas_name is not None else coef_a_key
+        output_path: str = os.path.join(
+            output_dir, f"{output_basename}-{output_gas_name}.png"
+        )
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
 
-        if show_plot:
-            plt.show()
+    if show_plot:
+        plt.show()
 
 
 # メイン処理
-try:
+if __name__ == "__main__":
     tf_csv_path: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/TF_Ultra_a.csv"
-    plot_all_tf_curves(
-        file_path=tf_csv_path,
-        output_dir="/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/outputs/tf",
-        show_plot=False,
-    )
-except KeyboardInterrupt:
-    # キーボード割り込みが発生した場合、処理を中止する
-    print("KeyboardInterrupt occurred. Abort processing.")
+    output_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/outputs/tf"
+    # フォント名を指定
+    font_array: list[str] = [
+        # "MS Gothic",
+        "IPAGothic",
+        "Dejavu Sans",
+    ]
+
+    try:
+        # rcParamsでの全体的な設定
+        plt.rcParams.update(
+            {
+                "font.family": font_array,
+                "font.size": 20,
+                "axes.labelsize": 20,
+                "axes.titlesize": 20,
+                "xtick.labelsize": 20,
+                "ytick.labelsize": 20,
+                "legend.fontsize": 20,
+            }
+        )
+
+        # CSVファイルを読み込む
+        df = pd.read_csv(tf_csv_path)
+
+        # ガスの種類とそれに対応する設定
+        gas_configs = [
+            ("a_ch4-used", "CH$_4$", "red", "ch4"),
+            ("a_c2h6-used", "C$_2$H$_6$", "orange", "c2h6"),
+        ]
+
+        # 各ガスについてプロット
+        for coef_a_key, gas_label, base_color, gas_name in gas_configs:
+            plot_tf_curve(
+                df=df,
+                date_key="Date",
+                coef_a_key=coef_a_key,
+                gas_label=gas_label,
+                base_color=base_color,
+                gas_name=gas_name,
+                output_dir=output_dir,
+                show_plot=False,
+            )
+
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt occurred. Abort processing.")
