@@ -151,13 +151,10 @@ class MonthlyConverter:
         if isinstance(sheet_names, str):
             sheet_names = [sheet_names]
 
-        # 指定された日付範囲のExcelファイルを読み込む
         self._load_excel_files(start_date, end_date)
 
         if not self._excel_files:
             raise ValueError("No Excel files found matching the criteria")
-
-        dfs: list[pd.DataFrame] = []
 
         # ファイルを日付順にソート
         sorted_files = (
@@ -166,7 +163,13 @@ class MonthlyConverter:
             else self._excel_files.items()
         )
 
+        # 各シートのデータを格納するリスト
+        sheet_dfs = {sheet_name: [] for sheet_name in sheet_names}
+
+        # 各ファイルからデータを読み込む
         for file_name, excel_file in sorted_files:
+            file_date = self._extract_date(file_name)
+            
             for sheet_name in sheet_names:
                 if sheet_name in excel_file.sheet_names:
                     df = pd.read_excel(
@@ -183,44 +186,52 @@ class MonthlyConverter:
                             "NAN",
                         ],
                     )
-
-                    # ファイル名から年月を取得し、Dateカラムの時刻情報と組み合わせて完全な日時を作成
-                    file_date = self._extract_date(file_name)
                     # 年と月を追加
                     df["year"] = file_date.year
                     df["month"] = file_date.month
-                    dfs.append(df)
+                    sheet_dfs[sheet_name].append(df)
 
-        if not dfs:
+        if not any(sheet_dfs.values()):
             raise ValueError(f"No sheets found matching: {sheet_names}")
 
-        combined_df = pd.concat(dfs, ignore_index=True)
-        self.logger.debug("Columns:", combined_df.columns.tolist())
+        # 各シートのデータを結合
+        combined_sheets = {}
+        for sheet_name, dfs in sheet_dfs.items():
+            if dfs:  # シートにデータがある場合のみ結合
+                combined_sheets[sheet_name] = pd.concat(dfs, ignore_index=True)
 
+        # 最初のシートをベースにする
+        base_df = combined_sheets[sheet_names[0]]
+
+        # 2つ目以降のシートを結合
+        for sheet_name in sheet_names[1:]:
+            if sheet_name in combined_sheets:
+                base_df = self.merge_dataframes(
+                    base_df,
+                    combined_sheets[sheet_name],
+                    date_column=datetime_key
+                )
+
+        # 日付でフィルタリング
         if start_date:
             start_dt = pd.to_datetime(start_date)
-            combined_df = combined_df[combined_df[datetime_key] >= start_dt]
+            base_df = base_df[base_df[datetime_key] >= start_dt]
 
         if end_date:
             end_dt = pd.to_datetime(end_date)
-            # 終了日を含む場合、翌日の0時を設定
             if include_end_date:
                 end_dt += pd.Timedelta(days=1)
-            combined_df = combined_df[
-                combined_df[datetime_key] < end_dt
-            ]  # 終了日の翌日0時より前のデータを全て含める
+            base_df = base_df[base_df[datetime_key] < end_dt]
 
         # カラムの選択
         if columns is not None:
-            # 必須カラムを追加（datetime_key, "year", "month"）
             required_columns = [datetime_key, "year", "month"]
-            # 引数のcolumnsがcombined_dfに存在するかを確認
-            if not all(col in combined_df.columns for col in columns):
+            if not all(col in base_df.columns for col in columns):
                 raise ValueError(f"指定されたカラムが見つかりません: {columns}")
             selected_columns = list(set(columns + required_columns))
-            combined_df = combined_df[selected_columns]
+            base_df = base_df[selected_columns]
 
-        return combined_df
+        return base_df
 
     def __enter__(self) -> "MonthlyConverter":
         return self

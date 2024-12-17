@@ -81,8 +81,8 @@ work_dir: str = f"{project_root}/workspace/footprint"
 output_dir: str = f"{work_dir}/private/outputs"  # 出力先のディレクトリ
 dotenv_path = f"{work_dir}/.env"  # .envファイル
 
+start_date, end_date = "2024-05-15", "2024-12-03"
 # start_date, end_date = "2024-10-01", "2024-11-30"
-start_date, end_date = "2024-11-01", "2024-11-30"
 date_tag: str = f"-{start_date}_{end_date}"
 
 # ローカルフォントを読み込む場合はコメントアウトを解除して適切なパスを入力
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     # with文でブロック終了時に__exit__を自動呼出し
     with MonthlyConverter(
-        "/home/connect0459/labo/omu-eddy-covariance/workspace/private/monthly",
+        "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/monthly",
         file_pattern="SA.Ultra.*.xlsx",
     ) as converter:
         # 特定の期間のデータを読み込む
@@ -133,11 +133,11 @@ if __name__ == "__main__":
         df: pd.DataFrame = ffa.combine_all_data(monthly_df, source_type="monthly")
 
         # ratio
-        df["Fratio"] = (df["Fc2h6 ultra"] / df["Fch4 ultra"]) / 0.076 * 100
+        df["Fratio"] = (df["Fc2h6_ultra"] / df["Fch4_ultra"]) / 0.076 * 100
         x_list_r, y_list_r, c_list_r = ffa.calculate_flux_footprint(
             df=df,
             flux_key="Fratio",
-            plot_count=50000,
+            plot_count=30000,
         )
 
         # 航空写真の取得

@@ -100,6 +100,78 @@ class MonthlyFiguresGenerator:
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close()
 
+    def plot_c1c2_fluxes_and_ratios_timeseries(
+        self,
+        df: pd.DataFrame,
+        output_dir: str,
+        output_filename: str = "timeseries_with_ratios.png",
+        datetime_key: str = "Date",
+        c1_flux_key: str = "Fch4_ultra",
+        c2_flux_key: str = "Fc2h6_ultra",
+        c2c1_conc_ratio_key: str = "c2h6_ch4_ratio",
+    ) -> None:
+        """フラックスと濃度比の時系列プロットを作成する
+        
+        Args:
+            df (pd.DataFrame): データを含むDataFrame
+            output_dir (str): 出力ディレクトリのパス
+            output_filename (str): 出力ファイル名
+            datetime_key (str): 日時データのカラム名
+            c1_flux_key (str): CH4フラックスのカラム名
+            c2_flux_key (str): C2H6フラックスのカラム名
+            c2c1_conc_ratio_key (str): C2H6/CH4濃度比のカラム名
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        output_path: str = os.path.join(output_dir, output_filename)
+
+        # フラックス比を計算
+        flux_ratio = df[c2_flux_key] / df[c1_flux_key]
+
+        # プロットの作成
+        _, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
+
+        # CH4フラックス
+        ax1.scatter(df[datetime_key], df[c1_flux_key], color="red", alpha=0.5, s=20)
+        ax1.set_ylabel(r"CH$_4$ flux" + "\n" + r"(nmol m$^{-2}$ s$^{-1}$)")
+        ax1.set_ylim(-100, 600)
+        ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top", fontsize=20)
+        ax1.grid(True, alpha=0.3)
+
+        # C2H6フラックス
+        ax2.scatter(df[datetime_key], df[c2_flux_key], color="orange", alpha=0.5, s=20)
+        ax2.set_ylabel(r"C$_2$H$_6$ flux" + "\n" + r"(nmol m$^{-2}$ s$^{-1}$)")
+        ax2.set_ylim(-20, 60)
+        ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top", fontsize=20)
+        ax2.grid(True, alpha=0.3)
+
+        # フラックス比
+        ax3.scatter(df[datetime_key], flux_ratio, color="blue", alpha=0.5, s=20)
+        ax3.set_ylabel(r"C$_2$H$_6$/CH$_4$" + "\n" + "flux ratio")
+        # ax3.set_ylim(-20, 20)
+        ax3.set_ylim(-0.1, 0.1)
+        ax3.text(0.02, 0.98, "(c)", transform=ax3.transAxes, va="top", fontsize=20)
+        ax3.grid(True, alpha=0.3)
+
+        # 濃度比
+        ax4.scatter(df[datetime_key], df[c2c1_conc_ratio_key], color="green", alpha=0.5, s=20)
+        ax4.set_ylabel(r"C$_2$H$_6$/CH$_4$" + "\n" + "concentration ratio")
+        ax4.set_ylim(-0.1, 0.1)
+        ax4.text(0.02, 0.98, "(d)", transform=ax4.transAxes, va="top", fontsize=20)
+        ax4.grid(True, alpha=0.3)
+
+        # x軸の設定
+        ax4.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+        ax4.xaxis.set_major_formatter(mdates.DateFormatter("%m"))
+        plt.setp(ax4.get_xticklabels(), rotation=0, ha="right")
+        ax4.set_xlabel("Month")
+
+        # レイアウトの調整
+        plt.tight_layout()
+
+        # 図の保存
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
     def plot_c1c2_fluxes_diurnal_patterns(
         self,
         df: pd.DataFrame,
@@ -147,7 +219,7 @@ class MonthlyFiguresGenerator:
             line = ax2.plot(
                 time_points,
                 hourly_means["all"][y_col],
-                "--o",
+                "o-", 
                 label=label,
                 color=color,
             )
@@ -294,7 +366,7 @@ class MonthlyFiguresGenerator:
         # CH4とC2H6のプロット
         for condition, means in selected_conditions.items():
             style = styles[condition].copy()  # スタイルをコピーして変更
-            
+
             # CH4プロット（実線）
             line_ch4 = ax1.plot(time_points, means[y_col_ch4], marker="o", **style)
             ch4_lines.extend(line_ch4)
@@ -748,262 +820,6 @@ class MonthlyFiguresGenerator:
         # 図の保存
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close()
-
-    def plot_turbulence_with_analysis(
-        self,
-        df: pd.DataFrame,
-        output_dir: str,
-        output_filename: str = "turbulence_analysis.png",
-        uz_key: str = "Uz",
-        ch4_key: str = "Ultra_CH4_ppm_C",
-        c2h6_key: str = "Ultra_C2H6_ppb",
-        timestamp_key: str = "TIMESTAMP",
-        window_size: int = 300,  # 30秒 = 300データポイント @10Hz
-        averaging_window: int = 10,  # 1秒 = 10データポイント @10Hz
-        ratio_threshold: float = 0.0001,  # 意味のある変動の閾値 (ppb/ppb)
-        gas_threshold: float = 0.005,  # 都市ガス起源の閾値 (ppb/ppb)
-        comb_threshold: float = 0.1,  # 燃焼起源の閾値 (ppb/ppb)
-    ) -> None:
-        """時系列データをプロットし、排出起源の解析結果を表示する
-
-        Args:
-            df (pd.DataFrame): プロットするデータを含むDataFrame
-            output_dir (str): 出力ディレクトリのパス
-            output_filename (str): 出力ファイル名
-            uz_key (str): 鉛直風速データのカラム名
-            ch4_key (str): メタンデータのカラム名
-            c2h6_key (str): エタンデータのカラム名
-            timestamp_key (str): タイムスタンプのカラム名
-            window_size (int): バックグラウンド計算用の移動平均のウィンドウサイズ（データポイント数）
-            averaging_window (int): 変動判定用の移動平均のウィンドウサイズ（データポイント数）
-            ratio_threshold (float): 意味のある変動とみなすΔC2H6/ΔCH4の閾値 (ppb/ppb)
-            gas_threshold (float): 都市ガス起源とみなすΔC2H6/ΔCH4の閾値 (ppb/ppb)
-            comb_threshold (float): 燃焼起源とみなすΔC2H6/ΔCH4の閾値 (ppb/ppb)
-        """
-        # 出力ディレクトリの作成
-        os.makedirs(output_dir, exist_ok=True)
-        output_path: str = os.path.join(output_dir, output_filename)
-
-        # データの前処理
-        df = df.copy()
-
-        # タイムスタンプをインデックスに設定（まだ設定されていない場合）
-        if not isinstance(df.index, pd.DatetimeIndex):
-            df[timestamp_key] = pd.to_datetime(df[timestamp_key])
-            df.set_index(timestamp_key, inplace=True)
-
-        # 図のスタイル設定
-        plt.rcParams.update(
-            {
-                "font.family": ["Arial"],
-                "font.size": 20,
-                "axes.labelsize": 20,
-                "axes.titlesize": 20,
-                "xtick.labelsize": 20,
-                "ytick.labelsize": 20,
-                "legend.fontsize": 20,
-            }
-        )
-
-        # 時間軸の作成（分単位）
-        minutes_elapsed = (df.index - df.index[0]).total_seconds() / 60
-
-        # バックグラウンド（30秒移動平均）の計算
-        ch4_background = (
-            df[ch4_key].rolling(window=window_size, center=True, min_periods=1).mean()
-        )
-        c2h6_background = (
-            df[c2h6_key].rolling(window=window_size, center=True, min_periods=1).mean()
-        )
-
-        # 変動の計算
-        ch4_fluctuation = df[ch4_key] - ch4_background
-        c2h6_fluctuation = df[c2h6_key] - c2h6_background
-
-        # 1秒平均の変動を計算
-        ch4_fluctuation_1s = ch4_fluctuation.rolling(
-            window=averaging_window, center=True, min_periods=1
-        ).mean()
-        c2h6_fluctuation_1s = c2h6_fluctuation.rolling(
-            window=averaging_window, center=True, min_periods=1
-        ).mean()
-
-        # ppb/ppbでの比率計算（C2H6をppmに変換）と1秒平均
-        ratio = (c2h6_fluctuation_1s / 1000) / ch4_fluctuation_1s
-
-        # マスクの作成
-        significant_mask = ratio.abs() >= ratio_threshold
-        comb_mask = significant_mask & (ratio >= comb_threshold)
-        gas_mask = (
-            significant_mask & (ratio >= gas_threshold) & (ratio < comb_threshold)
-        )
-        bio_mask = significant_mask & (ratio < gas_threshold)
-
-        # プロットの作成（4段パネル: 風速、CH4、C2H6、比率）
-        fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 12), sharex=True)
-
-        # 鉛直風速
-        ax1.plot(minutes_elapsed, df[uz_key], "k-", linewidth=0.5)
-        ax1.set_ylabel(r"$w$ (m s$^{-1}$)")
-        ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top")
-        ax1.grid(True, alpha=0.3)
-
-        # CH4濃度とソース分類
-        ax2.plot(minutes_elapsed, df[ch4_key], "k-", linewidth=0.5)
-        ax2.fill_between(
-            minutes_elapsed[comb_mask],
-            df[ch4_key][comb_mask],
-            ch4_background[comb_mask],
-            color="green",
-            alpha=0.3,
-            label="Comb",
-        )
-        ax2.fill_between(
-            minutes_elapsed[gas_mask],
-            df[ch4_key][gas_mask],
-            ch4_background[gas_mask],
-            color="red",
-            alpha=0.3,
-            label="Gas",
-        )
-        ax2.fill_between(
-            minutes_elapsed[bio_mask],
-            df[ch4_key][bio_mask],
-            ch4_background[bio_mask],
-            color="blue",
-            alpha=0.3,
-            label="Bio",
-        )
-        ax2.set_ylabel(r"$\mathrm{CH_4}$ (ppm)")
-        ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top")
-        ax2.grid(True, alpha=0.3)
-        ax2.legend(loc="upper right")
-
-        # C2H6濃度とソース分類
-        ax3.plot(minutes_elapsed, df[c2h6_key], "k-", linewidth=0.5)
-        ax3.fill_between(
-            minutes_elapsed[comb_mask],
-            df[c2h6_key][comb_mask],
-            c2h6_background[comb_mask],
-            color="green",
-            alpha=0.3,
-        )
-        ax3.fill_between(
-            minutes_elapsed[gas_mask],
-            df[c2h6_key][gas_mask],
-            c2h6_background[gas_mask],
-            color="red",
-            alpha=0.3,
-        )
-        ax3.fill_between(
-            minutes_elapsed[bio_mask],
-            df[c2h6_key][bio_mask],
-            c2h6_background[bio_mask],
-            color="blue",
-            alpha=0.3,
-        )
-        ax3.set_ylabel(r"$\mathrm{C_2H_6}$ (ppb)")
-        ax3.text(0.02, 0.98, "(c)", transform=ax3.transAxes, va="top")
-        ax3.grid(True, alpha=0.3)
-
-        # ΔC2H6/ΔCH4比のプロット
-        ax4.plot(
-            minutes_elapsed[significant_mask],
-            ratio[significant_mask],
-            "k.",
-            markersize=1,
-        )
-        ax4.axhline(
-            y=comb_threshold,
-            color="g",
-            linestyle="--",
-            alpha=0.5,
-            label="Comb threshold",
-        )
-        ax4.axhline(
-            y=gas_threshold, color="r", linestyle="--", alpha=0.5, label="Gas threshold"
-        )
-        ax4.axhline(
-            y=ratio_threshold,
-            color="b",
-            linestyle="--",
-            alpha=0.5,
-            label="Bio threshold",
-        )
-        ax4.set_ylabel(r"$\Delta \mathrm{C_2H_6}/\Delta \mathrm{CH_4}$ (ppb/ppb)")
-        ax4.text(0.02, 0.98, "(d)", transform=ax4.transAxes, va="top")
-        ax4.grid(True, alpha=0.3)
-        ax4.legend(loc="upper right")
-        ax4.set_xlabel("Time (minutes)")
-        ax4.set_yscale("log")  # 比率を対数スケールで表示
-
-        # x軸の範囲を0-30分に設定
-        ax4.set_xlim(0, 30)
-
-        # レイアウトの調整
-        plt.tight_layout()
-
-        # 図の保存
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        plt.close()
-
-        # 解析結果の計算と表示
-        total_points = len(df)
-        significant_points = significant_mask.sum()
-        comb_points = comb_mask.sum()
-        gas_points = gas_mask.sum()
-        bio_points = bio_mask.sum()
-
-        # データ期間の取得
-        start_time = df.index[0].strftime("%Y-%m-%d %H:%M:%S")
-        end_time = df.index[-1].strftime("%Y-%m-%d %H:%M:%S")
-
-        # 結果の表示
-        print("\n=== Source Analysis Results ===")
-        print(f"Analysis Period: {start_time} to {end_time}")
-        print("\nData Summary:")
-        print(f"  Total data points: {total_points}")
-        print(
-            f"  Significant variations (1-s avg |ΔC2H6/ΔCH4| >= {ratio_threshold}): {significant_points} points ({significant_points/total_points*100:.1f}%)"
-        )
-
-        if significant_points > 0:
-            comb_ratio = comb_points / significant_points * 100
-            gas_ratio = gas_points / significant_points * 100
-            bio_ratio = bio_points / significant_points * 100
-
-            print("\nSource Classification (of significant variations):")
-            print(
-                f"  Combustion source (ratio >= {comb_threshold}): {comb_points} points ({comb_ratio:.1f}%)"
-            )
-            print(
-                f"  Gas source ({gas_threshold} <= ratio < {comb_threshold}): {gas_points} points ({gas_ratio:.1f}%)"
-            )
-            print(
-                f"  Bio source (ratio < {gas_threshold}): {bio_points} points ({bio_ratio:.1f}%)"
-            )
-
-            # 統計値の計算と表示（有意な変動のみ）
-            comb_ratios = ratio[comb_mask]
-            gas_ratios = ratio[gas_mask]
-            bio_ratios = ratio[bio_mask]
-
-            print("\nRatio Statistics:")
-            if len(comb_ratios) > 0:
-                print(
-                    f"  Combustion source - Mean: {comb_ratios.mean():.3f}, Median: {comb_ratios.median():.3f}, "
-                    f"Max: {comb_ratios.max():.3f}, Min: {comb_ratios.min():.3f}"
-                )
-            if len(gas_ratios) > 0:
-                print(
-                    f"  Gas source - Mean: {gas_ratios.mean():.3f}, Median: {gas_ratios.median():.3f}, "
-                    f"Max: {gas_ratios.max():.3f}, Min: {gas_ratios.min():.3f}"
-                )
-            if len(bio_ratios) > 0:
-                print(
-                    f"  Bio source - Mean: {bio_ratios.mean():.3f}, Median: {bio_ratios.median():.3f}, "
-                    f"Max: {bio_ratios.max():.3f}, Min: {bio_ratios.min():.3f}"
-                )
 
     def _prepare_diurnal_data(
         self,

@@ -146,9 +146,9 @@ project_home_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/se
 
 if __name__ == "__main__":
     plot_stacked_flux(
-        input_filepath=f"{project_home_dir}/private/analyze_monthly-for_graphs-average-10_16.csv",
+        input_filepath=f"{project_home_dir}/private/analyze_monthly-2024.12.18.csv",
         output_dir=f"{project_home_dir}/private",
-        output_basename="ch4_flux_stacked_bar_directions",
+        output_basename="ch4_flux_stacked_bar_directions-1218",
         tag=tag,
         ylim=100,
         # ylim=1.5,

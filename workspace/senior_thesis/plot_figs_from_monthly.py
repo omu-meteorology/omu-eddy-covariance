@@ -34,11 +34,11 @@ output_dir = (
 # フラグ
 plot_turbulences: bool = False
 plot_spectra: bool = False
-plot_timeseries: bool = False
+plot_timeseries: bool = True
 plot_diurnals: bool = True
-plot_diurnals_seasonal: bool = True
-diurnal_subplot_fontsize: float = 28
-plot_scatter: bool = False
+plot_diurnals_seasonal: bool = False
+diurnal_subplot_fontsize: float = 36
+plot_scatter: bool = True
 
 if __name__ == "__main__":
     # Ultra
@@ -49,8 +49,18 @@ if __name__ == "__main__":
         df_ultra = converter.read_sheets(
             # sheet_names=["Final", "Final.SA"],
             # columns=["Fch4_ultra", "Fc2h6_ultra", "Fch4"],
-            sheet_names=["Final"],
-            columns=["Fch4_ultra", "Fc2h6_ultra", "Fch4_open"],
+            sheet_names=["Final", "Final.SA"],
+            columns=[
+                "Fch4_ultra",
+                "Fc2h6_ultra",
+                "Fch4_open",
+                "slope",
+                "intercept",
+                "r_value",
+                "p_value",
+                "stderr",
+                "RSSI",
+            ],
             start_date=start_date,
             end_date=end_date,
             include_end_date=include_end_date,
@@ -77,10 +87,17 @@ if __name__ == "__main__":
     # print(df_combined.head(10))  # DataFrameの先頭10行を表示
 
     mfg = MonthlyFiguresGenerator()
-    MonthlyFiguresGenerator.setup_plot_params(font_size=24, tick_size=20)
+    MonthlyFiguresGenerator.setup_plot_params(font_size=24, tick_size=24)
 
     if plot_timeseries:
-        mfg.plot_c1c2_fluxes_timeseries(df=df_combined, output_dir=output_dir)
+        mfg.plot_c1c2_fluxes_timeseries(
+            df=df_combined, output_dir=(os.path.join(output_dir, "timeseries"))
+        )
+        mfg.plot_c1c2_fluxes_and_ratios_timeseries(
+            df=df_combined,
+            output_dir=(os.path.join(output_dir, "timeseries")),
+            c2c1_conc_ratio_key="slope",
+        )
         mfg.logger.info("'timeseries'を作成しました。")
 
     if plot_turbulences:
@@ -92,11 +109,6 @@ if __name__ == "__main__":
         )
         df_for_turb = edp.add_uvw_columns(df_for_turb)
         mfg.plot_turbulence(
-            df=df_for_turb,
-            uz_key="wind_w",
-            output_dir=(os.path.join(output_dir, "turbulences")),
-        )
-        mfg.plot_turbulence_with_analysis(
             df=df_for_turb,
             uz_key="wind_w",
             output_dir=(os.path.join(output_dir, "turbulences")),
@@ -149,8 +161,8 @@ if __name__ == "__main__":
                 subplot_fontsize=diurnal_subplot_fontsize,
                 subplot_label_ch4=subplot_label[0],
                 subplot_label_c2h6=subplot_label[1],
-                colors_ch4=["black", "red", "blue"],
-                colors_c2h6=["black"],
+                colors_ch4=["red", "black", "blue"],
+                colors_c2h6=["orange"],
                 output_dir=(os.path.join(output_dir, "diurnal")),
                 output_filename=f"diurnal-{month_str}.png",  # タグ付けしたファイル名
             )
@@ -163,13 +175,13 @@ if __name__ == "__main__":
                     labels_c2h6=[r"Ultra C$_2$H$_6$"],
                     legend_only_ch4=False,
                     show_label=False,
-                    show_legend=False,
+                    show_legend=True,
                     subplot_label_ch4=subplot_label[0],
                     subplot_label_c2h6=subplot_label[1],
-                    colors_ch4=["black", "red", "blue"],
-                    colors_c2h6=["black"],
+                    colors_ch4=["red", "black", "blue"],
+                    colors_c2h6=["orange"],
                     output_dir=(os.path.join(output_dir, "diurnal")),
-                    output_filename=f"diurnal-legend-{month_str}.png",  # タグ付けしたファイル名
+                    output_filename="diurnal-legend.png",  # タグ付けしたファイル名
                 )
 
             mfg.plot_c1c2_fluxes_diurnal_patterns_by_date(
@@ -188,6 +200,16 @@ if __name__ == "__main__":
             mfg.logger.info("'diurnals'を作成しました。")
 
         if plot_scatter:
+            print(df_month.head(10))
+            mfg.plot_c1c2_fluxes_scatter(
+                df=df_month,
+                x_col="Fch4_ultra",
+                y_col="Fc2h6_ultra",
+                xlabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                ylabel=r"Ultra C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                output_dir=(os.path.join(output_dir, "scatter")),
+                output_filename=f"scatter-ultra_c1c2-{month_str}.png",
+            )
             mfg.plot_c1c2_fluxes_scatter(
                 df=df_month,
                 x_col="Fch4_open",
