@@ -496,7 +496,8 @@ class FluxFootprintAnalyzer:
         center_lon: float,
         vmin: float,
         vmax: float,
-        cbar_label: str = "",
+        add_cbar: bool = True,
+        cbar_label: str | None = None,
         cbar_labelpad: int = 20,
         cmap: str = "jet",
         function: callable = np.mean,
@@ -701,13 +702,15 @@ class FluxFootprintAnalyzer:
         ax_img.set_zorder(1)
 
         # 13. カラーバーの追加
-        cbar_ax: plt.Axes = fig.add_axes([0.88, 0.1, 0.03, 0.8])
-        cbar = fig.colorbar(hexbin, cax=cbar_ax)
+        if add_cbar:
+            cbar_ax: plt.Axes = fig.add_axes([0.88, 0.1, 0.03, 0.8])
+            cbar = fig.colorbar(hexbin, cax=cbar_ax)
+        # cbar_labelが指定されている場合のみラベルを設定
         if cbar_label:
             cbar.set_label(cbar_label, rotation=270, labelpad=cbar_labelpad)
 
         # 14. ホットスポットの凡例追加
-        if hotspots is not None and spot_handles:
+        if hotspots and spot_handles:
             legend = ax_data.legend(
                 handles=spot_handles,
                 loc="upper left",

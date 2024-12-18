@@ -226,8 +226,9 @@ class MonthlyConverter:
         # カラムの選択
         if columns is not None:
             required_columns = [datetime_key, "year", "month"]
-            if not all(col in base_df.columns for col in columns):
-                raise ValueError(f"指定されたカラムが見つかりません: {columns}")
+            available_columns = base_df.columns.tolist()  # 利用可能なカラムを取得
+            if not all(col in available_columns for col in columns):
+                raise ValueError(f"指定されたカラムが見つかりません: {columns}. 利用可能なカラム: {available_columns}")
             selected_columns = list(set(columns + required_columns))
             base_df = base_df[selected_columns]
 

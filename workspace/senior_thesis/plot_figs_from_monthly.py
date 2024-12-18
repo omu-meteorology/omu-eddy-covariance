@@ -35,10 +35,11 @@ output_dir = (
 plot_turbulences: bool = False
 plot_spectra: bool = False
 plot_timeseries: bool = True
-plot_diurnals: bool = True
+plot_diurnals: bool = False
 plot_diurnals_seasonal: bool = False
 diurnal_subplot_fontsize: float = 36
-plot_scatter: bool = True
+plot_scatter: bool = False
+plot_wind_rose: bool = True
 
 if __name__ == "__main__":
     # Ultra
@@ -53,6 +54,8 @@ if __name__ == "__main__":
             columns=[
                 "Fch4_ultra",
                 "Fc2h6_ultra",
+                "CH4_ultra",
+                "C2H6_ultra",
                 "Fch4_open",
                 "slope",
                 "intercept",
@@ -60,6 +63,8 @@ if __name__ == "__main__":
                 "p_value",
                 "stderr",
                 "RSSI",
+                "Wind direction_x",
+                "WS vector_x",
             ],
             start_date=start_date,
             end_date=end_date,
@@ -83,6 +88,10 @@ if __name__ == "__main__":
     # 両方を結合したDataFrameを明示的に作成
     df_combined = MonthlyConverter.merge_dataframes(df1=df_ultra, df2=df_picarro)
 
+    # RSSIが40未満のデータは信頼性が低いため、Fch4_openをnanに置換
+    df_combined.loc[df_combined["RSSI"] < 40, "Fch4_open"] = np.nan
+    df_combined["CH4_ultra_ppb"] = df_combined["CH4_ultra"] * 1000
+
     # print("------")
     # print(df_combined.head(10))  # DataFrameの先頭10行を表示
 
@@ -93,10 +102,9 @@ if __name__ == "__main__":
         mfg.plot_c1c2_fluxes_timeseries(
             df=df_combined, output_dir=(os.path.join(output_dir, "timeseries"))
         )
-        mfg.plot_c1c2_fluxes_and_ratios_timeseries(
+        mfg.plot_c1c2_concentrations_and_fluxes_timeseries(
             df=df_combined,
             output_dir=(os.path.join(output_dir, "timeseries")),
-            c2c1_conc_ratio_key="slope",
         )
         mfg.logger.info("'timeseries'を作成しました。")
 
@@ -142,7 +150,7 @@ if __name__ == "__main__":
         df_month: pd.DataFrame = MonthlyConverter.extract_monthly_data(
             df=df_combined, target_months=[month]
         )
-        if month == 11:
+        if month == 10 or month == 11:
             df_month["Fch4_open"] = np.nan
 
         if plot_diurnals:
@@ -200,27 +208,71 @@ if __name__ == "__main__":
             mfg.logger.info("'diurnals'を作成しました。")
 
         if plot_scatter:
-            print(df_month.head(10))
-            mfg.plot_c1c2_fluxes_scatter(
+            # 濃度の変動を計算
+            df_month["CH4_ultra_fluc"] = (
+                df_month["CH4_ultra_ppb"] - df_month["CH4_ultra_ppb"].mean()
+            )
+            df_month["C2H6_ultra_fluc"] = (
+                df_month["C2H6_ultra"] - df_month["C2H6_ultra"].mean()
+            )
+
+            # # conc
+            # mfg.plot_scatter(
+            #     df=df_month,
+            #     x_col="CH4_ultra_ppb",
+            #     y_col="C2H6_ultra",
+            #     xlabel=r"Ultra CH$_4$ Concentration (ppb)",
+            #     ylabel=r"Ultra C$_2$H$_6$ Concentration (ppb)",
+            #     output_dir=(os.path.join(output_dir, "scatter")),
+            #     output_filename=f"scatter-ultra_conc-{month_str}.png",
+            #     x_axis_range=None,
+            #     y_axis_range=None,
+            #     show_fixed_slope=True,
+            # )
+            # 濃度変動の散布図
+            mfg.plot_scatter(
+                df=df_month,
+                x_col="CH4_ultra_fluc",
+                y_col="C2H6_ultra_fluc",
+                # xlabel=r"$\Delta$CH$_4$ (ppb)",
+                # ylabel=r"$\Delta$C$_2$H$_6$ (ppb)",
+                output_dir=(os.path.join(output_dir, "scatter")),
+                output_filename=f"scatter-ultra_conc_fluc-{month_str}.png",
+                x_axis_range=None,
+                y_axis_range=None,
+                show_fixed_slope=True,
+            )
+
+            # c1c2
+            mfg.plot_scatter(
                 df=df_month,
                 x_col="Fch4_ultra",
                 y_col="Fc2h6_ultra",
-                xlabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                ylabel=r"Ultra C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                # xlabel=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                # ylabel=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
                 output_dir=(os.path.join(output_dir, "scatter")),
                 output_filename=f"scatter-ultra_c1c2-{month_str}.png",
+                x_axis_range=(-50, 400),
+                y_axis_range=(-5, 25),
+                show_fixed_slope=True,
             )
-            mfg.plot_c1c2_fluxes_scatter(
-                df=df_month,
-                x_col="Fch4_open",
-                y_col="Fch4_ultra",
-                xlabel=r"Open Path CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                show_label=False,
-                output_dir=(os.path.join(output_dir, "scatter")),
-                output_filename=f"scatter-open_ultra-{month_str}.png",
-            )
-            mfg.plot_c1c2_fluxes_scatter(
+            try:
+                # open_ultra
+                mfg.plot_scatter(
+                    df=df_month,
+                    x_col="Fch4_open",
+                    y_col="Fch4_ultra",
+                    xlabel=r"Open Path CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                    ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                    show_label=False,
+                    output_dir=(os.path.join(output_dir, "scatter")),
+                    output_filename=f"scatter-open_ultra-{month_str}.png",
+                )
+            except Exception as e:
+                print(e)
+
+            # g2401_ultra
+            mfg.plot_scatter(
                 df=df_month,
                 x_col="Fch4_picaro",
                 y_col="Fch4_ultra",
@@ -274,3 +326,19 @@ if __name__ == "__main__":
                 output_filename=f"diurnal_by_date-{tag}.png",  # タグ付けしたファイル名
             )
             mfg.logger.info("'diurnals-seasons'を作成しました。")
+
+    if plot_wind_rose:
+        # データの前処理を追加
+        df_wind = df_combined.dropna(subset=['Fch4_ultra', 'Wind direction_x', 'WS vector_x'])
+        
+        # データが存在することを確認
+        if len(df_wind) > 0:
+            mfg.plot_flux_wind_rose(
+                df=df_wind,  # 前処理済みのデータフレームを使用
+                output_dir=(os.path.join(output_dir, "wind_rose")),
+                flux_key="Fch4_ultra",
+                wind_dir_key="Wind direction_x",
+                wind_speed_key="WS vector_x",
+            )
+        else:
+            print("警告: 風配図を描画するための有効なデータがありません。")

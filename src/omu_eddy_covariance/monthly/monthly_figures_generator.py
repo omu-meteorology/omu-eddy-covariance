@@ -100,62 +100,84 @@ class MonthlyFiguresGenerator:
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close()
 
-    def plot_c1c2_fluxes_and_ratios_timeseries(
+    def plot_c1c2_concentrations_and_fluxes_timeseries(
         self,
         df: pd.DataFrame,
         output_dir: str,
-        output_filename: str = "timeseries_with_ratios.png",
+        output_filename: str = "conc_flux_timeseries.png",
         datetime_key: str = "Date",
-        c1_flux_key: str = "Fch4_ultra",
-        c2_flux_key: str = "Fc2h6_ultra",
-        c2c1_conc_ratio_key: str = "c2h6_ch4_ratio",
+        ch4_conc_key: str = "CH4_ultra",
+        ch4_flux_key: str = "Fch4_ultra",
+        c2h6_conc_key: str = "C2H6_ultra",
+        c2h6_flux_key: str = "Fc2h6_ultra",
     ) -> None:
-        """フラックスと濃度比の時系列プロットを作成する
+        """
+        CH4とC2H6の濃度とフラックスの時系列プロットを作成する
         
         Args:
-            df (pd.DataFrame): データを含むDataFrame
-            output_dir (str): 出力ディレクトリのパス
-            output_filename (str): 出力ファイル名
-            datetime_key (str): 日時データのカラム名
-            c1_flux_key (str): CH4フラックスのカラム名
-            c2_flux_key (str): C2H6フラックスのカラム名
-            c2c1_conc_ratio_key (str): C2H6/CH4濃度比のカラム名
+            df: 月別データを含むDataFrame
+            output_dir: 出力ディレクトリのパス
+            output_filename: 出力ファイル名
+            datetime_key: 日付列の名前
+            ch4_conc_key: CH4濃度列の名前
+            ch4_flux_key: CH4フラックス列の名前
+            c2h6_conc_key: C2H6濃度列の名前
+            c2h6_flux_key: C2H6フラックス列の名前
         """
+        # 出力ディレクトリの作成
         os.makedirs(output_dir, exist_ok=True)
         output_path: str = os.path.join(output_dir, output_filename)
 
-        # フラックス比を計算
-        flux_ratio = df[c2_flux_key] / df[c1_flux_key]
+        # 統計情報の計算と表示
+        for name, key in [
+            ("CH4 concentration", ch4_conc_key),
+            ("CH4 flux", ch4_flux_key),
+            ("C2H6 concentration", c2h6_conc_key),
+            ("C2H6 flux", c2h6_flux_key),
+        ]:
+            # NaNを除外してから統計量を計算
+            valid_data = df[key].dropna()
+            
+            if len(valid_data) > 0:
+                percentile_5 = np.nanpercentile(valid_data, 5)
+                percentile_95 = np.nanpercentile(valid_data, 95)
+                mean_value = np.nanmean(valid_data)
+                positive_ratio = (valid_data > 0).mean() * 100
+                
+                print(f"\n{name}:")
+                print(f"90パーセンタイルレンジ: {percentile_5:.2f} - {percentile_95:.2f}")
+                print(f"平均値: {mean_value:.2f}")
+                print(f"正の値の割合: {positive_ratio:.1f}%")
+            else:
+                print(f"\n{name}: データが存在しません")
+
 
         # プロットの作成
         _, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
 
-        # CH4フラックス
-        ax1.scatter(df[datetime_key], df[c1_flux_key], color="red", alpha=0.5, s=20)
-        ax1.set_ylabel(r"CH$_4$ flux" + "\n" + r"(nmol m$^{-2}$ s$^{-1}$)")
-        ax1.set_ylim(-100, 600)
+        # CH4濃度のプロット
+        ax1.scatter(df[datetime_key], df[ch4_conc_key], color="red", alpha=0.5, s=20)
+        ax1.set_ylabel(r"CH$_4$ (ppm)")
         ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top", fontsize=20)
         ax1.grid(True, alpha=0.3)
 
-        # C2H6フラックス
-        ax2.scatter(df[datetime_key], df[c2_flux_key], color="orange", alpha=0.5, s=20)
-        ax2.set_ylabel(r"C$_2$H$_6$ flux" + "\n" + r"(nmol m$^{-2}$ s$^{-1}$)")
-        ax2.set_ylim(-20, 60)
+        # CH4フラックスのプロット
+        ax2.scatter(df[datetime_key], df[ch4_flux_key], color="red", alpha=0.5, s=20)
+        ax2.set_ylabel(r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)")
+        ax2.set_ylim(-100, 600)
         ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top", fontsize=20)
         ax2.grid(True, alpha=0.3)
 
-        # フラックス比
-        ax3.scatter(df[datetime_key], flux_ratio, color="blue", alpha=0.5, s=20)
-        ax3.set_ylabel(r"C$_2$H$_6$/CH$_4$" + "\n" + "flux ratio")
-        # ax3.set_ylim(-20, 20)
-        ax3.set_ylim(-0.1, 0.1)
+        # C2H6濃度のプロット
+        ax3.scatter(df[datetime_key], df[c2h6_conc_key], color="orange", alpha=0.5, s=20)
+        ax3.set_ylabel(r"C$_2$H$_6$ (ppb)")
         ax3.text(0.02, 0.98, "(c)", transform=ax3.transAxes, va="top", fontsize=20)
         ax3.grid(True, alpha=0.3)
 
-        # 濃度比
-        ax4.scatter(df[datetime_key], df[c2c1_conc_ratio_key], color="green", alpha=0.5, s=20)
-        ax4.set_ylabel(r"C$_2$H$_6$/CH$_4$" + "\n" + "concentration ratio")
-        ax4.set_ylim(-0.1, 0.1)
+        # C2H6フラックスのプロット
+        ax4.scatter(df[datetime_key], df[c2h6_flux_key], color="orange", alpha=0.5, s=20)
+        ax4.set_ylabel(r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)")
+        ax4.set_ylim(-20, 60)
         ax4.text(0.02, 0.98, "(d)", transform=ax4.transAxes, va="top", fontsize=20)
         ax4.grid(True, alpha=0.3)
 
@@ -165,12 +187,11 @@ class MonthlyFiguresGenerator:
         plt.setp(ax4.get_xticklabels(), rotation=0, ha="right")
         ax4.set_xlabel("Month")
 
-        # レイアウトの調整
+        # レイアウトの調整と保存
         plt.tight_layout()
-
-        # 図の保存
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close()
+
 
     def plot_c1c2_fluxes_diurnal_patterns(
         self,
@@ -219,7 +240,7 @@ class MonthlyFiguresGenerator:
             line = ax2.plot(
                 time_points,
                 hourly_means["all"][y_col],
-                "o-", 
+                "o-",
                 label=label,
                 color=color,
             )
@@ -435,21 +456,111 @@ class MonthlyFiguresGenerator:
         fig.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
 
-    def plot_c1c2_fluxes_scatter(
+    def plot_flux_wind_rose(
+        self,
+        df: pd.DataFrame,
+        output_dir: str,
+        flux_key: str,
+        output_filename: str = "wind_rose.png",
+        wind_speed_key: str = "WS vector",
+        wind_dir_key: str = "Wind direction",
+        n_directions: int = 16,
+        show_label: bool = True,
+        subplot_label: str | None = None,
+        color: str = "red",
+        title: str | None = None,
+    ) -> None:
+        """フラックスの風配図を作成する
+
+        Args:
+            df (pd.DataFrame): 入力データフレーム
+            output_dir (str): 出力ディレクトリのパス
+            flux_key (str): フラックスデータのカラム名
+            output_filename (str): 出力ファイル名
+            wind_speed_key (str): 風速のカラム名
+            wind_dir_key (str): 風向のカラム名
+            n_directions (int): 風向の区分数
+            show_label (bool): ラベルを表示するかどうか
+            subplot_label (str | None): プロットのラベル
+            color (str): プロットの色
+            title (str | None): プロットのタイトル
+        """
+        # 出力ディレクトリの作成
+        os.makedirs(output_dir, exist_ok=True)
+        output_path: str = os.path.join(output_dir, output_filename)
+
+        # 有効なデータの抽出
+        valid_data = df.dropna(subset=[wind_dir_key, wind_speed_key, flux_key])
+
+        # 風向を区分化（0-360度を指定された数の区分に分ける）
+        bin_size = 360 / n_directions
+        direction_bins = np.arange(0, 360 + bin_size, bin_size)
+        direction_centers = direction_bins[:-1] + bin_size / 2
+
+        # 各方位区分でのフラックスの平均値を計算
+        flux_means = []
+        for i in range(len(direction_bins) - 1):
+            mask = (valid_data[wind_dir_key] >= direction_bins[i]) & (
+                valid_data[wind_dir_key] < direction_bins[i + 1]
+            )
+            flux_means.append(valid_data[flux_key][mask].mean())
+
+        # プロットの作成
+        fig, ax = plt.subplots(figsize=(6, 5), subplot_kw={"projection": "polar"})
+
+        # フラックスの風配図
+        ax.bar(
+            np.radians(direction_centers),
+            flux_means,
+            width=np.radians(bin_size),
+            bottom=0.0,
+            color=color,
+            alpha=0.5,
+        )
+
+        # タイトルの設定
+        if show_label and title:
+            ax.set_title(title)
+
+        # サブプロットラベルの設定
+        if subplot_label:
+            ax.text(
+                0.05,
+                1.05,
+                subplot_label,
+                transform=ax.transAxes,
+                va="bottom",
+            )
+
+        # 方位の設定
+        ax.set_theta_zero_location("N")  # 北を上に設定
+        ax.set_theta_direction(-1)  # 時計回りに設定
+        # 方位ラベルの設定
+        ax.set_xticks(np.radians([0, 45, 90, 135, 180, 225, 270, 315]))
+        ax.set_xticklabels(["N", "NE", "E", "SE", "S", "SW", "W", "NW"])
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
+    def plot_scatter(
         self,
         df: pd.DataFrame,
         x_col: str,
         y_col: str,
-        xlabel: str,
-        ylabel: str,
         output_dir: str,
         output_filename: str = "scatter.png",
+        xlabel: str | None = None,
+        ylabel: str | None = None,
         show_label: bool = True,
-        axis_range: tuple = (-50, 200),
+        x_axis_range: tuple | None = (-50, 200),
+        y_axis_range: tuple | None = (-50, 200),
+        fixed_slope: float = 0.076,
+        show_fixed_slope: bool = False,
     ) -> None:
-        """散布図とTLS回帰直線をプロットする
+        """散布図を作成し、TLS回帰直線を描画します。
 
-        Args:
+        引数:
             df (pd.DataFrame): プロットに使用するデータフレーム
             x_col (str): x軸に使用する列名
             y_col (str): y軸に使用する列名
@@ -458,7 +569,10 @@ class MonthlyFiguresGenerator:
             output_dir (str): 出力先ディレクトリ
             output_filename (str, optional): 出力ファイル名。デフォルトは"scatter.png"
             show_label (bool, optional): 軸ラベルを表示するかどうか。デフォルトはTrue
-            axis_range (tuple, optional): x軸とy軸の範囲。デフォルトは(-50, 200)
+            x_axis_range (tuple, optional): x軸の範囲。デフォルトは(-50, 200)
+            y_axis_range (tuple, optional): y軸の範囲。デフォルトは(-50, 200)
+            fixed_slope (float, optional): 固定傾きを指定するための値。デフォルトは0.076
+            show_fixed_slope (bool, optional): 固定傾きの線を表示するかどうか。デフォルトはFalse
         """
         os.makedirs(output_dir, exist_ok=True)
         output_path: str = os.path.join(output_dir, output_filename)
@@ -495,26 +609,47 @@ class MonthlyFiguresGenerator:
         # データ点のプロット
         ax.scatter(x, y, color="black")
 
+        # データの範囲を取得
+        if x_axis_range is None:
+            x_axis_range = (df[x_col].min(), df[x_col].max())
+        if y_axis_range is None:
+            y_axis_range = (df[y_col].min(), df[y_col].max())
+
         # 回帰直線のプロット
-        x_range = np.linspace(axis_range[0], axis_range[1], 150)
+        x_range = np.linspace(x_axis_range[0], x_axis_range[1], 150)
         y_range = slope * x_range + intercept
         ax.plot(x_range, y_range, "r", label="TLS regression")
 
-        if show_label:
-            ax.set_xlabel(xlabel)
-            ax.set_ylabel(ylabel)
+        # 傾き固定の線を追加（フラグがTrueの場合）
+        if show_fixed_slope:
+            fixed_intercept = (
+                y_mean - fixed_slope * x_mean
+            )  # 中心点を通るように切片を計算
+            y_fixed = fixed_slope * x_range + fixed_intercept
+            ax.plot(x_range, y_fixed, "b--", label=f"Slope = {fixed_slope}", alpha=0.7)
 
         # 軸の設定
-        ax.set_xlim(axis_range)
-        ax.set_ylim(axis_range)
+        ax.set_xlim(x_axis_range)
+        ax.set_ylim(y_axis_range)
 
-        # 1:1の関係を示す点線
-        ax.plot(
-            [axis_range[0], axis_range[1]],
-            [axis_range[0], axis_range[1]],
-            "k--",
-            alpha=0.5,
-        )
+        if show_label:
+            if xlabel is not None:
+                ax.set_xlabel(xlabel)
+            if ylabel is not None:
+                ax.set_ylabel(ylabel)
+
+        # 1:1の関係を示す点線（軸の範囲が同じ場合のみ表示）
+        if (
+            x_axis_range is not None
+            and y_axis_range is not None
+            and x_axis_range == y_axis_range
+        ):
+            ax.plot(
+                [x_axis_range[0], x_axis_range[1]],
+                [x_axis_range[0], x_axis_range[1]],
+                "k--",
+                alpha=0.5,
+            )
 
         # 回帰情報の表示
         equation = (
