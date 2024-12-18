@@ -112,3 +112,10 @@ if __name__ == "__main__":
 
     # ホットスポットを散布図で表示
     msa.plot_scatter_c2h6_ch4(output_dir=output_dir)
+
+    # ヒストグラムを作図
+    msa.plot_ch4_delta_histogram(
+        output_dir=output_dir,
+        figsize=(8, 6),
+        xlim=(0, 2),
+    )

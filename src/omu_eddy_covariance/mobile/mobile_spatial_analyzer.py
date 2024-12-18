@@ -664,6 +664,105 @@ class MobileSpatialAnalyzer:
         """
         return self._section_size
 
+    def plot_ch4_delta_histogram(
+        self,
+        output_dir: str | Path,
+        output_filename: str = "ch4_delta_histogram",
+        dpi: int = 200,
+        figsize: tuple[int, int] = (8, 6),
+        fontsize: float = 20,
+        xlim: tuple[float, float] | None = None,
+        savefig: bool = True,
+    ) -> plt.Figure:
+        """
+        CH4の増加量（ΔCH4）のヒストグラムをプロットします。
+
+        Args:
+            output_dir (str | Path): 保存先のディレクトリパス
+            output_filename (str): 保存するファイル名。デフォルトは"ch4_delta_histogram"。
+            dpi (int): 解像度。デフォルトは200。
+            figsize (tuple[int, int]): 図のサイズ。デフォルトは(8, 6)。
+            fontsize (float): フォントサイズ。デフォルトは20。
+            xlim (tuple[float, float] | None): x軸の範囲。Noneの場合は自動設定。
+            savefig (bool): 図の保存を許可するフラグ。デフォルトはTrue。
+
+        Returns:
+            plt.Figure: 作成されたヒストグラムのFigureオブジェクト
+        """
+        output_path: Path = Path(output_dir) / f"{output_filename}.png"
+
+        plt.rcParams["font.size"] = fontsize
+        fig = plt.figure(figsize=figsize, dpi=dpi)
+
+        # 全データソースのデータを結合
+        all_ch4_deltas = []
+        all_types = []
+
+        for df in self._data.values():
+            # CH4増加量が0.1ppm以上のデータのみを抽出
+            mask = df["ch4_ppm_delta"] >= self._ch4_enhance_threshold
+            ch4_deltas = df["ch4_ppm_delta"][mask]
+            correlations = df["ch4_c2h6_correlation"][mask]
+            ratios = df["c2h6_ch4_ratio_delta"][mask]
+
+            # タイプの判定
+            types = np.full(len(ch4_deltas), "bio")  # デフォルトはbio
+            gas_mask = (
+                (correlations >= self._correlation_threshold)
+                & (ratios >= 5)
+                & (ratios < 100)
+            )
+            comb_mask = (correlations >= self._correlation_threshold) & (ratios >= 100)
+            types[gas_mask] = "gas"
+            types[comb_mask] = "comb"
+
+            all_ch4_deltas.extend(ch4_deltas)
+            all_types.extend(types)
+
+        # データをNumPy配列に変換
+        all_ch4_deltas = np.array(all_ch4_deltas)
+        all_types = np.array(all_types)
+
+        # 0.1刻みのビンを作成（左端を含み、右端を含まない）
+        if xlim is not None:
+            bins = np.arange(xlim[0], xlim[1] + 0.1, 0.1)
+        else:
+            max_val = np.ceil(np.max(all_ch4_deltas) * 10) / 10  # 0.1単位で切り上げ
+            bins = np.arange(0, max_val + 0.1, 0.1)
+
+        # タイプごとにヒストグラムを作成
+        colors = {"bio": "blue", "gas": "red", "comb": "green"}
+        for type_name in ["bio", "gas", "comb"]:
+            mask = all_types == type_name
+            if np.any(mask):
+                plt.hist(
+                    all_ch4_deltas[mask],
+                    bins=bins,
+                    color=colors[type_name],
+                    label=type_name,
+                    alpha=0.6,
+                    histtype="bar",
+                    log=True,
+                    align="left",  # ビンの左端に合わせる
+                    rwidth=1.0,  # バーの幅を最大にする
+                )
+
+        plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
+        plt.ylabel("Frequency")
+        plt.legend()
+        plt.grid(True, which="both", ls="-", alpha=0.2)
+
+        # x軸の範囲を設定
+        if xlim is not None:
+            plt.xlim(xlim)
+
+        # グラフの保存または表示
+        if savefig:
+            plt.savefig(output_path, bbox_inches="tight")
+            self.logger.info(f"ヒストグラムを保存しました: {output_path}")
+
+        return fig
+
     def plot_scatter_c2h6_ch4(
         self,
         output_dir: str | Path,
@@ -840,6 +939,11 @@ class MobileSpatialAnalyzer:
         """
         水蒸気干渉の補正を行います。
         CH4濃度に対する水蒸気の干渉を補正する2次関数を適用します。
+
+        参考文献:
+            Commane et al. (2023): Intercomparison of commercial analyzers for atmospheric ethane and methane observations
+                https://amt.copernicus.org/articles/16/1431/2023/,
+                https://amt.copernicus.org/articles/16/1431/2023/amt-16-1431-2023.pdf
 
         Args:
             df (pd.DataFrame): 入力データフレーム
