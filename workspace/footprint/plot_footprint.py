@@ -73,7 +73,7 @@ inputs: list[MSAInputConfig] = [
 center_lan: float = 34.573904320329724  # 観測地点の緯度
 center_lon: float = 135.4829511120712  # 観測地点の経度
 num_sections: int = 4  # セクション数
-plot_count: int = 50000
+plot_count: int = 30000
 
 # ファイルおよびディレクトリのパス
 project_root: str = "/home/connect0459/labo/omu-eddy-covariance"
@@ -82,9 +82,9 @@ work_dir: str = f"{project_root}/workspace/footprint"
 output_dir: str = f"{work_dir}/private/outputs"  # 出力先のディレクトリ
 dotenv_path = f"{work_dir}/.env"  # .envファイル
 
-start_date, end_date = "2024-05-15", "2024-11-30"
+# start_date, end_date = "2024-05-15", "2024-11-30"
 # start_date, end_date = "2024-06-01", "2024-08-31"
-# start_date, end_date = "2024-09-01", "2024-11-30"
+start_date, end_date = "2024-09-01", "2024-11-30"
 date_tag: str = f"-{start_date}_{end_date}"
 
 # ローカルフォントを読み込む場合はコメントアウトを解除して適切なパスを入力
@@ -152,7 +152,6 @@ if __name__ == "__main__":
         flux_key="Fch4_ultra",
         plot_count=plot_count,
     )
-
     ffa.plot_flux_footprint(
         x_list=x_list,  # メートル単位のx座標
         y_list=y_list,  # メートル単位のy座標
@@ -164,18 +163,18 @@ if __name__ == "__main__":
         vmin=0,
         vmax=100,
         xy_max=5000,
-        cbar_label=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+        # cbar_label=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
         cbar_labelpad=20,
         output_dir=output_dir,
         output_filename=f"footprint_ch4{date_tag}.png",
     )
+    del x_list, y_list, c_list
 
     x_list, y_list, c_list = ffa.calculate_flux_footprint(
         df=df,
         flux_key="Fc2h6_ultra",
         plot_count=plot_count,
     )
-
     ffa.plot_flux_footprint(
         x_list=x_list,  # メートル単位のx座標
         y_list=y_list,  # メートル単位のy座標
@@ -187,11 +186,12 @@ if __name__ == "__main__":
         vmin=0,
         vmax=5,
         xy_max=5000,
-        cbar_label=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+        # cbar_label=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
         cbar_labelpad=35,
         output_dir=output_dir,
         output_filename=f"footprint_c2h6{date_tag}.png",
     )
+    del x_list, y_list, c_list
 
     # ratio
     df["Fratio"] = (df["Fc2h6_ultra"] / df["Fch4_ultra"]) / 0.076 * 100
@@ -200,7 +200,6 @@ if __name__ == "__main__":
         flux_key="Fratio",
         plot_count=plot_count,
     )
-
     # フットプリントとホットスポットの可視化
     ffa.plot_flux_footprint_with_hotspots(
         x_list=x_list_r,  # メートル単位のx座標
@@ -214,8 +213,9 @@ if __name__ == "__main__":
         vmin=0,
         vmax=100,
         xy_max=5000,
-        cbar_label=r"Gas Ratio of CH$_4$ Flux (%)",
+        # cbar_label=r"Gas Ratio of CH$_4$ Flux (%)",
         cbar_labelpad=20,
         output_dir=output_dir,
         output_filename=f"footprint_ratio{date_tag}.png",
     )
+    del x_list_r, y_list_r, c_list_r

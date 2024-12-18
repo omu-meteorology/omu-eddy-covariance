@@ -430,7 +430,9 @@ class FluxFootprintAnalyzer:
         center_lon: float,
         vmin: float,
         vmax: float,
-        cbar_label: str = "",
+        add_cbar: bool = True,
+        add_legend: bool = True,
+        cbar_label: str | None = None,
         cbar_labelpad: int = 20,
         cmap: str = "jet",
         function: callable = np.mean,
@@ -473,6 +475,8 @@ class FluxFootprintAnalyzer:
             center_lon=center_lon,
             vmin=vmin,
             vmax=vmax,
+            add_cbar=add_cbar,
+            add_legend=add_legend,
             cbar_label=cbar_label,
             cbar_labelpad=cbar_labelpad,
             cmap=cmap,
@@ -497,6 +501,7 @@ class FluxFootprintAnalyzer:
         vmin: float,
         vmax: float,
         add_cbar: bool = True,
+        add_legend: bool = True,
         cbar_label: str | None = None,
         cbar_labelpad: int = 20,
         cmap: str = "jet",
@@ -710,7 +715,7 @@ class FluxFootprintAnalyzer:
             cbar.set_label(cbar_label, rotation=270, labelpad=cbar_labelpad)
 
         # 14. ホットスポットの凡例追加
-        if hotspots and spot_handles:
+        if add_legend and hotspots and spot_handles:
             legend = ax_data.legend(
                 handles=spot_handles,
                 loc="upper left",
