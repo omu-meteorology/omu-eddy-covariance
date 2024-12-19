@@ -193,7 +193,7 @@ class FluxSpatialAnalyzer:
         results_bio: list[SectorAnalysisResult],
         results_gas: list[SectorAnalysisResult],
         title: str = "Combined Analysis Results",
-        flux_type: str = "CH4 flux",  # または "C2H6/CH4 ratio"
+        flux_type: str = r"CH$_4$ flux",  # または "C2H6/CH4 ratio"
     ) -> plt.Figure:
         """bioとgasの結果を組み合わせて表示"""
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
@@ -222,11 +222,11 @@ class FluxSpatialAnalyzer:
         ax1.set_xlabel("Sector")
 
         # 軸ラベルの単位を追加
-        if flux_type == "CH4 flux":
+        if flux_type == r"CH$_4$ flux":
             flux_label = r"CH$_4$ Flux"
             ax1.set_ylabel(f"{flux_label} (nmol m$^{{-2}}$ s$^{{-1}}$)")
         else:
-            flux_label = "C$_2$H$_6$/CH$_4$ Flux Ratio"
+            flux_label = r"C$_2$H$_6$/CH$_4$ Flux Ratio"
             ax1.set_ylabel(f"{flux_label} Intensity (%)")  # C2H6/CH4比の場合
 
         ax1_twin.set_ylabel("Hotspot Count")
@@ -234,7 +234,7 @@ class FluxSpatialAnalyzer:
         # 2つのy軸の凡例を結合
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax1_twin.get_legend_handles_labels()
-        ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
+        # ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
 
         # 右パネル：p値の比較
         significance_levels = [0.01, 0.05, 0.1]
@@ -505,22 +505,22 @@ if __name__ == "__main__":
     ffa = FluxFootprintAnalyzer(z_m=111)
     df: pd.DataFrame = ffa.combine_all_data(monthly_df, source_type="monthly")
 
-    # # C2H6/CH4比の計算
-    # df["Fratio"] = (df["Fc2h6 ultra"] / df["Fch4 ultra"]) / 0.076 * 100
+    # C2H6/CH4比の計算
+    df["Fratio"] = (df["Fc2h6_ultra"] / df["Fch4_ultra"]) / 0.076 * 100
 
     # CH4フラックスのフットプリント計算
     x_list_ch4, y_list_ch4, c_list_ch4 = ffa.calculate_flux_footprint(
         df=df,
-        flux_key="Fch4 ultra",
+        flux_key="Fch4_ultra",
         plot_count=30000,
     )
 
     # # C2H6/CH4比のフットプリント計算
-    # x_list_ratio, y_list_ratio, c_list_ratio = ffa.calculate_flux_footprint(
-    #     df=df,
-    #     flux_key="Fratio",
-    #     plot_count=10000,
-    # )
+    x_list_ratio, y_list_ratio, c_list_ratio = ffa.calculate_flux_footprint(
+        df=df,
+        flux_key="Fratio",
+        plot_count=10000,
+    )
 
     fsa = FluxSpatialAnalyzer(8)
 
@@ -539,45 +539,45 @@ if __name__ == "__main__":
     fig_ch4_gas = fsa.visualize_results(results_ch4_gas)
     fig_ch4_gas.savefig(f"{output_dir}/section_ch4_gas.png", dpi=300)
 
-    # # 3. C2H6/CH4比とbioホットスポット
-    # results_ratio_bio = fsa.run_analysis(
-    #     x_list_ratio,
-    #     y_list_ratio,
-    #     c_list_ratio,
-    #     bio_hotspots,
-    #     num_sections=num_sections,
-    # )
-    # fig_ratio_bio = fsa.visualize_results(results_ratio_bio)
-    # fig_ratio_bio.savefig(f"{output_dir}/section_ratio_bio.png", dpi=300)
+    # 3. C2H6/CH4比とbioホットスポット
+    results_ratio_bio = fsa.run_analysis(
+        x_list_ratio,
+        y_list_ratio,
+        c_list_ratio,
+        bio_hotspots,
+        num_sections=num_sections,
+    )
+    fig_ratio_bio = fsa.visualize_results(results_ratio_bio)
+    fig_ratio_bio.savefig(f"{output_dir}/section_ratio_bio.png", dpi=300)
 
-    # # 4. C2H6/CH4比とgasホットスポット
-    # results_ratio_gas = fsa.run_analysis(
-    #     x_list_ratio,
-    #     y_list_ratio,
-    #     c_list_ratio,
-    #     gas_hotspots,
-    #     num_sections=num_sections,
-    # )
-    # fig_ratio_gas = fsa.visualize_results(results_ratio_gas)
-    # fig_ratio_gas.savefig(f"{output_dir}/section_ratio_gas.png", dpi=300)
+    # 4. C2H6/CH4比とgasホットスポット
+    results_ratio_gas = fsa.run_analysis(
+        x_list_ratio,
+        y_list_ratio,
+        c_list_ratio,
+        gas_hotspots,
+        num_sections=num_sections,
+    )
+    fig_ratio_gas = fsa.visualize_results(results_ratio_gas)
+    fig_ratio_gas.savefig(f"{output_dir}/section_ratio_gas.png", dpi=300)
 
     # CH4フラックスの結果を可視化
     fig_ch4 = fsa.visualize_combined_results(
         results_ch4_bio,
         results_ch4_gas,
         title="CH4 Flux Analysis",
-        flux_type="CH4 flux",
+        flux_type=r"CH$_4$ flux",
     )
     fig_ch4.savefig(f"{output_dir}/section_ch4_combined.png", dpi=300)
 
-    # # C2H6/CH4比の結果を可視化
-    # fig_ratio = fsa.visualize_combined_results(
-    #     results_ratio_bio,
-    #     results_ratio_gas,
-    #     title="C2H6/CH4 Ratio Analysis",
-    #     flux_type="C2H6/CH4 ratio",
-    # )
-    # fig_ratio.savefig(f"{output_dir}/section_ratio_combined.png", dpi=300)
+    # C2H6/CH4比の結果を可視化
+    fig_ratio = fsa.visualize_combined_results(
+        results_ratio_bio,
+        results_ratio_gas,
+        title="C2H6/CH4 Ratio Analysis",
+        flux_type=r"C$_2$H$_6$/CH$_4$ ratio",
+    )
+    fig_ratio.savefig(f"{output_dir}/section_ratio_combined.png", dpi=300)
 
     # 結果の出力
     print("\nCH4フラックス vs bioホットスポット:")

@@ -67,6 +67,7 @@ try:
         show_plot=show_tf_plot,
         output_dir=output_dir,
         output_basename=f"tf_ch4-{date}",
+        gas_label=r"CH$_4$",
     )
     tfc.create_plot_transfer_function(
         a=a_wc2h6,
@@ -76,6 +77,7 @@ try:
         show_plot=show_tf_plot,
         output_dir=output_dir,
         output_basename=f"tf_c2h6-{date}",
+        gas_label=r"C$_2$H$_6$",
     )
 
     print(f"wCH4の係数 a: {a_wch4}")

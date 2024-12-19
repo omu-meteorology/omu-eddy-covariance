@@ -82,9 +82,9 @@ work_dir: str = f"{project_root}/workspace/footprint"
 output_dir: str = f"{work_dir}/private/outputs"  # 出力先のディレクトリ
 dotenv_path = f"{work_dir}/.env"  # .envファイル
 
-# start_date, end_date = "2024-05-15", "2024-11-30"
+start_date, end_date = "2024-05-15", "2024-11-30"
 # start_date, end_date = "2024-06-01", "2024-08-31"
-start_date, end_date = "2024-09-01", "2024-11-30"
+# start_date, end_date = "2024-09-01", "2024-11-30"
 date_tag: str = f"-{start_date}_{end_date}"
 
 # ローカルフォントを読み込む場合はコメントアウトを解除して適切なパスを入力
@@ -147,51 +147,51 @@ if __name__ == "__main__":
         local_image_path=local_image_path
     )  # ローカル
 
-    x_list, y_list, c_list = ffa.calculate_flux_footprint(
-        df=df,
-        flux_key="Fch4_ultra",
-        plot_count=plot_count,
-    )
-    ffa.plot_flux_footprint(
-        x_list=x_list,  # メートル単位のx座標
-        y_list=y_list,  # メートル単位のy座標
-        c_list=c_list,
-        center_lat=center_lan,
-        center_lon=center_lon,
-        satellite_image=image,
-        cmap="jet",
-        vmin=0,
-        vmax=100,
-        xy_max=5000,
-        # cbar_label=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-        cbar_labelpad=20,
-        output_dir=output_dir,
-        output_filename=f"footprint_ch4{date_tag}.png",
-    )
-    del x_list, y_list, c_list
+    # x_list, y_list, c_list = ffa.calculate_flux_footprint(
+    #     df=df,
+    #     flux_key="Fch4_ultra",
+    #     plot_count=plot_count,
+    # )
+    # ffa.plot_flux_footprint(
+    #     x_list=x_list,  # メートル単位のx座標
+    #     y_list=y_list,  # メートル単位のy座標
+    #     c_list=c_list,
+    #     center_lat=center_lan,
+    #     center_lon=center_lon,
+    #     satellite_image=image,
+    #     cmap="jet",
+    #     vmin=0,
+    #     vmax=100,
+    #     xy_max=5000,
+    #     # cbar_label=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+    #     cbar_labelpad=20,
+    #     output_dir=output_dir,
+    #     output_filename=f"footprint_ch4{date_tag}.png",
+    # )
+    # del x_list, y_list, c_list
 
-    x_list, y_list, c_list = ffa.calculate_flux_footprint(
-        df=df,
-        flux_key="Fc2h6_ultra",
-        plot_count=plot_count,
-    )
-    ffa.plot_flux_footprint(
-        x_list=x_list,  # メートル単位のx座標
-        y_list=y_list,  # メートル単位のy座標
-        c_list=c_list,
-        center_lat=center_lan,
-        center_lon=center_lon,
-        satellite_image=image,
-        cmap="jet",
-        vmin=0,
-        vmax=5,
-        xy_max=5000,
-        # cbar_label=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-        cbar_labelpad=35,
-        output_dir=output_dir,
-        output_filename=f"footprint_c2h6{date_tag}.png",
-    )
-    del x_list, y_list, c_list
+    # x_list, y_list, c_list = ffa.calculate_flux_footprint(
+    #     df=df,
+    #     flux_key="Fc2h6_ultra",
+    #     plot_count=plot_count,
+    # )
+    # ffa.plot_flux_footprint(
+    #     x_list=x_list,  # メートル単位のx座標
+    #     y_list=y_list,  # メートル単位のy座標
+    #     c_list=c_list,
+    #     center_lat=center_lan,
+    #     center_lon=center_lon,
+    #     satellite_image=image,
+    #     cmap="jet",
+    #     vmin=0,
+    #     vmax=5,
+    #     xy_max=5000,
+    #     # cbar_label=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+    #     cbar_labelpad=35,
+    #     output_dir=output_dir,
+    #     output_filename=f"footprint_c2h6{date_tag}.png",
+    # )
+    # del x_list, y_list, c_list
 
     # ratio
     df["Fratio"] = (df["Fc2h6_ultra"] / df["Fch4_ultra"]) / 0.076 * 100
@@ -213,6 +213,7 @@ if __name__ == "__main__":
         vmin=0,
         vmax=100,
         xy_max=5000,
+        # add_legend=False,
         # cbar_label=r"Gas Ratio of CH$_4$ Flux (%)",
         cbar_labelpad=20,
         output_dir=output_dir,
