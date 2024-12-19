@@ -117,6 +117,7 @@ class TransferFunctionCalculator:
         ax.plot([0.01, 10], [10, 0.001], "-", color="black")
         ax.text(0.25, 0.4, "-4/3")
 
+        ax.grid(True, alpha=0.3)
         ax.set_xscale("log")
         ax.set_yscale("log")
         ax.set_xlim(0.0001, 10)
@@ -200,6 +201,10 @@ class TransferFunctionCalculator:
         output_dir: str | None = None,
         output_basename: str = "tf",
         show_plot: bool = True,
+        add_xlabel: bool = True,
+        label_x: str = "f (Hz)",
+        label_y: str = "コスペクトル比",
+        gas_label: str | None = None,
     ) -> None:
         """
         伝達関数とそのフィットをプロットする。
@@ -233,8 +238,12 @@ class TransferFunctionCalculator:
         ax.plot(x_fit, y_fit, "-", label=f"フィット (a = {a:.4f})")
 
         ax.set_xscale("log")
-        ax.set_xlabel("f (Hz)")
-        ax.set_ylabel("コスペクトル比")
+        # グラフの設定
+        label_y_formatted: str = f"{label_y}\n" f"({gas_label} / 顕熱)"
+        plt.xscale("log")
+        if add_xlabel:
+            plt.xlabel(label_x)
+        plt.ylabel(label_y_formatted)
         ax.legend()
 
         if output_dir is not None:
