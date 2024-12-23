@@ -34,12 +34,11 @@ output_dir = (
 # フラグ
 plot_turbulences: bool = False
 plot_spectra: bool = False
-plot_timeseries: bool = True
+plot_timeseries: bool = False
 plot_diurnals: bool = False
 plot_diurnals_seasonal: bool = False
 diurnal_subplot_fontsize: float = 36
 plot_scatter: bool = False
-plot_wind_rose: bool = True
 
 if __name__ == "__main__":
     # Ultra
@@ -70,6 +69,8 @@ if __name__ == "__main__":
             end_date=end_date,
             include_end_date=include_end_date,
         )
+        df_ultra["Wind direction"] = df_ultra["Wind direction_x"]
+        df_ultra["WS vector"] = df_ultra["WS vector_x"]
 
     # Picarro
     with MonthlyConverter(
@@ -96,7 +97,9 @@ if __name__ == "__main__":
     # print(df_combined.head(10))  # DataFrameの先頭10行を表示
 
     mfg = MonthlyFiguresGenerator()
-    MonthlyFiguresGenerator.setup_plot_params(font_size=24, tick_size=24)
+    MonthlyFiguresGenerator.setup_plot_params(
+        font_family=["IPAGothic", "Dejavu Sans"], font_size=24, tick_size=24
+    )
 
     if plot_timeseries:
         mfg.plot_c1c2_fluxes_timeseries(
@@ -327,18 +330,23 @@ if __name__ == "__main__":
             )
             mfg.logger.info("'diurnals-seasons'を作成しました。")
 
-    if plot_wind_rose:
-        # データの前処理を追加
-        df_wind = df_combined.dropna(subset=['Fch4_ultra', 'Wind direction_x', 'WS vector_x'])
-        
-        # データが存在することを確認
-        if len(df_wind) > 0:
-            mfg.plot_flux_wind_rose(
-                df=df_wind,  # 前処理済みのデータフレームを使用
-                output_dir=(os.path.join(output_dir, "wind_rose")),
-                flux_key="Fch4_ultra",
-                wind_dir_key="Wind direction_x",
-                wind_speed_key="WS vector_x",
-            )
-        else:
-            print("警告: 風配図を描画するための有効なデータがありません。")
+    mfg.plot_flux_diurnal_patterns_with_std(
+        df=df_combined,
+        output_dir=(os.path.join(output_dir, "tests")),
+        ch4_flux_key="Fch4_ultra",
+        c2h6_flux_key="Fc2h6_ultra",
+    )
+
+    mfg.plot_source_contributions_diurnal(
+        df=df_combined,
+        output_dir=(os.path.join(output_dir, "tests")),
+        ch4_flux_key="Fch4_ultra",
+        c2h6_flux_key="Fc2h6_ultra",
+    )
+
+    mfg.plot_wind_rose_sources(
+        df=df_combined,
+        output_dir=(os.path.join(output_dir, "tests")),
+        ch4_flux_key="Fch4_ultra",
+        c2h6_flux_key="Fc2h6_ultra",
+    )
