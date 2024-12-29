@@ -6,6 +6,19 @@ from omu_eddy_covariance import (
     MonthlyFiguresGenerator,
     EddyDataPreprocessor,
 )
+import matplotlib.font_manager as fm
+
+# フォントファイルを登録
+font_paths: list[str] = [
+    "/home/connect0459/.local/share/fonts/arial.ttf",  # 英語のデフォルト
+    "/home/connect0459/.local/share/fonts/msgothic.ttc",  # 日本語のデフォルト
+]
+for path in font_paths:
+    fm.fontManager.addfont(path)
+# プロットの書式を設定
+MonthlyFiguresGenerator.setup_plot_params(
+    font_family=["Arial", "MS Gothic"], font_size=24, tick_size=24
+)
 
 include_end_date: bool = True
 start_date, end_date = "2024-05-15", "2024-11-30"  # yyyy-MM-ddで指定
@@ -36,7 +49,7 @@ plot_turbulences: bool = False
 plot_spectra: bool = False
 plot_timeseries: bool = False
 plot_diurnals: bool = False
-plot_diurnals_seasonal: bool = False
+plot_seasonal: bool = True
 diurnal_subplot_fontsize: float = 36
 plot_scatter: bool = False
 
@@ -97,9 +110,6 @@ if __name__ == "__main__":
     # print(df_combined.head(10))  # DataFrameの先頭10行を表示
 
     mfg = MonthlyFiguresGenerator()
-    MonthlyFiguresGenerator.setup_plot_params(
-        font_family=["IPAGothic", "Dejavu Sans"], font_size=24, tick_size=24
-    )
 
     if plot_timeseries:
         mfg.plot_c1c2_fluxes_timeseries(
@@ -286,7 +296,7 @@ if __name__ == "__main__":
             )
             mfg.logger.info("'scatters'を作成しました。")
 
-    if plot_diurnals_seasonal:
+    if plot_seasonal:
         seasons: list[list[int]] = [[6, 7, 8], [9, 10, 11]]
         seasons_tags: list[str] = ["summer", "fall"]
         for season, tag in zip(seasons, seasons_tags):
@@ -330,6 +340,15 @@ if __name__ == "__main__":
             )
             mfg.logger.info("'diurnals-seasons'を作成しました。")
 
+            mfg.plot_source_contributions_diurnal(
+                df=df_season,
+                output_dir=(os.path.join(output_dir, "tests")),
+                output_filename=f"source_contributions-{tag}.png",
+                ch4_flux_key="Fch4_ultra",
+                c2h6_flux_key="Fc2h6_ultra",
+                y_max=90,
+            )
+
     mfg.plot_flux_diurnal_patterns_with_std(
         df=df_combined,
         output_dir=(os.path.join(output_dir, "tests")),
@@ -342,6 +361,7 @@ if __name__ == "__main__":
         output_dir=(os.path.join(output_dir, "tests")),
         ch4_flux_key="Fch4_ultra",
         c2h6_flux_key="Fc2h6_ultra",
+        y_max=90,
     )
 
     mfg.plot_wind_rose_sources(

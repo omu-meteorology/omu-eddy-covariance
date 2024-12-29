@@ -742,16 +742,16 @@ class MonthlyFiguresGenerator:
         self,
         df: pd.DataFrame,
         output_dir: str,
-        ch4_flux_key: str = "Fch4",
-        c2h6_flux_key: str = "Fc2h6",
+        ch4_flux_key: str ,
+        c2h6_flux_key: str ,
         gas_label: str = "都市ガス起源",
         bio_label: str = "生物起源",
         datetime_key: str = "Date",
         output_filename: str = "source_contributions.png",
         window_size: int = 6,  # 移動平均の窓サイズ
-        gas_ratio_threshold: float = 100.0,  # 都市ガス起源と判定する閾値（%）
         show_stats: bool = True,  # 統計情報を表示するかどうか,
         smooth: bool = False,
+        y_max: float = 100,  # y軸の上限値を追加
     ) -> None:
         """CH4フラックスの都市ガス起源と生物起源の日変化を積み上げグラフとして表示
 
@@ -765,9 +765,9 @@ class MonthlyFiguresGenerator:
             datetime_key (str): 日時カラムの名前
             output_filename (str): 出力ファイル名
             window_size (int): 移動平均の窓サイズ
-            gas_ratio_threshold (float): 都市ガス起源と判定する閾値（%）
             show_stats (bool): 統計情報を表示するかどうか
             smooth (bool): 移動平均を適用するかどうか
+            y_max (float): y軸の上限値（デフォルト: 100）
         """
         # 出力ディレクトリの作成
         os.makedirs(output_dir, exist_ok=True)
@@ -778,7 +778,6 @@ class MonthlyFiguresGenerator:
             df=df,
             ch4_flux_key=ch4_flux_key,
             c2h6_flux_key=c2h6_flux_key,
-            gas_ratio_threshold=gas_ratio_threshold,
             datetime_key=datetime_key,
         )
 
@@ -833,6 +832,7 @@ class MonthlyFiguresGenerator:
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
         ax.set_xlim(time_points[0], time_points[-1])
+        ax.set_ylim(0, y_max)  # y軸の範囲を設定
         ax.grid(True, alpha=0.3)
         ax.legend()
 
@@ -1148,7 +1148,6 @@ class MonthlyFiguresGenerator:
         datetime_key: str = "Date",
         output_filename: str = "wind_rose.png",
         num_directions: int = 8,  # 方位の数（8方位）
-        gas_ratio_threshold: float = 100.0,  # 都市ガス起源と判定する閾値（%）
         subplot_label: str = "(a)",
         show_stats: bool = True,  # 統計情報を表示するかどうか
     ) -> None:
@@ -1165,7 +1164,6 @@ class MonthlyFiguresGenerator:
             datetime_key (str): 日時カラムの名前
             output_filename (str): 出力ファイル名
             num_directions (int): 方位の数（デフォルト8）
-            gas_ratio_threshold (float): 都市ガス起源と判定する閾値（%）
             subplot_label (str): サブプロットのラベル
             show_stats (bool): 統計情報を表示するかどうか
         """
@@ -1178,7 +1176,6 @@ class MonthlyFiguresGenerator:
             df=df,
             ch4_flux_key=ch4_flux_key,
             c2h6_flux_key=c2h6_flux_key,
-            gas_ratio_threshold=gas_ratio_threshold,
             datetime_key=datetime_key,
         )
 
@@ -1360,7 +1357,6 @@ class MonthlyFiguresGenerator:
             ch4_flux_key (str): CH4フラックスのカラム名
             c2h6_flux_key (str): C2H6フラックスのカラム名
             gas_ratio_c1c2 (float): ガスのC2H6/CH4比（ppb/ppb）
-            gas_ratio_threshold (float): 都市ガス起源と判定する閾値（%）
             datetime_key (str): 日時カラムの名前
 
         Returns:
@@ -1379,13 +1375,6 @@ class MonthlyFiguresGenerator:
         # 都市ガスの標準組成に基づく都市ガス比率の計算
         df["gas_ratio"] = df["c2h6_ch4_ratio"] / gas_ratio_c1c2 * 100
 
-        # 都市ガス起源と生物起源の分離
-        # df["ch4_gas"] = np.where(
-        #     df["gas_ratio"] >= gas_ratio_threshold, df[ch4_flux_key], 0
-        # )
-        # df["ch4_bio"] = np.where(
-        #     df["gas_ratio"] < gas_ratio_threshold, df[ch4_flux_key], 0
-        # )
         # gas_ratioに基づいて都市ガス起源と生物起源の寄与を比例配分
         df["ch4_gas"] = df[ch4_flux_key] * np.clip(df["gas_ratio"] / 100, 0, 1)
         df["ch4_bio"] = df[ch4_flux_key] * (1 - np.clip(df["gas_ratio"] / 100, 0, 1))
