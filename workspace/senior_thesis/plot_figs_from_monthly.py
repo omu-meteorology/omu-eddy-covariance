@@ -1,4 +1,6 @@
 import os
+import re  # 正規表現を使用するためのインポート
+import glob
 import numpy as np
 import pandas as pd
 from omu_eddy_covariance import (
@@ -6,6 +8,7 @@ from omu_eddy_covariance import (
     MonthlyFiguresGenerator,
     EddyDataPreprocessor,
 )
+from tqdm import tqdm  # プログレスバー用
 import matplotlib.font_manager as fm
 
 # フォントファイルを登録
@@ -22,6 +25,12 @@ MonthlyFiguresGenerator.setup_plot_params(
 
 include_end_date: bool = True
 start_date, end_date = "2024-05-15", "2024-11-30"  # yyyy-MM-ddで指定
+months_two: list[str] = [
+    "05_06",
+    "07_08",
+    "09_10",
+    "11_12",
+]
 months: list[int] = [5, 6, 7, 8, 9, 10, 11]
 subplot_labels: list[list[str | None]] = [
     # ["(a1)", "(a2)"],
@@ -45,11 +54,12 @@ output_dir = (
 )
 
 # フラグ
-plot_turbulences: bool = False
+plot_turbulences: bool = True
 plot_spectra: bool = False
+plot_spectra_two: bool = False
 plot_timeseries: bool = False
 plot_diurnals: bool = False
-plot_seasonal: bool = True
+plot_seasonal: bool = False
 diurnal_subplot_fontsize: float = 36
 plot_scatter: bool = False
 
@@ -122,19 +132,76 @@ if __name__ == "__main__":
         mfg.logger.info("'timeseries'を作成しました。")
 
     if plot_turbulences:
-        filename: str = "TOA5_37477.SAC_Ultra.Eddy_3_2024_06_01_1400-resampled.csv"
-        filepath: str = f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/data/eddy_csv-resampled-06/{filename}"
-        edp = EddyDataPreprocessor(10)
-        df_for_turb, _ = edp.get_resampled_df(
-            filepath=filepath, is_already_resampled=True
-        )
-        df_for_turb = edp.add_uvw_columns(df_for_turb)
-        mfg.plot_turbulence(
-            df=df_for_turb,
-            uz_key="wind_w",
-            output_dir=(os.path.join(output_dir, "turbulences")),
-        )
-        mfg.logger.info("'turbulences'を作成しました。")
+        # データディレクトリのパスを定義
+        # target_tag: str = "0605_0608"
+        # data_dir = f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/data/eddy_csv-resampled-{target_tag}"
+        target_tag: str = "1008_1012"
+        data_dir = f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/data/eddy_csv-resampled-{target_tag}"
+
+        # ディレクトリ内の全てのCSVファイルを取得
+        filepaths = glob.glob(os.path.join(data_dir, "*-resampled.csv"))
+
+        # 各ファイルに対して処理を実行
+        for filepath in tqdm(filepaths, desc="乱流データの処理"):
+            # ファイル名から日時を抽出
+            filename = os.path.basename(filepath)
+            try:
+                # ファイル名をアンダースコアで分割し、日時部分を取得
+                parts = filename.split("_")
+                # 年、月、日、時刻の部分を見つける
+                for i, part in enumerate(parts):
+                    if part == "2024":  # 年を見つけたら、そこから4つの要素を取得
+                        date = "_".join(
+                            [
+                                parts[i],  # 年
+                                parts[i + 1],  # 月
+                                parts[i + 2],  # 日
+                                re.sub(
+                                    r"(\+|-resampled\.csv)", "", parts[i + 3]
+                                ),  # 時刻から+と-resampled.csvを削除
+                            ]
+                        )
+                        break
+
+                # データの読み込みと処理
+                edp = EddyDataPreprocessor(10)
+                df_for_turb, _ = edp.get_resampled_df(
+                    filepath=filepath, is_already_resampled=True
+                )
+                df_for_turb = edp.add_uvw_columns(df_for_turb)
+
+                # 図の作成と保存
+                mfg.plot_turbulence(
+                    df=df_for_turb,
+                    uz_key="wind_w",
+                    output_dir=(os.path.join(output_dir, "turbulences", target_tag)),
+                    output_filename=f"turbulence-{date}.png",
+                    add_serial_labels=False,
+                )
+                # mfg.logger.info(f"'{date}'の'turbulences'を作成しました。")
+
+            except (IndexError, ValueError):
+            # except (IndexError, ValueError) as e:
+                # mfg.logger.warning(
+                #     f"ファイル名'{filename}'から日時を抽出できませんでした: {e}"
+                # )
+                continue
+
+    if plot_spectra_two:
+        for month in months_two:
+            month_str = month
+            mfg.logger.info(f"{month_str}の処理を開始します。")
+
+            # パワースペクトルのプロット
+            mfg.plot_spectra(
+                input_dir=f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/data/eddy_csv-resampled-two-{month_str}",
+                output_dir=(os.path.join(output_dir, "spectra", "two")),
+                output_basename=f"spectrum-two-{month}",
+                fs=10,
+                lag_second=10,
+                plot_co=False,
+            )
+            mfg.logger.info("'spectra_two'を作成しました。")
 
     for month, lag_sec, subplot_label in zip(months, lags_list, subplot_labels):
         # monthを0埋めのMM形式に変換
@@ -150,20 +217,13 @@ if __name__ == "__main__":
                 fs=10,
                 lag_second=lag_sec,
             )
-            mfg.plot_spectra(
-                input_dir=f"/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/data/eddy_csv-resampled-{month_str}",
-                output_dir=(os.path.join(output_dir, "spectra")),
-                output_basename=f"spectrum-{month}",
-                fs=10,
-                lag_second=lag_sec,
-            )
             mfg.logger.info("'spectra'を作成しました。")
 
         # 月ごとのDataFrameを作成
         df_month: pd.DataFrame = MonthlyConverter.extract_monthly_data(
             df=df_combined, target_months=[month]
         )
-        if month == 10 or month == 11:
+        if month == 11:
             df_month["Fch4_open"] = np.nan
 
         if plot_diurnals:
@@ -221,48 +281,27 @@ if __name__ == "__main__":
             mfg.logger.info("'diurnals'を作成しました。")
 
         if plot_scatter:
-            # 濃度の変動を計算
-            df_month["CH4_ultra_fluc"] = (
-                df_month["CH4_ultra_ppb"] - df_month["CH4_ultra_ppb"].mean()
-            )
-            df_month["C2H6_ultra_fluc"] = (
-                df_month["C2H6_ultra"] - df_month["C2H6_ultra"].mean()
-            )
-
-            # # conc
-            # mfg.plot_scatter(
-            #     df=df_month,
-            #     x_col="CH4_ultra_ppb",
-            #     y_col="C2H6_ultra",
-            #     xlabel=r"Ultra CH$_4$ Concentration (ppb)",
-            #     ylabel=r"Ultra C$_2$H$_6$ Concentration (ppb)",
-            #     output_dir=(os.path.join(output_dir, "scatter")),
-            #     output_filename=f"scatter-ultra_conc-{month_str}.png",
-            #     x_axis_range=None,
-            #     y_axis_range=None,
-            #     show_fixed_slope=True,
-            # )
-            # 濃度変動の散布図
+            # c1c2 conc
             mfg.plot_scatter(
                 df=df_month,
-                x_col="CH4_ultra_fluc",
-                y_col="C2H6_ultra_fluc",
-                # xlabel=r"$\Delta$CH$_4$ (ppb)",
-                # ylabel=r"$\Delta$C$_2$H$_6$ (ppb)",
+                x_col="CH4_ultra_ppb",
+                y_col="C2H6_ultra",
+                xlabel=r"Ultra CH$_4$ Concentration (ppb)",
+                ylabel=r"Ultra C$_2$H$_6$ Concentration (ppb)",
                 output_dir=(os.path.join(output_dir, "scatter")),
-                output_filename=f"scatter-ultra_conc_fluc-{month_str}.png",
+                output_filename=f"scatter-ultra_conc-{month_str}.png",
                 x_axis_range=None,
                 y_axis_range=None,
                 show_fixed_slope=True,
             )
 
-            # c1c2
+            # c1c2 flux
             mfg.plot_scatter(
                 df=df_month,
                 x_col="Fch4_ultra",
                 y_col="Fc2h6_ultra",
-                # xlabel=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                # ylabel=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                xlabel=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                ylabel=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
                 output_dir=(os.path.join(output_dir, "scatter")),
                 output_filename=f"scatter-ultra_c1c2-{month_str}.png",
                 x_axis_range=(-50, 400),
@@ -277,7 +316,6 @@ if __name__ == "__main__":
                     y_col="Fch4_ultra",
                     xlabel=r"Open Path CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
                     ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                    show_label=False,
                     output_dir=(os.path.join(output_dir, "scatter")),
                     output_filename=f"scatter-open_ultra-{month_str}.png",
                 )

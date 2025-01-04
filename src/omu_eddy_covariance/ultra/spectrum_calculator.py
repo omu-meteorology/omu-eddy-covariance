@@ -179,7 +179,7 @@ class SpectrumCalculator:
 
             # スケーリングパラメータを計算
             scale_factor = 0.5 / (len(data1) * window_scale)  # spectrumの場合
-            # パワースペクトル密度の場合、周波数間隔で正規化
+            # スペクトル密度の場合、周波数間隔で正規化
             if scaling == "density":
                 df = freqs[1] - freqs[0]  # 周波数間隔
                 scale_factor = 0.5 / (len(data1) * window_scale * df)

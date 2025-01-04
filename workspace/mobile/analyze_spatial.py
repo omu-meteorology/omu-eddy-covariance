@@ -74,7 +74,7 @@ if __name__ == "__main__":
         logging_debug=False,
     )
 
-    # msa.calculate_measurement_stats()
+    msa.calculate_measurement_stats()
 
     # ホットスポット検出
     hotspots: list[HotspotData] = msa.analyze_hotspots(

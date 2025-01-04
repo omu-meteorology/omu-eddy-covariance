@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from omu_eddy_covariance import TransferFunctionCalculator
+import matplotlib.font_manager as fm
 
 
 def plot_tf_curve(
@@ -18,6 +19,7 @@ def plot_tf_curve(
     label_x: str = "f (Hz)",
     label_y: str = "無次元コスペクトル比",
     gas_name: str | None = None,  # 出力ファイル名用
+    line_colors: list[str] | None = None,  # 各日付のデータに使用する色のリスト
 ):
     """
     伝達関数を計算し、グラフにプロットする関数。
@@ -41,12 +43,26 @@ def plot_tf_curve(
     """
     plt.figure(figsize=(10, 6))
 
-    # 色のグラデーションを作成
-    n_dates = len(df)
-    colors = plt.cm.Blues(np.linspace(0.3, 0.9, n_dates))
+    # データ数に応じたデフォルトの色リストを作成
+    if line_colors is None:
+        # 視認性の高い色の組み合わせを使用
+        default_colors = [
+            "#1f77b4",
+            "#ff7f0e",
+            "#2ca02c",
+            "#d62728",
+            "#9467bd",
+            "#8c564b",
+            "#e377c2",
+            "#7f7f7f",
+            "#bcbd22",
+            "#17becf",
+        ]
+        n_dates = len(df)
+        line_colors = (default_colors * (n_dates // len(default_colors) + 1))[:n_dates]
 
     # 全てのa値を用いて伝達関数をプロット
-    for _, (row, color) in enumerate(zip(df.iterrows(), colors)):
+    for i, row in enumerate(df.iterrows()):
         a = row[1][coef_a_key]
         date = row[1][date_key]
         x_fit = np.logspace(-3, 1, 1000)
@@ -54,8 +70,9 @@ def plot_tf_curve(
         plt.plot(
             x_fit,
             y_fit,
-            "--",
-            color=color,
+            # "--",
+            "-",
+            color=line_colors[i],
             alpha=0.7,
             label=f"{date} (a = {a:.3f})",
         )
@@ -74,7 +91,7 @@ def plot_tf_curve(
     )
 
     # グラフの設定
-    label_y_formatted: str = f"{label_y}\n" f"({gas_label} / 顕熱)"
+    label_y_formatted: str = f"{label_y}\n" f"({gas_label} / Tv)"
     plt.xscale("log")
     if add_xlabel:
         plt.xlabel(label_x)
@@ -100,11 +117,29 @@ def plot_tf_curve(
 if __name__ == "__main__":
     tf_csv_path: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/TF_Ultra_a.csv"
     output_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private/outputs/tf"
+    custom_colors = [
+        "#00ff00",
+        "#3cb371",
+        "#00ffff",
+        "#00bfff",
+        "#0000ff",
+        "#9400d3",
+        "#ff69b4",
+    ]
+
+    # フォントファイルを登録
+    font_paths: list[str] = [
+        "/home/connect0459/.local/share/fonts/arial.ttf",  # 英語のデフォルト
+        "/home/connect0459/.local/share/fonts/msgothic.ttc",  # 日本語のデフォルト
+    ]
+    for path in font_paths:
+        fm.fontManager.addfont(path)
+
     # フォント名を指定
     font_array: list[str] = [
-        # "MS Gothic",
-        "IPAGothic",
-        "Dejavu Sans",
+        "Arial",
+        "MS Gothic",
+        # "Dejavu Sans",
     ]
 
     try:
@@ -141,6 +176,7 @@ if __name__ == "__main__":
                 gas_name=gas_name,
                 output_dir=output_dir,
                 show_plot=False,
+                line_colors=custom_colors,  # カスタム色を指定
             )
 
     except KeyboardInterrupt:

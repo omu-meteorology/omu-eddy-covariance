@@ -656,9 +656,10 @@ class MonthlyFiguresGenerator:
         slope = largest_eigenvec[1] / largest_eigenvec[0]
         intercept = y_mean - slope * x_mean
 
-        # R²の計算
+        # R²とRMSEの計算
         y_pred = slope * x + intercept
         r_squared = 1 - np.sum((y - y_pred) ** 2) / np.sum((y - np.mean(y)) ** 2)
+        rmse = np.sqrt(np.mean((y - y_pred) ** 2))
 
         # プロットの作成
         fig, ax = plt.subplots(figsize=(6, 6))
@@ -712,14 +713,15 @@ class MonthlyFiguresGenerator:
         equation = (
             f"y = {slope:.2f}x {'+' if intercept >= 0 else '-'} {abs(intercept):.2f}"
         )
-        position_x = 0.60
+        position_x = 0.05
+        fig_ha: str = "left"
         ax.text(
             position_x,
             0.95,
             equation,
             transform=ax.transAxes,
             va="top",
-            ha="right",
+            ha=fig_ha,
             color="red",
         )
         ax.text(
@@ -728,10 +730,18 @@ class MonthlyFiguresGenerator:
             f"R² = {r_squared:.2f}",
             transform=ax.transAxes,
             va="top",
-            ha="right",
+            ha=fig_ha,
             color="red",
         )
-
+        ax.text(
+            position_x,
+            0.81,  # RMSEのための新しい位置
+            f"RMSE = {rmse:.2f}",
+            transform=ax.transAxes,
+            va="top",
+            ha=fig_ha,
+            color="red",
+        )
         # 目盛り線の設定
         ax.grid(True, alpha=0.3)
 
@@ -742,8 +752,8 @@ class MonthlyFiguresGenerator:
         self,
         df: pd.DataFrame,
         output_dir: str,
-        ch4_flux_key: str ,
-        c2h6_flux_key: str ,
+        ch4_flux_key: str,
+        c2h6_flux_key: str,
         gas_label: str = "都市ガス起源",
         bio_label: str = "生物起源",
         datetime_key: str = "Date",
@@ -876,6 +886,9 @@ class MonthlyFiguresGenerator:
         are_inputs_resampled: bool = True,
         file_pattern: str = "*.csv",
         output_basename: str = "spectrum",
+        plot_power: bool = True,
+        plot_co: bool = True,
+        markersize: float = 14,
     ) -> None:
         """月間の平均パワースペクトル密度を計算してプロットする。
 
@@ -996,64 +1009,120 @@ class MonthlyFiguresGenerator:
             },
         ]
 
-        # パワースペクトルの図を作成
-        _, axes_psd = plt.subplots(1, 2, figsize=(12, 5), sharex=True)
-        for ax, config in zip(axes_psd, plot_configs):
-            ax.scatter(
-                freqs,
-                averaged_power_spectra[config["key"]],
-                c=config["color"],
-                s=100,
-            )
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ax.set_xlim(0.001, 10)
-            ax.plot([0.01, 10], [1, 0.01], "-", color="black", alpha=0.5)
-            ax.text(0.1, 0.06, "-2/3", fontsize=18)
-            ax.set_ylabel(config["psd_ylabel"])
-            if config["label"] is not None:
-                ax.text(0.02, 0.98, config["label"], transform=ax.transAxes, va="top")
-            ax.grid(True, alpha=0.3)
-            ax.set_xlabel("f (Hz)")
+        # # パワースペクトルの図を作成
+        # if plot_power:
+        #     _, axes_psd = plt.subplots(1, 2, figsize=(12, 5), sharex=True)
+        #     for ax, config in zip(axes_psd, plot_configs):
+        #         ax.scatter(
+        #             freqs,
+        #             averaged_power_spectra[config["key"]],
+        #             c=config["color"],
+        #             s=100,
+        #         )
+        #         ax.set_xscale("log")
+        #         ax.set_yscale("log")
+        #         ax.set_xlim(0.001, 10)
+        #         ax.plot([0.01, 10], [1, 0.01], "-", color="black", alpha=0.5)
+        #         ax.text(0.1, 0.06, "-2/3", fontsize=18)
+        #         ax.set_ylabel(config["psd_ylabel"])
+        #         if config["label"] is not None:
+        #             ax.text(
+        #                 0.02, 0.98, config["label"], transform=ax.transAxes, va="top"
+        #             )
+        #         ax.grid(True, alpha=0.3)
+        #         ax.set_xlabel("f (Hz)")
 
-        plt.tight_layout()
-        os.makedirs(output_dir, exist_ok=True)
-        output_path_psd: str = os.path.join(output_dir, f"power_{output_basename}.png")
-        plt.savefig(
-            output_path_psd,
-            dpi=300,
-            bbox_inches="tight",
-        )
-        plt.close()
+        # パワースペクトルの図を作成
+        if plot_power:
+            _, axes_psd = plt.subplots(1, 2, figsize=(12, 5), sharex=True)
+            for ax, config in zip(axes_psd, plot_configs):
+                ax.plot(
+                    freqs,
+                    averaged_power_spectra[config["key"]],
+                    "o",  # マーカーを丸に設定
+                    color=config["color"],
+                    markersize=markersize,
+                )
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.set_xlim(0.001, 10)
+                ax.plot([0.01, 10], [1, 0.01], "-", color="black", alpha=0.5)
+                ax.text(0.1, 0.06, "-2/3", fontsize=18)
+                ax.set_ylabel(config["psd_ylabel"])
+                if config["label"] is not None:
+                    ax.text(
+                        0.02, 0.98, config["label"], transform=ax.transAxes, va="top"
+                    )
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("f (Hz)")
+
+            plt.tight_layout()
+            os.makedirs(output_dir, exist_ok=True)
+            output_path_psd: str = os.path.join(
+                output_dir, f"power_{output_basename}.png"
+            )
+            plt.savefig(
+                output_path_psd,
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close()
+
+        # # コスペクトルの図を作成
+        # if plot_co:
+        #     _, axes_cosp = plt.subplots(1, 2, figsize=(12, 5), sharex=True)
+        #     for ax, config in zip(axes_cosp, plot_configs):
+        #         ax.scatter(
+        #             freqs,
+        #             averaged_co_spectra[config["key"]],
+        #             c=config["color"],
+        #             s=100,
+        #         )
+        #         ax.set_xscale("log")
+        #         ax.set_yscale("log")
+        #         ax.set_xlim(0.001, 10)
+        #         ax.plot([0.01, 10], [1, 0.01], "-", color="black", alpha=0.5)
+        #         ax.text(0.1, 0.1, "-4/3", fontsize=18)
+        #         ax.set_ylabel(config["co_ylabel"])
+        #         if config["label"] is not None:
+        #             ax.text(
+        #                 0.02, 0.98, config["label"], transform=ax.transAxes, va="top"
+        #             )
+        #         ax.grid(True, alpha=0.3)
+        #         ax.set_xlabel("f (Hz)")
 
         # コスペクトルの図を作成
-        _, axes_cosp = plt.subplots(1, 2, figsize=(12, 5), sharex=True)
-        for ax, config in zip(axes_cosp, plot_configs):
-            ax.scatter(
-                freqs,
-                averaged_co_spectra[config["key"]],
-                c=config["color"],
-                s=100,
-            )
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ax.set_xlim(0.001, 10)
-            ax.plot([0.01, 10], [1, 0.01], "-", color="black", alpha=0.5)
-            ax.text(0.1, 0.1, "-4/3", fontsize=18)
-            ax.set_ylabel(config["co_ylabel"])
-            if config["label"] is not None:
-                ax.text(0.02, 0.98, config["label"], transform=ax.transAxes, va="top")
-            ax.grid(True, alpha=0.3)
-            ax.set_xlabel("f (Hz)")
+        if plot_co:
+            _, axes_cosp = plt.subplots(1, 2, figsize=(12, 5), sharex=True)
+            for ax, config in zip(axes_cosp, plot_configs):
+                ax.plot(
+                    freqs,
+                    averaged_co_spectra[config["key"]],
+                    "o",  # マーカーを丸に設定
+                    color=config["color"],
+                    markersize=markersize,
+                )
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.set_xlim(0.001, 10)
+                ax.plot([0.01, 10], [1, 0.01], "-", color="black", alpha=0.5)
+                ax.text(0.1, 0.1, "-4/3", fontsize=18)
+                ax.set_ylabel(config["co_ylabel"])
+                if config["label"] is not None:
+                    ax.text(
+                        0.02, 0.98, config["label"], transform=ax.transAxes, va="top"
+                    )
+                ax.grid(True, alpha=0.3)
+                ax.set_xlabel("f (Hz)")
 
-        plt.tight_layout()
-        output_path_csd: str = os.path.join(output_dir, f"co_{output_basename}.png")
-        plt.savefig(
-            output_path_csd,
-            dpi=300,
-            bbox_inches="tight",
-        )
-        plt.close()
+            plt.tight_layout()
+            output_path_csd: str = os.path.join(output_dir, f"co_{output_basename}.png")
+            plt.savefig(
+                output_path_csd,
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close()
 
     def plot_turbulence(
         self,
@@ -1064,6 +1133,7 @@ class MonthlyFiguresGenerator:
         ch4_key: str = "Ultra_CH4_ppm_C",
         c2h6_key: str = "Ultra_C2H6_ppb",
         timestamp_key: str = "TIMESTAMP",
+        add_serial_labels: bool = True,
     ) -> None:
         """時系列データのプロットを作成する
 
@@ -1088,46 +1158,48 @@ class MonthlyFiguresGenerator:
             df[timestamp_key] = pd.to_datetime(df[timestamp_key])
             df.set_index(timestamp_key, inplace=True)
 
-        # # 図のスタイル設定
-        # plt.rcParams.update(
-        #     {
-        #         "font.size": 20,
-        #         "axes.labelsize": 20,
-        #         "axes.titlesize": 20,
-        #         "xtick.labelsize": 20,
-        #         "ytick.labelsize": 20,
-        #         "legend.fontsize": 20,
-        #     }
-        # )
+        # 開始時刻と終了時刻を取得
+        start_time = df.index[0]
+        end_time = df.index[-1]
 
-        # 時間軸の作成（分単位）
-        minutes_elapsed = (df.index - df.index[0]).total_seconds() / 60
+        # 開始時刻の分を取得
+        start_minute = start_time.minute
+
+        # 時間軸の作成（実際の開始時刻からの経過分数）
+        minutes_elapsed = (df.index - start_time).total_seconds() / 60
 
         # プロットの作成
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+        _, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
 
         # 鉛直風速
         ax1.plot(minutes_elapsed, df[uz_key], "k-", linewidth=0.5)
         ax1.set_ylabel(r"$w$ (m s$^{-1}$)")
-        ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top")
+        if add_serial_labels:
+            ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top")
         ax1.grid(True, alpha=0.3)
-        # y軸の範囲は自動設定に変更
 
         # CH4濃度
         ax2.plot(minutes_elapsed, df[ch4_key], "r-", linewidth=0.5)
         ax2.set_ylabel(r"$\mathrm{CH_4}$ (ppm)")
-        ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top")
+        if add_serial_labels:
+            ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top")
         ax2.grid(True, alpha=0.3)
 
         # C2H6濃度
         ax3.plot(minutes_elapsed, df[c2h6_key], "orange", linewidth=0.5)
         ax3.set_ylabel(r"$\mathrm{C_2H_6}$ (ppb)")
-        ax3.text(0.02, 0.98, "(c)", transform=ax3.transAxes, va="top")
+        if add_serial_labels:
+            ax3.text(0.02, 0.98, "(c)", transform=ax3.transAxes, va="top")
         ax3.grid(True, alpha=0.3)
         ax3.set_xlabel("Time (minutes)")
 
-        # x軸の範囲を0-30分に設定
-        ax3.set_xlim(0, 30)
+        # x軸の範囲を実際の開始時刻から30分後までに設定
+        total_minutes = (end_time - start_time).total_seconds() / 60
+        ax3.set_xlim(0, min(30, total_minutes))
+
+        # x軸の目盛りを5分間隔で設定
+        np.arange(start_minute, start_minute + 35, 5)
+        ax3.xaxis.set_major_locator(MultipleLocator(5))
 
         # レイアウトの調整
         plt.tight_layout()

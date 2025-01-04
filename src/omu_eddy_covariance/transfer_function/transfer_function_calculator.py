@@ -82,6 +82,7 @@ class TransferFunctionCalculator:
         show_plot: bool = True,
         subplot_label: str | None = "(a)",
         window_size: int = 5,  # 移動平均の窓サイズ
+        markersize: float = 14,
     ) -> None:
         """
         2種類のコスペクトルをプロットする。
@@ -112,8 +113,8 @@ class TransferFunctionCalculator:
         ax = fig.add_subplot(111)
 
         # マーカーサイズを設定して見やすくする
-        ax.plot(data1.index, data1, "o", color=color1, label=label1, markersize=12)
-        ax.plot(data2.index, data2, "o", color=color2, label=label2, markersize=12)
+        ax.plot(data1.index, data1, "o", color=color1, label=label1, markersize=markersize)
+        ax.plot(data2.index, data2, "o", color=color2, label=label2, markersize=markersize)
         ax.plot([0.01, 10], [10, 0.001], "-", color="black")
         ax.text(0.25, 0.4, "-4/3")
 
