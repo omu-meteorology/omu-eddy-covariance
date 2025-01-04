@@ -157,14 +157,16 @@ class MonthlyFiguresGenerator:
 
         # CH4濃度のプロット
         ax1.scatter(df[datetime_key], df[ch4_conc_key], color="red", alpha=0.5, s=20)
-        ax1.set_ylabel(r"CH$_4$ (ppm)")
+        ax1.set_ylabel("CH$_4$ Concentration\n(ppm)")
+        ax1.set_ylim(1.8, 2.6)
         ax1.text(0.02, 0.98, "(a)", transform=ax1.transAxes, va="top", fontsize=20)
         ax1.grid(True, alpha=0.3)
 
         # CH4フラックスのプロット
         ax2.scatter(df[datetime_key], df[ch4_flux_key], color="red", alpha=0.5, s=20)
-        ax2.set_ylabel(r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)")
+        ax2.set_ylabel("CH$_4$ Flux\n(nmol m$^{-2}$ s$^{-1}$)")
         ax2.set_ylim(-100, 600)
+        # ax2.set_yticks([-100, 0, 200, 400, 600])
         ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top", fontsize=20)
         ax2.grid(True, alpha=0.3)
 
@@ -172,7 +174,7 @@ class MonthlyFiguresGenerator:
         ax3.scatter(
             df[datetime_key], df[c2h6_conc_key], color="orange", alpha=0.5, s=20
         )
-        ax3.set_ylabel(r"C$_2$H$_6$ (ppb)")
+        ax3.set_ylabel("C$_2$H$_6$ Concentration\n(ppb)")
         ax3.text(0.02, 0.98, "(c)", transform=ax3.transAxes, va="top", fontsize=20)
         ax3.grid(True, alpha=0.3)
 
@@ -180,8 +182,8 @@ class MonthlyFiguresGenerator:
         ax4.scatter(
             df[datetime_key], df[c2h6_flux_key], color="orange", alpha=0.5, s=20
         )
-        ax4.set_ylabel(r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)")
-        ax4.set_ylim(-20, 60)
+        ax4.set_ylabel("C$_2$H$_6$ Flux\n(nmol m$^{-2}$ s$^{-1}$)")
+        ax4.set_ylim(-20, 40)
         ax4.text(0.02, 0.98, "(d)", transform=ax4.transAxes, va="top", fontsize=20)
         ax4.grid(True, alpha=0.3)
 
@@ -610,8 +612,8 @@ class MonthlyFiguresGenerator:
         xlabel: str | None = None,
         ylabel: str | None = None,
         show_label: bool = True,
-        x_axis_range: tuple | None = (-50, 200),
-        y_axis_range: tuple | None = (-50, 200),
+        x_axis_range: tuple | None = None,
+        y_axis_range: tuple | None = None,
         fixed_slope: float = 0.076,
         show_fixed_slope: bool = False,
     ) -> None:
@@ -626,8 +628,8 @@ class MonthlyFiguresGenerator:
             output_dir (str): 出力先ディレクトリ
             output_filename (str, optional): 出力ファイル名。デフォルトは"scatter.png"
             show_label (bool, optional): 軸ラベルを表示するかどうか。デフォルトはTrue
-            x_axis_range (tuple, optional): x軸の範囲。デフォルトは(-50, 200)
-            y_axis_range (tuple, optional): y軸の範囲。デフォルトは(-50, 200)
+            x_axis_range (tuple, optional): x軸の範囲。デフォルトはNone。
+            y_axis_range (tuple, optional): y軸の範囲。デフォルトはNone。
             fixed_slope (float, optional): 固定傾きを指定するための値。デフォルトは0.076
             show_fixed_slope (bool, optional): 固定傾きの線を表示するかどうか。デフォルトはFalse
         """

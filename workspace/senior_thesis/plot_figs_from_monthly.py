@@ -54,14 +54,15 @@ output_dir = (
 )
 
 # フラグ
-plot_turbulences: bool = True
+plot_turbulences: bool = False
 plot_spectra: bool = False
 plot_spectra_two: bool = False
 plot_timeseries: bool = False
 plot_diurnals: bool = False
 plot_seasonal: bool = False
 diurnal_subplot_fontsize: float = 36
-plot_scatter: bool = False
+plot_scatter: bool = True
+plot_sources: bool = False
 
 if __name__ == "__main__":
     # Ultra
@@ -112,8 +113,22 @@ if __name__ == "__main__":
     # 両方を結合したDataFrameを明示的に作成
     df_combined = MonthlyConverter.merge_dataframes(df1=df_ultra, df2=df_picarro)
 
+    # 濃度データはキャリブレーション後から使用
+    # Dateカラムをインデックスに設定
+    df_combined["Date"] = pd.to_datetime(df_combined["Date"])
+    df_combined["Date_index"] = df_combined["Date"]
+    df_combined.set_index("Date_index", inplace=True)
+
+    # 濃度データのみを2023-09-11以降に制限（年を2023に修正）
+    filter_date = pd.to_datetime("2024-09-11")
+    mask = df_combined.index < filter_date
+    df_combined.loc[mask, "CH4_ultra"] = np.nan
+    df_combined.loc[mask, "C2H6_ultra"] = np.nan
+
     # RSSIが40未満のデータは信頼性が低いため、Fch4_openをnanに置換
     df_combined.loc[df_combined["RSSI"] < 40, "Fch4_open"] = np.nan
+
+    # CH4_ultraをppb単位に直したカラムを作成
     df_combined["CH4_ultra_ppb"] = df_combined["CH4_ultra"] * 1000
 
     # print("------")
@@ -122,11 +137,32 @@ if __name__ == "__main__":
     mfg = MonthlyFiguresGenerator()
 
     if plot_timeseries:
-        mfg.plot_c1c2_fluxes_timeseries(
-            df=df_combined, output_dir=(os.path.join(output_dir, "timeseries"))
-        )
+        df_trimed = df_combined.copy()
+
+        # Dateカラムをインデックスに設定
+        df_trimed["Date"] = pd.to_datetime(df_trimed["Date"])
+        df_trimed["Date_index"] = df_trimed["Date"]
+        df_trimed.set_index("Date_index", inplace=True)
+
+        # データの日付範囲を確認
+        print("データの開始日:", df_trimed.index.min())
+        print("データの終了日:", df_trimed.index.max())
+
+        # 濃度データのみを2024-09-11以降に制限
+        filter_date = pd.to_datetime("2024-09-11")
+        df_trimed.loc[df_trimed.index < filter_date, "CH4_ultra"] = np.nan
+        df_trimed.loc[df_trimed.index < filter_date, "C2H6_ultra"] = np.nan
+
+        print("\nフィルタリング後のデータ件数:", len(df_trimed))
+        print("\nフィルタリング後の最初の10件:")
+        print(df_trimed.head(10))
+
         mfg.plot_c1c2_concentrations_and_fluxes_timeseries(
-            df=df_combined,
+            df=df_trimed,
+            ch4_conc_key="CH4_ultra",
+            ch4_flux_key="Fch4_ultra",
+            c2h6_conc_key="C2H6_ultra",
+            c2h6_flux_key="Fc2h6_ultra",
             output_dir=(os.path.join(output_dir, "timeseries")),
         )
         mfg.logger.info("'timeseries'を作成しました。")
@@ -181,7 +217,7 @@ if __name__ == "__main__":
                 # mfg.logger.info(f"'{date}'の'turbulences'を作成しました。")
 
             except (IndexError, ValueError):
-            # except (IndexError, ValueError) as e:
+                # except (IndexError, ValueError) as e:
                 # mfg.logger.warning(
                 #     f"ファイル名'{filename}'から日時を抽出できませんでした: {e}"
                 # )
@@ -282,18 +318,29 @@ if __name__ == "__main__":
 
         if plot_scatter:
             # c1c2 conc
-            mfg.plot_scatter(
-                df=df_month,
-                x_col="CH4_ultra_ppb",
-                y_col="C2H6_ultra",
-                xlabel=r"Ultra CH$_4$ Concentration (ppb)",
-                ylabel=r"Ultra C$_2$H$_6$ Concentration (ppb)",
-                output_dir=(os.path.join(output_dir, "scatter")),
-                output_filename=f"scatter-ultra_conc-{month_str}.png",
-                x_axis_range=None,
-                y_axis_range=None,
-                show_fixed_slope=True,
-            )
+            try:
+                mfg.plot_scatter(
+                    df=df_month,
+                    x_col="CH4_ultra_ppb",
+                    y_col="C2H6_ultra",
+                    xlabel=r"CH$_4$ Concentration (ppb)",
+                    ylabel=r"C$_2$H$_6$ Concentration (ppb)",
+                    # x_col="CH4_ultra",
+                    # y_col="C2H6_ultra",
+                    # xlabel=r"CH$_4$ Concentration (ppm)",
+                    # ylabel=r"C$_2$H$_6$ Concentration (ppb)",
+                    output_dir=(os.path.join(output_dir, "scatter")),
+                    output_filename=f"scatter-ultra_c1c2_c-{month_str}.png",
+                    # x_axis_range=(1.8, 2.6),
+                    # y_axis_range=(-21, 0),
+                    # x_axis_range=None,
+                    # y_axis_range=None,
+                    show_fixed_slope=True,
+                    # fixed_slope=0.076 * 1000,
+                    fixed_slope=0.076,
+                )
+            except Exception as e:
+                print(e)
 
             # c1c2 flux
             mfg.plot_scatter(
@@ -303,7 +350,7 @@ if __name__ == "__main__":
                 xlabel=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
                 ylabel=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
                 output_dir=(os.path.join(output_dir, "scatter")),
-                output_filename=f"scatter-ultra_c1c2-{month_str}.png",
+                output_filename=f"scatter-ultra_c1c2_f-{month_str}.png",
                 x_axis_range=(-50, 400),
                 y_axis_range=(-5, 25),
                 show_fixed_slope=True,
@@ -318,6 +365,8 @@ if __name__ == "__main__":
                     ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
                     output_dir=(os.path.join(output_dir, "scatter")),
                     output_filename=f"scatter-open_ultra-{month_str}.png",
+                    x_axis_range=(-50, 200),
+                    y_axis_range=(-50, 200),
                 )
             except Exception as e:
                 print(e)
@@ -331,6 +380,8 @@ if __name__ == "__main__":
                 ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
                 output_dir=(os.path.join(output_dir, "scatter")),
                 output_filename=f"scatter-g2401_ultra-{month_str}.png",
+                x_axis_range=(-50, 200),
+                y_axis_range=(-50, 200),
             )
             mfg.logger.info("'scatters'を作成しました。")
 
@@ -387,24 +438,25 @@ if __name__ == "__main__":
                 y_max=90,
             )
 
-    mfg.plot_flux_diurnal_patterns_with_std(
-        df=df_combined,
-        output_dir=(os.path.join(output_dir, "tests")),
-        ch4_flux_key="Fch4_ultra",
-        c2h6_flux_key="Fc2h6_ultra",
-    )
+    # mfg.plot_flux_diurnal_patterns_with_std(
+    #     df=df_combined,
+    #     output_dir=(os.path.join(output_dir, "tests")),
+    #     ch4_flux_key="Fch4_ultra",
+    #     c2h6_flux_key="Fc2h6_ultra",
+    # )
 
-    mfg.plot_source_contributions_diurnal(
-        df=df_combined,
-        output_dir=(os.path.join(output_dir, "tests")),
-        ch4_flux_key="Fch4_ultra",
-        c2h6_flux_key="Fc2h6_ultra",
-        y_max=90,
-    )
+    if plot_sources:
+        mfg.plot_source_contributions_diurnal(
+            df=df_combined,
+            output_dir=(os.path.join(output_dir, "tests")),
+            ch4_flux_key="Fch4_ultra",
+            c2h6_flux_key="Fc2h6_ultra",
+            y_max=90,
+        )
 
-    mfg.plot_wind_rose_sources(
-        df=df_combined,
-        output_dir=(os.path.join(output_dir, "tests")),
-        ch4_flux_key="Fch4_ultra",
-        c2h6_flux_key="Fc2h6_ultra",
-    )
+        mfg.plot_wind_rose_sources(
+            df=df_combined,
+            output_dir=(os.path.join(output_dir, "tests")),
+            ch4_flux_key="Fch4_ultra",
+            c2h6_flux_key="Fc2h6_ultra",
+        )
