@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.font_manager import FontProperties
+import matplotlib.font_manager as fm
 
 
 def plot_stacked_flux(
@@ -12,6 +12,8 @@ def plot_stacked_flux(
     output_basename: str = "ch4_flux_stacked_bar_directions",
     tag: str = "default",
     ylim: float | None = None,
+    bio_color: str = "#7FBF7F",
+    gas_color: str = "#EED17F",
 ):
     flux_unit: str = "nmol m$^{-2}$ s$^{-1}$"
     flux_magnification: float = 1
@@ -54,8 +56,38 @@ def plot_stacked_flux(
 
         # 積み上げ棒グラフの作成
         width = 0.8
-        ax.bar(df["month"], gas, width, label="都市", color="orange")
-        ax.bar(df["month"], bio, width, bottom=gas, label="生物", color="lightblue")
+        # ax.bar(
+        #     df["month"],
+        #     gas,
+        #     width,
+        #     bottom=bio,
+        #     label="都市ガス",
+        #     color=gas_color,
+        # )
+        # ax.bar(
+        #     df["month"],
+        #     bio,
+        #     width,
+        #     label="生物",
+        #     color=bio_color,
+        # )
+        ax.bar(
+            df["month"],
+            gas,
+            width,
+            bottom=bio,
+            label="都市ガス",
+            color="orange",
+            alpha=0.5,
+        )
+        ax.bar(
+            df["month"],
+            bio,
+            width,
+            label="生物",
+            color="green",
+            alpha=0.5,
+        )
 
         # x軸の設定
         ax.set_xticks(df["month"])  # すべての月を目盛りとして設定
@@ -123,14 +155,19 @@ Ubuntu環境でのフォントの手動設定
 
 4. `rm ~/.cache/matplotlib/fontlist-v390.json` # 実際のファイル名に変更
 """
-font_path: str = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
-font_prop: FontProperties = FontProperties(fname=font_path)
+# フォントファイルを登録
+font_paths: list[str] = [
+    "/home/connect0459/.local/share/fonts/arial.ttf",  # 英語のデフォルト
+    "/home/connect0459/.local/share/fonts/msgothic.ttc",  # 日本語のデフォルト
+]
+for path in font_paths:
+    fm.fontManager.addfont(path)
 
 # rcParamsでの全体的な設定
 plt.rcParams.update(
     {
         # "font.family": ["Dejavu Sans"],
-        "font.family": ["Dejavu Sans", font_prop.get_name()],
+        "font.family": ["Arial", "MS Gothic"],
         "font.size": 30,
         "axes.labelsize": 30,
         "axes.titlesize": 30,
@@ -140,7 +177,7 @@ plt.rcParams.update(
     }
 )
 
-tag: str = "06_10-average-10_16"
+tag: str = "06_11-average-10_16"
 
 project_home_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/seminar"
 

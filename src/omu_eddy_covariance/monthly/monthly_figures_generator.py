@@ -18,6 +18,7 @@ class MonthlyFiguresGenerator:
         self,
         logger: Logger | None = None,
         logging_debug: bool = False,
+        
     ) -> None:
         """
         クラスのコンストラクタ
@@ -215,6 +216,8 @@ class MonthlyFiguresGenerator:
         subplot_fontsize: int = 20,
         subplot_label_ch4: str | None = "(a)",
         subplot_label_c2h6: str | None = "(b)",
+        ax1_ylim: tuple[float, float] | None = None,
+        ax2_ylim: tuple[float, float] | None = None,
     ) -> None:
         """CH4とC2H6の日変化パターンを1つの図に並べてプロットする"""
         os.makedirs(output_dir, exist_ok=True)
@@ -266,29 +269,13 @@ class MonthlyFiguresGenerator:
                 subplot_fontsize=subplot_fontsize,
             )
 
-        # 軸の追加設定
-        ch4_min = min(
-            hourly_means["all"][y_cols_ch4].min().min() for y_col in y_cols_ch4
-        )
-        ch4_max = max(
-            hourly_means["all"][y_cols_ch4].max().max() for y_col in y_cols_ch4
-        )
-
-        ax1_ylim: tuple[float, float] = min(0, ch4_min - 5), max(100, ch4_max + 5)
-        ax1.set_ylim(ax1_ylim)
+        if ax1_ylim is not None:
+            ax1.set_ylim(ax1_ylim)
         ax1.yaxis.set_major_locator(MultipleLocator(20))
         ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.0f}"))
 
-        # C2H6の軸設定
-        c2h6_min = min(
-            hourly_means["all"][y_cols_c2h6].min().min() for y_col in y_cols_c2h6
-        )
-        c2h6_max = max(
-            hourly_means["all"][y_cols_c2h6].max().max() for y_col in y_cols_c2h6
-        )
-
-        ax2_ylim: tuple[float, float] = min(0, c2h6_min - 0.5), max(3, c2h6_max + 0.5)
-        ax2.set_ylim(ax2_ylim)
+        if ax2_ylim is not None:
+            ax2.set_ylim(ax2_ylim)
         ax2.yaxis.set_major_locator(MultipleLocator(1))
         ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
 
@@ -330,6 +317,8 @@ class MonthlyFiguresGenerator:
         subplot_fontsize: int = 20,
         subplot_label_ch4: str | None = "(a)",
         subplot_label_c2h6: str | None = "(b)",
+        ax1_ylim: tuple[float, float] | None = None,
+        ax2_ylim: tuple[float, float] | None = None,
     ) -> None:
         """CH4とC2H6の日変化パターンを日付分類して1つの図に並べてプロットする"""
         os.makedirs(output_dir, exist_ok=True)
@@ -417,25 +406,13 @@ class MonthlyFiguresGenerator:
                 subplot_fontsize=subplot_fontsize,
             )
 
-        # 軸の追加設定
-        ch4_min = min(means[y_col_ch4].min() for means in selected_conditions.values())
-        ch4_max = max(means[y_col_ch4].max() for means in selected_conditions.values())
-
-        ax1_ylim: tuple[float, float] = min(0, ch4_min - 5), max(100, ch4_max + 5)
-        ax1.set_ylim(ax1_ylim)
+        if ax1_ylim is not None:
+            ax1.set_ylim(ax1_ylim)
         ax1.yaxis.set_major_locator(MultipleLocator(20))
         ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.0f}"))
 
-        # C2H6の軸設定
-        c2h6_min = min(
-            means[y_col_c2h6].min() for means in selected_conditions.values()
-        )
-        c2h6_max = max(
-            means[y_col_c2h6].max() for means in selected_conditions.values()
-        )
-
-        ax2_ylim: tuple[float, float] = min(0, c2h6_min - 0.5), max(3, c2h6_max + 0.5)
-        ax2.set_ylim(ax2_ylim)
+        if ax2_ylim is not None:
+            ax2.set_ylim(ax2_ylim)
         ax2.yaxis.set_major_locator(MultipleLocator(1))
         ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f"{x:.1f}"))
 
@@ -522,7 +499,7 @@ class MonthlyFiguresGenerator:
         hourly_means = pd.concat([hourly_means, last_hour])
 
         # 24時間分のデータポイントを作成
-        time_points = pd.date_range("2024-01-01", periods=25, freq="H")
+        time_points = pd.date_range("2024-01-01", periods=25, freq="h")
 
         # プロットの作成
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -616,6 +593,8 @@ class MonthlyFiguresGenerator:
         y_axis_range: tuple | None = None,
         fixed_slope: float = 0.076,
         show_fixed_slope: bool = False,
+        x_scientific: bool = False,  # 追加：x軸を指数表記にするかどうか
+        y_scientific: bool = False,  # 追加：y軸を指数表記にするかどうか
     ) -> None:
         """散布図を作成し、TLS回帰直線を描画します。
 
@@ -692,6 +671,14 @@ class MonthlyFiguresGenerator:
         ax.set_xlim(x_axis_range)
         ax.set_ylim(y_axis_range)
 
+        # 指数表記の設定
+        if x_scientific:
+            ax.ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
+            ax.xaxis.get_offset_text().set_position((1.1, 0))  # 指数の位置調整
+        if y_scientific:
+            ax.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
+            ax.yaxis.get_offset_text().set_position((0, 1.1))  # 指数の位置調整
+
         if show_label:
             if xlabel is not None:
                 ax.set_xlabel(xlabel)
@@ -762,8 +749,11 @@ class MonthlyFiguresGenerator:
         output_filename: str = "source_contributions.png",
         window_size: int = 6,  # 移動平均の窓サイズ
         show_stats: bool = True,  # 統計情報を表示するかどうか,
+        show_legend:bool=False,
         smooth: bool = False,
         y_max: float = 100,  # y軸の上限値を追加
+        subplot_label: str | None = None,
+        subplot_fontsize: int = 20,
     ) -> None:
         """CH4フラックスの都市ガス起源と生物起源の日変化を積み上げグラフとして表示
 
@@ -810,11 +800,22 @@ class MonthlyFiguresGenerator:
             ).mean()
 
         # 24時間分のデータポイントを作成
-        time_points = pd.date_range("2024-01-01", periods=25, freq="H")
+        time_points = pd.date_range("2024-01-01", periods=25, freq="h")
 
         # プロットの作成
         plt.figure(figsize=(10, 6))
         ax = plt.gca()
+
+        # サブプロットラベルの追加（subplot_labelが指定されている場合）
+        if subplot_label:
+            ax.text(
+                0.02,  # x位置
+                0.98,  # y位置
+                subplot_label,
+                transform=ax.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
 
         # 積み上げプロット
         ax.fill_between(
@@ -839,14 +840,26 @@ class MonthlyFiguresGenerator:
         ax.plot(time_points, total_flux, "-", color="black", alpha=0.5)
 
         # 軸の設定
-        ax.set_xlabel("Time")
+        ax.set_xlabel("Time (hour)")
         ax.set_ylabel(r"CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)")
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
         ax.set_xlim(time_points[0], time_points[-1])
         ax.set_ylim(0, y_max)  # y軸の範囲を設定
         ax.grid(True, alpha=0.3)
-        ax.legend()
+
+        # 凡例を図の下部に配置
+        if show_legend:
+            handles, labels = ax.get_legend_handles_labels()
+            fig = plt.gcf()  # 現在の図を取得
+            fig.legend(
+                handles,
+                labels,
+                loc="center",
+                bbox_to_anchor=(0.5, 0.01),
+                ncol=len(handles),
+            )
+            plt.subplots_adjust(bottom=0.2)  # 下部に凡例用のスペースを確保
 
         # グラフの保存
         plt.tight_layout()
@@ -874,6 +887,175 @@ class MonthlyFiguresGenerator:
                 print(f"  最大値: {max_val:.2f} (Hour: {max_time})")
                 if min_val != 0:
                     print(f"  最大/最小比: {max_val/min_val:.2f}")
+
+    def plot_source_contributions_diurnal_by_date(
+        self,
+        df: pd.DataFrame,
+        output_dir: str,
+        ch4_flux_key: str,
+        c2h6_flux_key: str,
+        gas_label: str = "都市ガス起源",
+        bio_label: str = "生物起源",
+        datetime_key: str = "Date",
+        output_filename: str = "source_contributions_by_date.png",
+        show_label: bool = True,
+        show_legend: bool = False,
+        show_stats: bool = True,  # 統計情報を表示するかどうか,
+        subplot_fontsize: int = 20,
+        subplot_label_weekday: str | None = None,
+        subplot_label_weekend: str | None = None,
+        y_max: float | None = None,  # y軸の上限値
+    ) -> None:
+        """CH4フラックスの都市ガス起源と生物起源の日変化を平日・休日別に表示
+
+        Args:
+            df (pd.DataFrame): データフレーム
+            output_dir (str): 出力ディレクトリのパス
+            ch4_flux_key (str): CH4フラックスのカラム名
+            c2h6_flux_key (str): C2H6フラックスのカラム名
+            gas_label (str): 都市ガス起源のラベル
+            bio_label (str): 生物起源のラベル
+            datetime_key (str): 日時カラムの名前
+            output_filename (str): 出力ファイル名
+            show_label (bool): ラベルを表示するか
+            show_legend (bool): 凡例を表示するか
+            subplot_fontsize (int): サブプロットのフォントサイズ
+            subplot_label_weekday (str): 平日グラフのラベル
+            subplot_label_weekend (str): 休日グラフのラベル
+            y_max (float): y軸の上限値
+        """
+        # 出力ディレクトリの作成
+        os.makedirs(output_dir, exist_ok=True)
+        output_path: str = os.path.join(output_dir, output_filename)
+
+        # 起源の計算
+        df_with_sources = self._calculate_source_contributions(
+            df=df,
+            ch4_flux_key=ch4_flux_key,
+            c2h6_flux_key=c2h6_flux_key,
+            datetime_key=datetime_key,
+        )
+
+        # 日付タイプの分類
+        dates = pd.to_datetime(df_with_sources.index)
+        is_weekend = dates.dayofweek.isin([5, 6])
+        is_holiday = dates.map(lambda x: jpholiday.is_holiday(x.date()))
+        is_weekday = ~(is_weekend | is_holiday)
+
+        # データの分類
+        data_weekday = df_with_sources[is_weekday]
+        data_holiday = df_with_sources[is_weekend | is_holiday]
+
+        # プロットの作成
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        # 平日と休日それぞれのプロット
+        for ax, data, label in [
+            (ax1, data_weekday, "Weekdays"),
+            (ax2, data_holiday, "Weekends & Holidays"),
+        ]:
+            # 時間ごとの平均値を計算
+            hourly_means = data.groupby(data.index.hour)[["ch4_gas", "ch4_bio"]].mean()
+
+            # 24時間目のデータ点を追加
+            last_hour = hourly_means.iloc[0:1].copy()
+            last_hour.index = [24]
+            hourly_means = pd.concat([hourly_means, last_hour])
+
+            # 24時間分のデータポイントを作成
+            time_points = pd.date_range("2024-01-01", periods=25, freq="h")
+
+            # 積み上げプロット
+            ax.fill_between(
+                time_points,
+                0,
+                hourly_means["ch4_bio"],
+                color="green",
+                alpha=0.5,
+                label=bio_label,
+            )
+            ax.fill_between(
+                time_points,
+                hourly_means["ch4_bio"],
+                hourly_means["ch4_bio"] + hourly_means["ch4_gas"],
+                color="orange",
+                alpha=0.5,
+                label=gas_label,
+            )
+
+            # 合計値のライン
+            total_flux = hourly_means["ch4_bio"] + hourly_means["ch4_gas"]
+            ax.plot(time_points, total_flux, "-", color="black", alpha=0.5)
+
+            # 軸の設定
+            if show_label:
+                ax.set_xlabel("Time (hour)")
+                if ax == ax1:  # 左側のプロットのラベル
+                    ax.set_ylabel("Weekdays CH$_4$ flux\n" r"(nmol m$^{-2}$ s$^{-1}$)")
+                else:  # 右側のプロットのラベル
+                    ax.set_ylabel("Weekends CH$_4$ flux\n" r"(nmol m$^{-2}$ s$^{-1}$)")
+
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))
+            ax.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18, 24]))
+            ax.set_xlim(time_points[0], time_points[-1])
+            if y_max is not None:
+                ax.set_ylim(0, y_max)
+            ax.grid(True, alpha=0.3)
+
+        # サブプロットラベルの追加
+        if subplot_label_weekday:
+            ax1.text(
+                0.02,
+                0.98,
+                subplot_label_weekday,
+                transform=ax1.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+        if subplot_label_weekend:
+            ax2.text(
+                0.02,
+                0.98,
+                subplot_label_weekend,
+                transform=ax2.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+
+        # 凡例を図の下部に配置
+        if show_legend:
+            # 最初のプロットから凡例のハンドルとラベルを取得
+            handles, labels = ax1.get_legend_handles_labels()
+            # 図の下部に凡例を配置
+            fig.legend(
+                handles,
+                labels,
+                loc="center",
+                bbox_to_anchor=(0.5, 0.01),  # x=0.5で中央、y=0.01で下部に配置
+                ncol=len(handles),  # ハンドルの数だけ列を作成（一行に表示）
+            )
+            # 凡例用のスペースを確保
+            plt.subplots_adjust(bottom=0.2)  # 下部に30%のスペースを確保
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close()
+
+        # 統計情報の表示
+        if show_stats:
+            for data, label in [
+                (data_weekday, "Weekdays"),
+                (data_holiday, "Weekends & Holidays"),
+            ]:
+                hourly_means = data.groupby(data.index.hour)[["ch4_gas", "ch4_bio"]].mean()
+                total_flux = hourly_means["ch4_gas"] + hourly_means["ch4_bio"]
+
+                print(f"\n{label}の統計:")
+                print(f"  平均値: {total_flux.mean():.2f}")
+                print(f"  最小値: {total_flux.min():.2f} (Hour: {total_flux.idxmin()})")
+                print(f"  最大値: {total_flux.max():.2f} (Hour: {total_flux.idxmax()})")
+                if total_flux.min() != 0:
+                    print(f"  最大/最小比: {total_flux.max()/total_flux.min():.2f}")
 
     def plot_spectra(
         self,
@@ -1535,7 +1717,7 @@ class MonthlyFiguresGenerator:
             subplot_fontsize (int): サブプロットのフォントサイズ
         """
         if show_label:
-            ax.set_xlabel("Time")
+            ax.set_xlabel("Time (hour)")
             ax.set_ylabel(ylabel)
 
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))
