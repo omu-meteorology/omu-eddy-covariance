@@ -9,6 +9,8 @@ from omu_eddy_covariance import (
     MobileSpatialAnalyzer,
     MSAInputConfig,
 )
+import matplotlib.font_manager as fm
+
 
 # MSAInputConfigによる詳細指定
 inputs: list[MSAInputConfig] = [
@@ -88,9 +90,13 @@ start_end_dates_list: list[list[str]] = [
     ["2024-09-01", "2024-11-30"],
 ]
 
-# ローカルフォントを読み込む場合はコメントアウトを解除して適切なパスを入力
-font_path = f"{project_root}/storage/assets/fonts/Arial/arial.ttf"
-font_manager.fontManager.addfont(font_path)
+# フォントファイルを登録
+font_paths: list[str] = [
+    "/home/connect0459/labo/omu-eddy-covariance/storage/assets/fonts/arial.ttf",  # 英語のデフォルト
+    "/home/connect0459/labo/omu-eddy-covariance/storage/assets/fonts/msgothic.ttc",  # 日本語のデフォルト
+]
+for path in font_paths:
+    fm.fontManager.addfont(path)
 
 if __name__ == "__main__":
     # 環境変数の読み込み
