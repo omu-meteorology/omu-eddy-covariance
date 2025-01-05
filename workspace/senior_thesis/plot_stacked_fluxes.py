@@ -1,20 +1,32 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 
 
-def plot_stacked_flux(
+def plot_stacked_fluxes(
     input_filepath: str,
     output_dir: str,
+    output_filename: str = "ch4_flux_stacked_bar_directions.png",
     concentration_unit: str = "nano",
     figsize: tuple[float, float] = (20, 13),
-    output_basename: str = "ch4_flux_stacked_bar_directions",
-    tag: str = "default",
     ylim: float | None = None,
-    bio_color: str = "#7FBF7F",
-    gas_color: str = "#EED17F",
 ):
+    """
+    CH4フラックスの積み上げ棒グラフを作成する関数
+
+    Args:
+        input_filepath (str): 入力データのCSVファイルパス
+        output_dir (str): 出力画像を保存するディレクトリ
+        output_filename (str, optional): 出力画像のファイル名。デフォルトは"ch4_flux_stacked_bar_directions.png"
+        concentration_unit (str, optional): 濃度の単位。'nano'または'micro'を指定。デフォルトは'nano'
+        figsize (tuple[float, float], optional): 図のサイズ。デフォルトは(20, 13)
+        ylim (float | None, optional): y軸の上限。Noneの場合は自動設定
+
+    Raises:
+        ValueError: concentration_unitが'nano'または'micro'以外の場合
+    """
     flux_unit: str = "nmol m$^{-2}$ s$^{-1}$"
     flux_magnification: float = 1
     if concentration_unit == "micro":
@@ -56,36 +68,21 @@ def plot_stacked_flux(
 
         # 積み上げ棒グラフの作成
         width = 0.8
-        # ax.bar(
-        #     df["month"],
-        #     gas,
-        #     width,
-        #     bottom=bio,
-        #     label="都市ガス",
-        #     color=gas_color,
-        # )
-        # ax.bar(
-        #     df["month"],
-        #     bio,
-        #     width,
-        #     label="生物",
-        #     color=bio_color,
-        # )
+        ax.bar(
+            df["month"],
+            bio,
+            width,
+            label="生物起源",
+            color="green",
+            alpha=0.5,
+        )
         ax.bar(
             df["month"],
             gas,
             width,
             bottom=bio,
-            label="都市ガス",
+            label="都市ガス起源",
             color="orange",
-            alpha=0.5,
-        )
-        ax.bar(
-            df["month"],
-            bio,
-            width,
-            label="生物",
-            color="green",
             alpha=0.5,
         )
 
@@ -106,35 +103,29 @@ def plot_stacked_flux(
                     df["month"][i], total, f"{ratio:.0f}%", ha="center", va="bottom"
                 )
 
+        # x軸とy軸のラベルを各サブプロットに設定
+        ax.set_xlabel("Month")
+        ax.set_ylabel(f"CH$_4$ Flux ({flux_unit})")
+
         # グラフの装飾
         ax.set_title(titles[direction])
 
-        # 凡例は1回だけ表示（右上のグラフに配置）
-        if idx == 2:  # 右上のグラフ
-            ax.legend(bbox_to_anchor=(0.95, 1), loc="upper right")
+    # サブプロット間の間隔を調整
+    plt.tight_layout()
 
-    # サブプロット間の間隔を調整（軸ラベル用のスペースを確保）
-    plt.tight_layout(rect=[0.05, 0.05, 0.95, 0.95])
+    # 図全体の凡例を下部に配置
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(
+        handles, labels, loc="center", bbox_to_anchor=(0.5, 0.02), ncol=len(handles)
+    )
 
-    # 共通の軸ラベルを追加（figureの余白部分に配置）
-    fig.text(
-        0.5,
-        0.02,
-        "Month",
-        ha="center",
-        va="center",
-    )
-    fig.text(
-        0.02,
-        0.5,
-        f"CH$_4$ Flux ({flux_unit})",
-        va="center",
-        rotation="vertical",
-    )
+    # 凡例のためのスペースを確保
+    plt.subplots_adjust(bottom=0.15)
 
     # グラフの保存
+    os.makedirs(output_dir, exist_ok=True)
     plt.savefig(
-        f"{output_dir}/{output_basename}-{tag}.png",
+        os.path.join(output_dir, output_filename),
         dpi=300,
         bbox_inches="tight",
     )
@@ -177,17 +168,15 @@ plt.rcParams.update(
     }
 )
 
-tag: str = "06_11-average-10_16"
-
-project_home_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/seminar"
+tag: str = "average-10_16"
+project_files_dir: str = (
+    "/home/connect0459/labo/omu-eddy-covariance/workspace/senior_thesis/private"
+)
 
 if __name__ == "__main__":
-    plot_stacked_flux(
-        input_filepath=f"{project_home_dir}/private/analyze_monthly-2024.12.18.csv",
-        output_dir=f"{project_home_dir}/private",
-        output_basename="ch4_flux_stacked_bar_directions-1218",
-        tag=tag,
+    plot_stacked_fluxes(
+        input_filepath=f"{project_files_dir}/analyze_monthly-2024.12.18.csv",
+        output_dir=os.path.join(project_files_dir, "outputs", "stacked_fluxes"),
+        output_filename=f"ch4_flux_stacked_bar_directions-{tag}.png",
         ylim=100,
-        # ylim=1.5,
-        # concentration_unit="micro",
     )

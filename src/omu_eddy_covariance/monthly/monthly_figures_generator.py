@@ -55,18 +55,6 @@ class MonthlyFiguresGenerator:
         os.makedirs(output_dir, exist_ok=True)
         output_path: str = os.path.join(output_dir, output_filename)
 
-        # # 図のスタイル設定
-        # plt.rcParams.update(
-        #     {
-        #         "font.size": 20,
-        #         "axes.labelsize": 20,
-        #         "axes.titlesize": 20,
-        #         "xtick.labelsize": 20,
-        #         "ytick.labelsize": 20,
-        #         "legend.fontsize": 20,
-        #     }
-        # )
-
         # 図の作成
         _, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
