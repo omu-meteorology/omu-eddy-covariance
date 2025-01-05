@@ -74,7 +74,7 @@ if __name__ == "__main__":
         logging_debug=False,
     )
 
-    msa.calculate_measurement_stats()
+    # msa.calculate_measurement_stats()
 
     # ホットスポット検出
     hotspots: list[HotspotData] = msa.analyze_hotspots(
@@ -119,3 +119,8 @@ if __name__ == "__main__":
         figsize=(8, 6),
         xlim=(0, 2),
     )
+
+    # 統計情報を表示
+    msa.analyze_delta_ch4_stats(hotspots=hotspots)
+    # csvに出力
+    msa.export_hotspots_to_csv(hotspots=hotspots, output_dir=output_dir)
