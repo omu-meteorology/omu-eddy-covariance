@@ -562,6 +562,8 @@ class FluxFootprintAnalyzer:
         if satellite_image is None:
             satellite_image = Image.new("RGB", (2160, 2160), "lightgray")
 
+        self.logger.info("プロットを作成中...")
+
         # 4. 座標変換のための定数
         meters_per_lat: float = self.EARTH_RADIUS_METER * (
             math.pi / 180
@@ -734,14 +736,12 @@ class FluxFootprintAnalyzer:
 
         # 14. ホットスポットの凡例追加
         if add_legend and hotspots and spot_handles:
-            legend = ax_data.legend(
+            ax_data.legend(
                 handles=spot_handles,
                 loc="upper center",  # 位置を上部中央に
-                bbox_to_anchor=(0.5, -0.15),  # 図の下に配置
+                bbox_to_anchor=(0.55, -0.01),  # 図の下に配置
                 ncol=len(spot_handles),  # ハンドルの数に応じて列数を設定
-                title="Hotspots",
             )
-            legend.get_frame().set_alpha(0.8)
 
         # 15. 画像の保存
         if output_dir:

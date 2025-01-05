@@ -954,7 +954,7 @@ wheels = [
 
 [[package]]
 name = "omu-eddy-covariance"
-version = "0.4.1.dev23+g3fdc756.d20241229"
+version = "0.4.1.dev30+ge8836ff.d20250105"
 source = { editable = "." }
 dependencies = [
     { name = "folium" },
