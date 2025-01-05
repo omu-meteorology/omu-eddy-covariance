@@ -468,102 +468,105 @@ class MobileSpatialAnalyzer:
 
     def plot_ch4_delta_histogram(
         self,
+        hotspots: list[HotspotData],
         output_dir: str | Path,
         output_filename: str = "ch4_delta_histogram",
         dpi: int = 200,
         figsize: tuple[int, int] = (8, 6),
         fontsize: float = 20,
         xlim: tuple[float, float] | None = None,
-        savefig: bool = True,
-    ) -> plt.Figure:
+        ylim: tuple[float, float] | None = None,
+        save_fig: bool = True,
+        show_fig: bool = True,
+        yscale_log: bool = True,
+    ) -> None:
         """
-        CH4の増加量（ΔCH4）のヒストグラムをプロットします。
+        CH4の増加量（ΔCH4）の積み上げヒストグラムをプロットします。
 
         Args:
+            hotspots (list[HotspotData]): プロットするホットスポットのリスト
             output_dir (str | Path): 保存先のディレクトリパス
             output_filename (str): 保存するファイル名。デフォルトは"ch4_delta_histogram"。
             dpi (int): 解像度。デフォルトは200。
             figsize (tuple[int, int]): 図のサイズ。デフォルトは(8, 6)。
             fontsize (float): フォントサイズ。デフォルトは20。
             xlim (tuple[float, float] | None): x軸の範囲。Noneの場合は自動設定。
-            savefig (bool): 図の保存を許可するフラグ。デフォルトはTrue。
-
-        Returns:
-            plt.Figure: 作成されたヒストグラムのFigureオブジェクト
+            ylim (tuple[float, float] | None): y軸の範囲。Noneの場合は自動設定。
+            save_fig (bool): 図の保存を許可するフラグ。デフォルトはTrue。
+            show_fig (bool): 図の表示を許可するフラグ。デフォルトはTrue。
+            yscale_log (bool): y軸をlogにするかどうか。デフォルトはTrue。
         """
         output_path: Path = Path(output_dir) / f"{output_filename}.png"
 
         plt.rcParams["font.size"] = fontsize
         fig = plt.figure(figsize=figsize, dpi=dpi)
 
-        # 全データソースのデータを結合
+        # ホットスポットからデータを抽出
         all_ch4_deltas = []
         all_types = []
-
-        for df in self._data.values():
-            # CH4増加量が0.1ppm以上のデータのみを抽出
-            mask = df["ch4_ppm_delta"] >= self._ch4_enhance_threshold
-            ch4_deltas = df["ch4_ppm_delta"][mask]
-            correlations = df["ch4_c2h6_correlation"][mask]
-            ratios = df["c2h6_ch4_ratio_delta"][mask]
-
-            # タイプの判定
-            types = np.full(len(ch4_deltas), "bio")  # デフォルトはbio
-            gas_mask = (
-                (correlations >= self._correlation_threshold)
-                & (ratios >= 5)
-                & (ratios < 100)
-            )
-            comb_mask = (correlations >= self._correlation_threshold) & (ratios >= 100)
-            types[gas_mask] = "gas"
-            types[comb_mask] = "comb"
-
-            all_ch4_deltas.extend(ch4_deltas)
-            all_types.extend(types)
+        for spot in hotspots:
+            all_ch4_deltas.append(spot.delta_ch4)
+            all_types.append(spot.type)
 
         # データをNumPy配列に変換
         all_ch4_deltas = np.array(all_ch4_deltas)
         all_types = np.array(all_types)
 
-        # 0.1刻みのビンを作成（左端を含み、右端を含まない）
+        # 0.1刻みのビンを作成
         if xlim is not None:
             bins = np.arange(xlim[0], xlim[1] + 0.1, 0.1)
         else:
-            max_val = np.ceil(np.max(all_ch4_deltas) * 10) / 10  # 0.1単位で切り上げ
+            max_val = np.ceil(np.max(all_ch4_deltas) * 10) / 10
             bins = np.arange(0, max_val + 0.1, 0.1)
 
-        # タイプごとにヒストグラムを作成
-        colors = {"bio": "blue", "gas": "red", "comb": "green"}
+        # タイプごとのヒストグラムデータを計算
+        hist_data = {}
         for type_name in ["bio", "gas", "comb"]:
             mask = all_types == type_name
             if np.any(mask):
-                plt.hist(
-                    all_ch4_deltas[mask],
-                    bins=bins,
+                counts, _ = np.histogram(all_ch4_deltas[mask], bins=bins)
+                hist_data[type_name] = counts
+
+        # 積み上げヒストグラムを作成
+        colors = {"bio": "blue", "gas": "red", "comb": "green"}
+        bottom = np.zeros_like(hist_data.get("bio", np.zeros(len(bins) - 1)))
+
+        for type_name in ["bio", "gas", "comb"]:
+            if type_name in hist_data:
+                plt.bar(
+                    bins[:-1],
+                    hist_data[type_name],
+                    width=np.diff(bins)[0],
+                    bottom=bottom,
                     color=colors[type_name],
                     label=type_name,
                     alpha=0.6,
-                    histtype="bar",
-                    log=True,
-                    align="left",  # ビンの左端に合わせる
-                    rwidth=1.0,  # バーの幅を最大にする
+                    align="edge",
                 )
+                bottom += hist_data[type_name]
 
+        if yscale_log:
+            plt.yscale("log")
         plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
         plt.ylabel("Frequency")
         plt.legend()
         plt.grid(True, which="both", ls="-", alpha=0.2)
 
-        # x軸の範囲を設定
+        # 軸の範囲を設定
         if xlim is not None:
             plt.xlim(xlim)
+        if ylim is not None:
+            plt.ylim(ylim)
 
         # グラフの保存または表示
-        if savefig:
+        if save_fig:
             plt.savefig(output_path, bbox_inches="tight")
             self.logger.info(f"ヒストグラムを保存しました: {output_path}")
 
-        return fig
+        if show_fig:
+            plt.show()
+
+        plt.close(fig)
 
     def plot_scatter_c2h6_ch4(
         self,
@@ -933,7 +936,8 @@ class MobileSpatialAnalyzer:
         max_time_threshold_hours: float,
     ) -> list[HotspotData]:
         """
-        重複するホットスポットを除外します。
+        重複するホットスポットを除外します。ΔCH4が大きい順に処理し、
+        重複範囲内で最も大きい値を持つホットスポットを残します。
 
         時間による重複判定の仕様:
         1. min_time_threshold_seconds以内の重複は常に除外
@@ -949,8 +953,11 @@ class MobileSpatialAnalyzer:
         Returns:
             list[HotspotData]: 重複を除外したホットスポットのリスト
         """
-        sorted_hotspots: list[HotspotData] = sorted(hotspots, key=lambda x: x.source)
-        used_positions_by_type: dict[str, list[tuple[float, float, str]]] = {
+        # ΔCH4の降順でソート
+        sorted_hotspots: list[HotspotData] = sorted(
+            hotspots, key=lambda x: x.delta_ch4, reverse=True
+        )
+        used_positions_by_type: dict[str, list[tuple[float, float, str, float]]] = {
             "bio": [],
             "gas": [],
             "comb": [],
@@ -958,8 +965,10 @@ class MobileSpatialAnalyzer:
         unique_hotspots: list[HotspotData] = []
 
         for spot in sorted_hotspots:
-            too_close: bool = False
-            for used_lat, used_lon, used_time in used_positions_by_type[spot.type]:
+            should_add: bool = True
+            for used_lat, used_lon, used_time, used_delta_ch4 in used_positions_by_type[
+                spot.type
+            ]:
                 # 距離チェック
                 distance: float = MobileSpatialAnalyzer._calculate_distance(
                     lat1=spot.avg_lat, lon1=spot.avg_lon, lat2=used_lat, lon2=used_lon
@@ -975,20 +984,22 @@ class MobileSpatialAnalyzer:
                     # 時間差に基づく判定
                     if time_diff_abs <= min_time_threshold_seconds:
                         # Case 1: 最小時間閾値以内は常に重複とみなす
-                        too_close = True
+                        # ΔCH4が大きい方を残す（現在のスポットは必ず小さい）
+                        should_add = False
                         break
                     elif time_diff_abs <= max_time_threshold_hours * 3600:
                         # Case 2: 最大時間閾値以内は重複とみなさない（異なるポイントとして保持）
                         continue
                     elif check_time_all:
                         # Case 3: 最大時間閾値を超えた場合はcheck_time_allに従う
-                        too_close = True
+                        # ΔCH4が大きい方を残す（現在のスポットは必ず小さい）
+                        should_add = False
                         break
 
-            if not too_close:
+            if should_add:
                 unique_hotspots.append(spot)
                 used_positions_by_type[spot.type].append(
-                    (spot.avg_lat, spot.avg_lon, spot.source)
+                    (spot.avg_lat, spot.avg_lon, spot.source, spot.delta_ch4)
                 )
 
         self.logger.info(

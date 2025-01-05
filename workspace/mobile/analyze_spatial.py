@@ -60,8 +60,14 @@ inputs: list[MSAInputConfig] = [
     ),
 ]
 
-num_sections: int = 4
-output_dir: str = "/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private"
+num_sections: int = 4  # セクション数
+west_sections_list: list[int] = [
+    0,
+    1,
+]  # 西側となるセクション番号（num_sectionsに応じて変更）
+output_dir: str = (
+    "/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/output"
+)
 
 if __name__ == "__main__":
     msa = MobileSpatialAnalyzer(
@@ -107,6 +113,9 @@ if __name__ == "__main__":
         print(f"  Gas  : {counts['gas']}")
         print(f"  Comb : {counts['comb']}")
 
+    # sectionが0または1（西側）のホットスポットのみを残す
+    hotspots = [h for h in hotspots if h.section in west_sections_list]
+
     # 地図の作成と保存
     msa.create_hotspots_map(hotspots, output_dir=output_dir)
 
@@ -115,9 +124,11 @@ if __name__ == "__main__":
 
     # ヒストグラムを作図
     msa.plot_ch4_delta_histogram(
+        hotspots=hotspots,
         output_dir=output_dir,
-        figsize=(8, 6),
-        xlim=(0, 2),
+        figsize=(10, 6),
+        xlim=(0, 1.4),
+        yscale_log=False,
     )
 
     # 統計情報を表示
