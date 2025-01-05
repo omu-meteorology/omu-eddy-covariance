@@ -604,19 +604,37 @@ class FluxFootprintAnalyzer:
         ax_data: plt.Axes = fig.add_axes([0.05, 0.1, 0.8, 0.8])
 
         # 9. フットプリントの描画
-        hexbin = ax_data.hexbin(
+        # フットプリントの描画とカラーバー用の2つのhexbinを作成
+        ax_data.hexbin(
             lons,
             lats,
             C=c_list,
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
-            alpha=0.3,
+            alpha=0.3,  # 実際のプロット用
             gridsize=100,
             linewidths=0,
             mincnt=100,
             extent=[left_lon, right_lon, bottom_lat, top_lat],
             reduce_C_function=function,
+        )
+
+        # カラーバー用の非表示hexbin（alpha=1.0）
+        hidden_hexbin = ax_data.hexbin(
+            lons,
+            lats,
+            C=c_list,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            alpha=1.0,  # カラーバー用
+            gridsize=100,
+            linewidths=0,
+            mincnt=100,
+            extent=[left_lon, right_lon, bottom_lat, top_lat],
+            reduce_C_function=function,
+            visible=False,  # プロットには表示しない
         )
 
         # 10. ホットスポットの描画
@@ -709,17 +727,18 @@ class FluxFootprintAnalyzer:
         # 13. カラーバーの追加
         if add_cbar:
             cbar_ax: plt.Axes = fig.add_axes([0.88, 0.1, 0.03, 0.8])
-            cbar = fig.colorbar(hexbin, cax=cbar_ax)
-        # cbar_labelが指定されている場合のみラベルを設定
-        if cbar_label:
-            cbar.set_label(cbar_label, rotation=270, labelpad=cbar_labelpad)
+            cbar = fig.colorbar(hidden_hexbin, cax=cbar_ax)  # hidden_hexbinを使用
+            # cbar_labelが指定されている場合のみラベルを設定
+            if cbar_label:
+                cbar.set_label(cbar_label, rotation=270, labelpad=cbar_labelpad)
 
         # 14. ホットスポットの凡例追加
         if add_legend and hotspots and spot_handles:
             legend = ax_data.legend(
                 handles=spot_handles,
-                loc="upper left",
-                bbox_to_anchor=(1.15, 1.0),
+                loc="upper center",  # 位置を上部中央に
+                bbox_to_anchor=(0.5, -0.15),  # 図の下に配置
+                ncol=len(spot_handles),  # ハンドルの数に応じて列数を設定
                 title="Hotspots",
             )
             legend.get_frame().set_alpha(0.8)
