@@ -213,12 +213,17 @@ class MobileSpatialAnalyzer:
 
         # 重複チェックモードに応じて処理
         if duplicate_check_mode != "none":
-            all_hotspots = self._remove_duplicates(
+            unique_hotspots = MobileSpatialAnalyzer.remove_hotspots_duplicates(
                 all_hotspots,
                 check_time_all=duplicate_check_mode == "time_all",
                 min_time_threshold_seconds=min_time_threshold_seconds,
                 max_time_threshold_hours=max_time_threshold_hours,
+                hotspot_area_meter=self._hotspot_area_meter,
             )
+            self.logger.info(
+                f"重複除外: {len(all_hotspots)} → {len(unique_hotspots)} ホットスポット"
+            )
+            return unique_hotspots
 
         return all_hotspots
 
@@ -344,10 +349,13 @@ class MobileSpatialAnalyzer:
             # CSSのgrid layoutを使用してHTMLタグを含むテキストをフォーマット
             popup_html = f"""
             <div style='font-family: Arial; font-size: 12px; display: grid; grid-template-columns: auto auto auto; gap: 5px;'>
-                <b>Date</b>    <span>:</span> <span>{spot.source}</span>
-                <b>Corr</b>    <span>:</span> <span>{spot.correlation:.3f}</span>
-                <b>Ratio</b>   <span>:</span> <span>{spot.ratio:.3f}</span>
-                <b>Type</b>    <span>:</span> <span>{spot.type}</span>
+                <b>Date</b> <span>:</span> <span>{spot.source}</span>
+                <b>Lat</b> <span>:</span> <span>{spot.avg_lat:.3f}</span>
+                <b>Lon</b> <span>:</span> <span>{spot.avg_lon:.3f}</span>
+                <b>ΔCH<sub>4</sub></b> <span>:</span> <span>{spot.delta_ch4:.3f}</span>
+                <b>ΔC<sub>2</sub>H<sub>6</sub></b> <span>:</span> <span>{spot.delta_c2h6:.3f}</span>
+                <b>Ratio</b> <span>:</span> <span>{spot.ratio:.3f}</span>
+                <b>Type</b> <span>:</span> <span>{spot.type}</span>
                 <b>Section</b> <span>:</span> <span>{spot.section}</span>
             </div>
             """
@@ -928,12 +936,249 @@ class MobileSpatialAnalyzer:
 
         return df
 
-    def _remove_duplicates(
-        self,
+    @staticmethod
+    def _calculate_angle(
+        lat: float, lon: float, center_lat: float, center_lon: float
+    ) -> float:
+        """
+        中心からの角度を計算
+
+        Args:
+            lat (float): 対象地点の緯度
+            lon (float): 対象地点の経度
+            center_lat (float): 中心の緯度
+            center_lon (float): 中心の経度
+
+        Returns:
+            float: 真北を0°として時計回りの角度（-180°から180°）
+        """
+        d_lat: float = lat - center_lat
+        d_lon: float = lon - center_lon
+        # arctanを使用して角度を計算（ラジアン）
+        angle_rad: float = math.atan2(d_lon, d_lat)
+        # ラジアンから度に変換（-180から180の範囲）
+        angle_deg: float = math.degrees(angle_rad)
+        return angle_deg
+
+    @classmethod
+    def _calculate_distance(
+        cls, lat1: float, lon1: float, lat2: float, lon2: float
+    ) -> float:
+        """
+        2点間の距離をメートル単位で計算（Haversine formula）
+
+        Args:
+            lat1 (float): 地点1の緯度
+            lon1 (float): 地点1の経度
+            lat2 (float): 地点2の緯度
+            lon2 (float): 地点2の経度
+
+        Returns:
+            float: 2地点間の距離（メートル）
+        """
+        R = cls.EARTH_RADIUS_METERS
+
+        # 緯度経度をラジアンに変換
+        lat1_rad: float = math.radians(lat1)
+        lon1_rad: float = math.radians(lon1)
+        lat2_rad: float = math.radians(lat2)
+        lon2_rad: float = math.radians(lon2)
+
+        # 緯度と経度の差分
+        dlat: float = lat2_rad - lat1_rad
+        dlon: float = lon2_rad - lon1_rad
+
+        # Haversine formula
+        a: float = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+        )
+        c: float = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        return R * c  # メートル単位での距離
+
+    @staticmethod
+    def _calculate_window_size(window_minutes: float) -> int:
+        """
+        時間窓からデータポイント数を計算
+
+        Args:
+            window_minutes (float): 時間窓の大きさ（分）
+
+        Returns:
+            int: データポイント数
+        """
+        return int(60 * window_minutes)
+
+    @staticmethod
+    def _initialize_sections(
+        num_sections: int, section_size: float
+    ) -> dict[int, tuple[float, float]]:
+        """指定された区画数と区画サイズに基づいて、区画の範囲を初期化します。
+
+        Args:
+            num_sections (int): 初期化する区画の数。
+            section_size (float): 各区画の角度範囲のサイズ。
+
+        Returns:
+            dict[int, tuple[float, float]]: 区画番号（0-based-index）とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
+        """
+        sections: dict[int, tuple[float, float]] = {}
+        for i in range(num_sections):
+            # -180から180の範囲で区画を設定
+            start_angle = -180 + i * section_size
+            end_angle = -180 + (i + 1) * section_size
+            sections[i] = (start_angle, end_angle)
+        return sections
+
+    @staticmethod
+    def _normalize_inputs(
+        inputs: list[MSAInputConfig] | list[tuple[float, float, str | Path]],
+    ) -> list[MSAInputConfig]:
+        """入力設定を標準化
+
+        Args:
+            inputs (list[MSAInputConfig] | list[tuple[float, float, str | Path]]): 入力設定のリスト
+
+        Returns:
+            list[MSAInputConfig]: 標準化された入力設定のリスト
+        """
+        normalized: list[MSAInputConfig] = []
+        for inp in inputs:
+            if isinstance(inp, MSAInputConfig):
+                normalized.append(inp)  # すでに検証済みのため、そのまま追加
+            else:
+                fs, lag, path = inp
+                normalized.append(
+                    MSAInputConfig.validate_and_create(fs=fs, lag=lag, path=path)
+                )
+        return normalized
+
+    @staticmethod
+    def _calculate_angle(
+        lat: float, lon: float, center_lat: float, center_lon: float
+    ) -> float:
+        """
+        中心からの角度を計算
+
+        Args:
+            lat (float): 対象地点の緯度
+            lon (float): 対象地点の経度
+            center_lat (float): 中心の緯度
+            center_lon (float): 中心の経度
+
+        Returns:
+            float: 真北を0°として時計回りの角度（-180°から180°）
+        """
+        d_lat: float = lat - center_lat
+        d_lon: float = lon - center_lon
+        # arctanを使用して角度を計算（ラジアン）
+        angle_rad: float = math.atan2(d_lon, d_lat)
+        # ラジアンから度に変換（-180から180の範囲）
+        angle_deg: float = math.degrees(angle_rad)
+        return angle_deg
+
+    @classmethod
+    def _calculate_distance(
+        cls, lat1: float, lon1: float, lat2: float, lon2: float
+    ) -> float:
+        """
+        2点間の距離をメートル単位で計算（Haversine formula）
+
+        Args:
+            lat1 (float): 地点1の緯度
+            lon1 (float): 地点1の経度
+            lat2 (float): 地点2の緯度
+            lon2 (float): 地点2の経度
+
+        Returns:
+            float: 2地点間の距離（メートル）
+        """
+        R = cls.EARTH_RADIUS_METERS
+
+        # 緯度経度をラジアンに変換
+        lat1_rad: float = math.radians(lat1)
+        lon1_rad: float = math.radians(lon1)
+        lat2_rad: float = math.radians(lat2)
+        lon2_rad: float = math.radians(lon2)
+
+        # 緯度と経度の差分
+        dlat: float = lat2_rad - lat1_rad
+        dlon: float = lon2_rad - lon1_rad
+
+        # Haversine formula
+        a: float = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
+        )
+        c: float = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        return R * c  # メートル単位での距離
+
+    @staticmethod
+    def _calculate_window_size(window_minutes: float) -> int:
+        """
+        時間窓からデータポイント数を計算
+
+        Args:
+            window_minutes (float): 時間窓の大きさ（分）
+
+        Returns:
+            int: データポイント数
+        """
+        return int(60 * window_minutes)
+
+    @staticmethod
+    def _initialize_sections(
+        num_sections: int, section_size: float
+    ) -> dict[int, tuple[float, float]]:
+        """指定された区画数と区画サイズに基づいて、区画の範囲を初期化します。
+
+        Args:
+            num_sections (int): 初期化する区画の数。
+            section_size (float): 各区画の角度範囲のサイズ。
+
+        Returns:
+            dict[int, tuple[float, float]]: 区画番号（0-based-index）とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
+        """
+        sections: dict[int, tuple[float, float]] = {}
+        for i in range(num_sections):
+            # -180から180の範囲で区画を設定
+            start_angle = -180 + i * section_size
+            end_angle = -180 + (i + 1) * section_size
+            sections[i] = (start_angle, end_angle)
+        return sections
+
+    @staticmethod
+    def _normalize_inputs(
+        inputs: list[MSAInputConfig] | list[tuple[float, float, str | Path]],
+    ) -> list[MSAInputConfig]:
+        """入力設定を標準化
+
+        Args:
+            inputs (list[MSAInputConfig] | list[tuple[float, float, str | Path]]): 入力設定のリスト
+
+        Returns:
+            list[MSAInputConfig]: 標準化された入力設定のリスト
+        """
+        normalized: list[MSAInputConfig] = []
+        for inp in inputs:
+            if isinstance(inp, MSAInputConfig):
+                normalized.append(inp)  # すでに検証済みのため、そのまま追加
+            else:
+                fs, lag, path = inp
+                normalized.append(
+                    MSAInputConfig.validate_and_create(fs=fs, lag=lag, path=path)
+                )
+        return normalized
+
+    @staticmethod
+    def remove_hotspots_duplicates(
         hotspots: list[HotspotData],
         check_time_all: bool,
         min_time_threshold_seconds: float,
         max_time_threshold_hours: float,
+        hotspot_area_meter: float,
     ) -> list[HotspotData]:
         """
         重複するホットスポットを除外します。ΔCH4が大きい順に処理し、
@@ -949,6 +1194,7 @@ class MobileSpatialAnalyzer:
             check_time_all (bool): max_time_threshold_hours以上離れた場合も重複チェックを継続するかどうか
             min_time_threshold_seconds (float): 重複とみなす最小時間の閾値（秒）
             max_time_threshold_hours (float): 重複チェックを一時的に無視する最大時間の閾値（時間）
+            hotspot_area_meter (float): ホットスポットの影響範囲（m）。
 
         Returns:
             list[HotspotData]: 重複を除外したホットスポットのリスト
@@ -974,7 +1220,7 @@ class MobileSpatialAnalyzer:
                     lat1=spot.avg_lat, lon1=spot.avg_lon, lat2=used_lat, lon2=used_lon
                 )
 
-                if distance < self._hotspot_area_meter:
+                if distance < hotspot_area_meter:
                     # 時間差の計算（秒単位）
                     time_diff = pd.Timedelta(
                         pd.to_datetime(spot.source) - pd.to_datetime(used_time)
@@ -982,17 +1228,21 @@ class MobileSpatialAnalyzer:
                     time_diff_abs = abs(time_diff)
 
                     # 時間差に基づく判定
-                    if time_diff_abs <= min_time_threshold_seconds:
-                        # Case 1: 最小時間閾値以内は常に重複とみなす
+                    if check_time_all:
+                        # 時間に関係なく、距離が近ければ重複とみなす
                         # ΔCH4が大きい方を残す（現在のスポットは必ず小さい）
                         should_add = False
                         break
-                    elif time_diff_abs <= max_time_threshold_hours * 3600:
-                        # Case 2: 最大時間閾値以内は重複とみなさない（異なるポイントとして保持）
-                        continue
-                    elif check_time_all:
-                        # Case 3: 最大時間閾値を超えた場合はcheck_time_allに従う
-                        # ΔCH4が大きい方を残す（現在のスポットは必ず小さい）
+                    else:
+                        # 時間窓による判定を行う
+                        if time_diff_abs <= min_time_threshold_seconds:
+                            # Case 1: 最小時間閾値以内は重複とみなす
+                            should_add = False
+                            break
+                        elif time_diff_abs > max_time_threshold_hours * 3600:
+                            # Case 2: 最大時間閾値を超えた場合は重複チェックをスキップ
+                            continue
+                        # Case 3: その間の時間差の場合は、距離が近ければ重複とみなす
                         should_add = False
                         break
 
@@ -1002,246 +1252,7 @@ class MobileSpatialAnalyzer:
                     (spot.avg_lat, spot.avg_lon, spot.source, spot.delta_ch4)
                 )
 
-        self.logger.info(
-            f"重複除外: {len(hotspots)} → {len(unique_hotspots)} ホットスポット"
-        )
         return unique_hotspots
-
-    @staticmethod
-    def _calculate_angle(
-        lat: float, lon: float, center_lat: float, center_lon: float
-    ) -> float:
-        """
-        中心からの角度を計算
-
-        Args:
-            lat (float): 対象地点の緯度
-            lon (float): 対象地点の経度
-            center_lat (float): 中心の緯度
-            center_lon (float): 中心の経度
-
-        Returns:
-            float: 真北を0°として時計回りの角度（-180°から180°）
-        """
-        d_lat: float = lat - center_lat
-        d_lon: float = lon - center_lon
-        # arctanを使用して角度を計算（ラジアン）
-        angle_rad: float = math.atan2(d_lon, d_lat)
-        # ラジアンから度に変換（-180から180の範囲）
-        angle_deg: float = math.degrees(angle_rad)
-        return angle_deg
-
-    @classmethod
-    def _calculate_distance(
-        cls, lat1: float, lon1: float, lat2: float, lon2: float
-    ) -> float:
-        """
-        2点間の距離をメートル単位で計算（Haversine formula）
-
-        Args:
-            lat1 (float): 地点1の緯度
-            lon1 (float): 地点1の経度
-            lat2 (float): 地点2の緯度
-            lon2 (float): 地点2の経度
-
-        Returns:
-            float: 2地点間の距離（メートル）
-        """
-        R = cls.EARTH_RADIUS_METERS
-
-        # 緯度経度をラジアンに変換
-        lat1_rad: float = math.radians(lat1)
-        lon1_rad: float = math.radians(lon1)
-        lat2_rad: float = math.radians(lat2)
-        lon2_rad: float = math.radians(lon2)
-
-        # 緯度と経度の差分
-        dlat: float = lat2_rad - lat1_rad
-        dlon: float = lon2_rad - lon1_rad
-
-        # Haversine formula
-        a: float = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
-        )
-        c: float = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-        return R * c  # メートル単位での距離
-
-    @staticmethod
-    def _calculate_window_size(window_minutes: float) -> int:
-        """
-        時間窓からデータポイント数を計算
-
-        Args:
-            window_minutes (float): 時間窓の大きさ（分）
-
-        Returns:
-            int: データポイント数
-        """
-        return int(60 * window_minutes)
-
-    @staticmethod
-    def _initialize_sections(
-        num_sections: int, section_size: float
-    ) -> dict[int, tuple[float, float]]:
-        """指定された区画数と区画サイズに基づいて、区画の範囲を初期化します。
-
-        Args:
-            num_sections (int): 初期化する区画の数。
-            section_size (float): 各区画の角度範囲のサイズ。
-
-        Returns:
-            dict[int, tuple[float, float]]: 区画番号（0-based-index）とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
-        """
-        sections: dict[int, tuple[float, float]] = {}
-        for i in range(num_sections):
-            # -180から180の範囲で区画を設定
-            start_angle = -180 + i * section_size
-            end_angle = -180 + (i + 1) * section_size
-            sections[i] = (start_angle, end_angle)
-        return sections
-
-    @staticmethod
-    def _normalize_inputs(
-        inputs: list[MSAInputConfig] | list[tuple[float, float, str | Path]],
-    ) -> list[MSAInputConfig]:
-        """入力設定を標準化
-
-        Args:
-            inputs (list[MSAInputConfig] | list[tuple[float, float, str | Path]]): 入力設定のリスト
-
-        Returns:
-            list[MSAInputConfig]: 標準化された入力設定のリスト
-        """
-        normalized: list[MSAInputConfig] = []
-        for inp in inputs:
-            if isinstance(inp, MSAInputConfig):
-                normalized.append(inp)  # すでに検証済みのため、そのまま追加
-            else:
-                fs, lag, path = inp
-                normalized.append(
-                    MSAInputConfig.validate_and_create(fs=fs, lag=lag, path=path)
-                )
-        return normalized
-
-    @staticmethod
-    def _calculate_angle(
-        lat: float, lon: float, center_lat: float, center_lon: float
-    ) -> float:
-        """
-        中心からの角度を計算
-
-        Args:
-            lat (float): 対象地点の緯度
-            lon (float): 対象地点の経度
-            center_lat (float): 中心の緯度
-            center_lon (float): 中心の経度
-
-        Returns:
-            float: 真北を0°として時計回りの角度（-180°から180°）
-        """
-        d_lat: float = lat - center_lat
-        d_lon: float = lon - center_lon
-        # arctanを使用して角度を計算（ラジアン）
-        angle_rad: float = math.atan2(d_lon, d_lat)
-        # ラジアンから度に変換（-180から180の範囲）
-        angle_deg: float = math.degrees(angle_rad)
-        return angle_deg
-
-    @classmethod
-    def _calculate_distance(
-        cls, lat1: float, lon1: float, lat2: float, lon2: float
-    ) -> float:
-        """
-        2点間の距離をメートル単位で計算（Haversine formula）
-
-        Args:
-            lat1 (float): 地点1の緯度
-            lon1 (float): 地点1の経度
-            lat2 (float): 地点2の緯度
-            lon2 (float): 地点2の経度
-
-        Returns:
-            float: 2地点間の距離（メートル）
-        """
-        R = cls.EARTH_RADIUS_METERS
-
-        # 緯度経度をラジアンに変換
-        lat1_rad: float = math.radians(lat1)
-        lon1_rad: float = math.radians(lon1)
-        lat2_rad: float = math.radians(lat2)
-        lon2_rad: float = math.radians(lon2)
-
-        # 緯度と経度の差分
-        dlat: float = lat2_rad - lat1_rad
-        dlon: float = lon2_rad - lon1_rad
-
-        # Haversine formula
-        a: float = (
-            math.sin(dlat / 2) ** 2
-            + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
-        )
-        c: float = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-        return R * c  # メートル単位での距離
-
-    @staticmethod
-    def _calculate_window_size(window_minutes: float) -> int:
-        """
-        時間窓からデータポイント数を計算
-
-        Args:
-            window_minutes (float): 時間窓の大きさ（分）
-
-        Returns:
-            int: データポイント数
-        """
-        return int(60 * window_minutes)
-
-    @staticmethod
-    def _initialize_sections(
-        num_sections: int, section_size: float
-    ) -> dict[int, tuple[float, float]]:
-        """指定された区画数と区画サイズに基づいて、区画の範囲を初期化します。
-
-        Args:
-            num_sections (int): 初期化する区画の数。
-            section_size (float): 各区画の角度範囲のサイズ。
-
-        Returns:
-            dict[int, tuple[float, float]]: 区画番号（0-based-index）とその範囲の辞書。各区画は-180度から180度の範囲に分割されます。
-        """
-        sections: dict[int, tuple[float, float]] = {}
-        for i in range(num_sections):
-            # -180から180の範囲で区画を設定
-            start_angle = -180 + i * section_size
-            end_angle = -180 + (i + 1) * section_size
-            sections[i] = (start_angle, end_angle)
-        return sections
-
-    @staticmethod
-    def _normalize_inputs(
-        inputs: list[MSAInputConfig] | list[tuple[float, float, str | Path]],
-    ) -> list[MSAInputConfig]:
-        """入力設定を標準化
-
-        Args:
-            inputs (list[MSAInputConfig] | list[tuple[float, float, str | Path]]): 入力設定のリスト
-
-        Returns:
-            list[MSAInputConfig]: 標準化された入力設定のリスト
-        """
-        normalized: list[MSAInputConfig] = []
-        for inp in inputs:
-            if isinstance(inp, MSAInputConfig):
-                normalized.append(inp)  # すでに検証済みのため、そのまま追加
-            else:
-                fs, lag, path = inp
-                normalized.append(
-                    MSAInputConfig.validate_and_create(fs=fs, lag=lag, path=path)
-                )
-        return normalized
 
     @staticmethod
     def setup_logger(logger: Logger | None, log_level: int = INFO) -> Logger:

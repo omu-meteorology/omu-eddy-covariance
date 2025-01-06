@@ -84,8 +84,8 @@ if __name__ == "__main__":
 
     # ホットスポット検出
     hotspots: list[HotspotData] = msa.analyze_hotspots(
-        duplicate_check_mode="time_window",
-        # duplicate_check_mode="time_all",
+        # duplicate_check_mode="time_window",
+        duplicate_check_mode="time_all",
     )
 
     # 結果の表示
