@@ -114,13 +114,13 @@ if __name__ == "__main__":
         print(f"  Comb : {counts['comb']}")
 
     # sectionが0または1（西側）のホットスポットのみを残す
-    hotspots = [h for h in hotspots if h.section in west_sections_list]
+    # hotspots = [h for h in hotspots if h.section in west_sections_list]
 
     # 地図の作成と保存
     msa.create_hotspots_map(hotspots, output_dir=output_dir)
 
     # ホットスポットを散布図で表示
-    msa.plot_scatter_c2h6_ch4(output_dir=output_dir)
+    msa.plot_scatter_c2h6_ch4(hotspots, output_dir=output_dir)
 
     # ヒストグラムを作図
     msa.plot_ch4_delta_histogram(
@@ -129,6 +129,8 @@ if __name__ == "__main__":
         figsize=(10, 6),
         xlim=(0, 1.4),
         yscale_log=False,
+        show_fig=False,
+        print_bins_analysis=True,
     )
 
     # 統計情報を表示

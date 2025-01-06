@@ -487,6 +487,7 @@ class MobileSpatialAnalyzer:
         save_fig: bool = True,
         show_fig: bool = True,
         yscale_log: bool = True,
+        print_bins_analysis: bool = False,
     ) -> None:
         """
         CH4の増加量（ΔCH4）の積み上げヒストグラムをプロットします。
@@ -503,6 +504,7 @@ class MobileSpatialAnalyzer:
             save_fig (bool): 図の保存を許可するフラグ。デフォルトはTrue。
             show_fig (bool): 図の表示を許可するフラグ。デフォルトはTrue。
             yscale_log (bool): y軸をlogにするかどうか。デフォルトはTrue。
+            print_bins_analysis (bool): ビンごとの内訳を表示するオプション。
         """
         output_path: Path = Path(output_dir) / f"{output_filename}.png"
 
@@ -534,6 +536,29 @@ class MobileSpatialAnalyzer:
             if np.any(mask):
                 counts, _ = np.histogram(all_ch4_deltas[mask], bins=bins)
                 hist_data[type_name] = counts
+
+        # ビンごとの内訳を表示
+        if print_bins_analysis:
+            self.logger.info("各ビンの内訳:")
+            print(f"{'Bin Range':15} {'bio':>8} {'gas':>8} {'comb':>8} {'Total':>8}")
+            print("-" * 50)
+
+            for i in range(len(bins) - 1):
+                bin_start = bins[i]
+                bin_end = bins[i + 1]
+                bio_count = hist_data.get("bio", np.zeros(len(bins) - 1))[i]
+                gas_count = hist_data.get("gas", np.zeros(len(bins) - 1))[i]
+                comb_count = hist_data.get("comb", np.zeros(len(bins) - 1))[i]
+                total = bio_count + gas_count + comb_count
+
+                if total > 0:  # 合計が0のビンは表示しない
+                    print(
+                        f"{bin_start:4.1f}-{bin_end:<8.1f}"
+                        f"{int(bio_count):8d}"
+                        f"{int(gas_count):8d}"
+                        f"{int(comb_count):8d}"
+                        f"{int(total):8d}"
+                    )
 
         # 積み上げヒストグラムを作成
         colors = {"bio": "blue", "gas": "red", "comb": "green"}
@@ -576,20 +601,146 @@ class MobileSpatialAnalyzer:
 
         plt.close(fig)
 
+    # def plot_scatter_c2h6_ch4(
+    #     self,
+    #     output_dir: str | Path,
+    #     output_filename: str = "scatter_c2h6_ch4",
+    #     dpi: int = 200,
+    #     figsize: tuple[int, int] = (4, 4),
+    #     fontsize: float = 12,
+    #     ratio_labels: dict[float, tuple[float, float, str]] | None = None,
+    #     save_fig: bool = True,
+    #     show_fig: bool = True,
+    # ) -> None:
+    #     """
+    #     C2H6とCH4の散布図をプロットします。
+
+    #     Args:
+    #         output_dir (str | Path): 保存先のディレクトリパス
+    #         output_filename (str): 保存するファイル名。デフォルトは"scatter_c2h6_ch4"。
+    #         dpi (int): 解像度。デフォルトは200。
+    #         figsize (tuple[int, int]): 図のサイズ。デフォルトは(4, 4)。
+    #         fontsize (float): フォントサイズ。デフォルトは12。
+    #         ratio_labels (dict[float, tuple[float, float, str]] | None): 比率線とラベルの設定。
+    #             キーは比率値、値は (x位置, y位置, ラベルテキスト) のタプル。
+    #             Noneの場合はデフォルト設定を使用。デフォルト値:
+    #             {
+    #                 0.001: (1.25, 2, "0.001"),
+    #                 0.005: (1.25, 8, "0.005"),
+    #                 0.010: (1.25, 15, "0.01"),
+    #                 0.020: (1.25, 30, "0.02"),
+    #                 0.030: (1.0, 40, "0.03"),
+    #                 0.076: (0.20, 42, "0.076 (Osaka)")
+    #             }
+    #         savefig (bool): 図の保存を許可するフラグ。デフォルトはTrueで、Falseの場合は`output_dir`の指定に関わらず図を保存しない。
+
+    #     Returns:
+    #         plt.Figure: 作成された散布図のFigureオブジェクト
+    #     """
+    #     output_path: Path = Path(output_dir) / f"{output_filename}.png"
+
+    #     ch4_enhance_threshold: float = self._ch4_enhance_threshold
+    #     correlation_threshold: float = self._correlation_threshold
+    #     data = self._data
+
+    #     plt.rcParams["font.size"] = fontsize
+    #     fig = plt.figure(figsize=figsize, dpi=dpi)
+
+    #     # 全データソースに対してプロット
+    #     for source_name, df in data.items():
+    #         # CH4増加量が閾値未満のデータ
+    #         mask_low = df["ch4_ppm"] - df["ch4_ppm_mv"] < ch4_enhance_threshold
+    #         plt.plot(
+    #             df["ch4_ppm_delta"][mask_low],
+    #             df["c2h6_ppb_delta"][mask_low],
+    #             "o",
+    #             c="gray",
+    #             alpha=0.05,
+    #             ms=2,
+    #             label=f"{source_name} (Low CH4)" if len(data) > 1 else "Low CH4",
+    #         )
+
+    #         # CH4増加量が閾値以上で、相関が低いデータ
+    #         mask_high_low_corr = (
+    #             df["ch4_c2h6_correlation"] < correlation_threshold
+    #         ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
+    #         plt.plot(
+    #             df["ch4_ppm_delta"][mask_high_low_corr],
+    #             df["c2h6_ppb_delta"][mask_high_low_corr],
+    #             "o",
+    #             c="blue",
+    #             alpha=0.5,
+    #             ms=2,
+    #             label=f"{source_name} (Bio)" if len(data) > 1 else "Bio",
+    #         )
+
+    #         # CH4増加量が閾値以上で、相関が高いデータ
+    #         mask_high_high_corr = (
+    #             df["ch4_c2h6_correlation"] >= correlation_threshold
+    #         ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
+    #         plt.plot(
+    #             df["ch4_ppm_delta"][mask_high_high_corr],
+    #             df["c2h6_ppb_delta"][mask_high_high_corr],
+    #             "o",
+    #             c="red",
+    #             alpha=0.5,
+    #             ms=2,
+    #             label=f"{source_name} (Gas)" if len(data) > 1 else "Gas",
+    #         )
+
+    #     # デフォルトの比率とラベル設定
+    #     default_ratio_labels = {
+    #         0.001: (1.25, 2, "0.001"),
+    #         0.005: (1.25, 8, "0.005"),
+    #         0.010: (1.25, 15, "0.01"),
+    #         0.020: (1.25, 30, "0.02"),
+    #         0.030: (1.0, 40, "0.03"),
+    #         0.076: (0.20, 42, "0.076 (Osaka)"),
+    #     }
+
+    #     ratio_labels = ratio_labels or default_ratio_labels
+
+    #     # プロット後、軸の設定前に比率の線を追加
+    #     x = np.array([0, 5])
+    #     base_ch4 = 0.0
+    #     base = 0.0
+
+    #     # 各比率に対して線を引く
+    #     for ratio, (x_pos, y_pos, label) in ratio_labels.items():
+    #         y = (x - base_ch4) * 1000 * ratio + base
+    #         plt.plot(x, y, "-", c="black", alpha=0.5)
+    #         plt.text(x_pos, y_pos, label)
+
+    #     # 既存の軸設定を維持
+    #     plt.ylim(0, 50)
+    #     plt.xlim(0, 2.0)
+    #     plt.ylabel("Δ$\\mathregular{C_{2}H_{6}}$ (ppb)")
+    #     plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
+
+    #     # グラフの保存または表示
+    #     if save_fig:
+    #         plt.savefig(output_path, bbox_inches="tight")
+    #         self.logger.info(f"散布図を保存しました: {output_path}")
+    #     if show_fig:
+    #         plt.show()
+    #     plt.close(fig)
     def plot_scatter_c2h6_ch4(
         self,
+        hotspots: list[HotspotData],
         output_dir: str | Path,
         output_filename: str = "scatter_c2h6_ch4",
         dpi: int = 200,
         figsize: tuple[int, int] = (4, 4),
         fontsize: float = 12,
         ratio_labels: dict[float, tuple[float, float, str]] | None = None,
-        savefig: bool = True,
-    ) -> plt.Figure:
+        save_fig: bool = True,
+        show_fig: bool = True,
+    ) -> None:
         """
-        C2H6とCH4の散布図をプロットします。
+        検出されたホットスポットのΔC2H6とΔCH4の散布図をプロットします。
 
         Args:
+            hotspots (list[HotspotData]): プロットするホットスポットのリスト
             output_dir (str | Path): 保存先のディレクトリパス
             output_filename (str): 保存するファイル名。デフォルトは"scatter_c2h6_ch4"。
             dpi (int): 解像度。デフォルトは200。
@@ -606,61 +757,36 @@ class MobileSpatialAnalyzer:
                     0.030: (1.0, 40, "0.03"),
                     0.076: (0.20, 42, "0.076 (Osaka)")
                 }
-            savefig (bool): 図の保存を許可するフラグ。デフォルトはTrueで、Falseの場合は`output_dir`の指定に関わらず図を保存しない。
-
-        Returns:
-            plt.Figure: 作成された散布図のFigureオブジェクト
+            save_fig (bool): 図の保存を許可するフラグ。デフォルトはTrue。
+            show_fig (bool): 図の表示を許可するフラグ。デフォルトはTrue。
         """
         output_path: Path = Path(output_dir) / f"{output_filename}.png"
-
-        ch4_enhance_threshold: float = self._ch4_enhance_threshold
-        correlation_threshold: float = self._correlation_threshold
-        data = self._data
 
         plt.rcParams["font.size"] = fontsize
         fig = plt.figure(figsize=figsize, dpi=dpi)
 
-        # 全データソースに対してプロット
-        for source_name, df in data.items():
-            # CH4増加量が閾値未満のデータ
-            mask_low = df["ch4_ppm"] - df["ch4_ppm_mv"] < ch4_enhance_threshold
-            plt.plot(
-                df["ch4_ppm_delta"][mask_low],
-                df["c2h6_ppb_delta"][mask_low],
-                "o",
-                c="gray",
-                alpha=0.05,
-                ms=2,
-                label=f"{source_name} (Low CH4)" if len(data) > 1 else "Low CH4",
-            )
+        # タイプごとのデータを収集
+        type_data = {"bio": [], "gas": [], "comb": []}
+        for spot in hotspots:
+            type_data[spot.type].append((spot.delta_ch4, spot.delta_c2h6))
 
-            # CH4増加量が閾値以上で、相関が低いデータ
-            mask_high_low_corr = (
-                df["ch4_c2h6_correlation"] < correlation_threshold
-            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
-            plt.plot(
-                df["ch4_ppm_delta"][mask_high_low_corr],
-                df["c2h6_ppb_delta"][mask_high_low_corr],
-                "o",
-                c="blue",
-                alpha=0.5,
-                ms=2,
-                label=f"{source_name} (Bio)" if len(data) > 1 else "Bio",
-            )
+        # 色とラベルの定義
+        colors = {"bio": "blue", "gas": "red", "comb": "green"}
+        labels = {"bio": "Bio", "gas": "Gas", "comb": "Comb"}
 
-            # CH4増加量が閾値以上で、相関が高いデータ
-            mask_high_high_corr = (
-                df["ch4_c2h6_correlation"] >= correlation_threshold
-            ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
-            plt.plot(
-                df["ch4_ppm_delta"][mask_high_high_corr],
-                df["c2h6_ppb_delta"][mask_high_high_corr],
-                "o",
-                c="red",
-                alpha=0.5,
-                ms=2,
-                label=f"{source_name} (Gas)" if len(data) > 1 else "Gas",
-            )
+        # タイプごとにプロット（データが存在する場合のみ）
+        for spot_type, data in type_data.items():
+            if data:  # データが存在する場合のみプロット
+                ch4_values, c2h6_values = zip(*data)
+                plt.plot(
+                    ch4_values,
+                    c2h6_values,
+                    "o",
+                    c=colors[spot_type],
+                    alpha=0.5,
+                    ms=2,
+                    label=labels[spot_type]
+                )
 
         # デフォルトの比率とラベル設定
         default_ratio_labels = {
@@ -685,18 +811,19 @@ class MobileSpatialAnalyzer:
             plt.plot(x, y, "-", c="black", alpha=0.5)
             plt.text(x_pos, y_pos, label)
 
-        # 既存の軸設定を維持
         plt.ylim(0, 50)
         plt.xlim(0, 2.0)
         plt.ylabel("Δ$\\mathregular{C_{2}H_{6}}$ (ppb)")
         plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
+        plt.legend()
 
         # グラフの保存または表示
-        if savefig:
+        if save_fig:
             plt.savefig(output_path, bbox_inches="tight")
             self.logger.info(f"散布図を保存しました: {output_path}")
-
-        return fig
+        if show_fig:
+            plt.show()
+        plt.close(fig)
 
     def _calculate_hotspots_parameters(
         self, df: pd.DataFrame, window_size: int
