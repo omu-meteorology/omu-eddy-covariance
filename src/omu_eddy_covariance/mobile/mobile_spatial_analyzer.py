@@ -772,7 +772,7 @@ class MobileSpatialAnalyzer:
 
         # 色とラベルの定義
         colors = {"bio": "blue", "gas": "red", "comb": "green"}
-        labels = {"bio": "Bio", "gas": "Gas", "comb": "Comb"}
+        labels = {"bio": "bio", "gas": "gas", "comb": "comb"}
 
         # タイプごとにプロット（データが存在する場合のみ）
         for spot_type, data in type_data.items():
