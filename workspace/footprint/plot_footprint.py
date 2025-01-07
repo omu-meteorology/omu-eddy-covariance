@@ -83,8 +83,8 @@ for path in font_paths:
 center_lan: float = 34.573904320329724  # 観測地点の緯度
 center_lon: float = 135.4829511120712  # 観測地点の経度
 num_sections: int = 4  # セクション数
-# plot_count: int = 10000
-plot_count: int = 50000
+plot_count: int = 10000
+# plot_count: int = 50000
 
 # ファイルおよびディレクトリのパス
 project_root: str = "/home/connect0459/labo/omu-eddy-covariance"
@@ -101,8 +101,9 @@ start_end_dates_list: list[list[str]] = [
 plot_ch4: bool = False
 plot_c2h6: bool = False
 plot_ratio: bool = False
+plot_ratio_legend: bool = True
 plot_ch4_gas: bool = False
-plot_ch4_bio: bool = True
+plot_ch4_bio: bool = False
 
 if __name__ == "__main__":
     # 環境変数の読み込み
@@ -127,7 +128,7 @@ if __name__ == "__main__":
         logging_debug=False,
     )
     hotspots: list[HotspotData] = msa.analyze_hotspots(
-        duplicate_check_mode="time_window"
+        duplicate_check_mode="time_all"
     )
 
     # インスタンスを作成
@@ -243,6 +244,33 @@ if __name__ == "__main__":
                 cbar_labelpad=20,
                 output_dir=output_dir,
                 output_filename=f"footprint_ratio{date_tag}.png",
+            )
+            del x_list, y_list, c_list
+
+        if plot_ratio_legend:
+            x_list, y_list, c_list = ffa.calculate_flux_footprint(
+                df=df,
+                flux_key="Fratio",
+                plot_count=plot_count,
+            )
+            # フットプリントとホットスポットの可視化
+            ffa.plot_flux_footprint_with_hotspots(
+                x_list=x_list,  # メートル単位のx座標
+                y_list=y_list,  # メートル単位のy座標
+                c_list=c_list,
+                hotspots=hotspots,
+                center_lat=center_lan,
+                center_lon=center_lon,
+                satellite_image=image,
+                cmap="jet",
+                vmin=0,
+                vmax=100,
+                xy_max=5000,
+                add_legend=True,
+                cbar_label=r"Gas Ratio of CH$_4$ Flux (%)",
+                cbar_labelpad=20,
+                output_dir=output_dir,
+                output_filename="footprint_ratio_legend.png",
             )
             del x_list, y_list, c_list
 

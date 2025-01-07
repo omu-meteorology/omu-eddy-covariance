@@ -83,6 +83,7 @@ if __name__ == "__main__":
     # msa.calculate_measurement_stats()
 
     # ホットスポット検出
+    all_hotspots: list[HotspotData] = msa.analyze_hotspots()
     hotspots: list[HotspotData] = msa.analyze_hotspots(
         # duplicate_check_mode="time_window",
         duplicate_check_mode="time_all",
@@ -137,3 +138,26 @@ if __name__ == "__main__":
     msa.analyze_delta_ch4_stats(hotspots=hotspots)
     # csvに出力
     msa.export_hotspots_to_csv(hotspots=hotspots, output_dir=output_dir)
+
+    # Emissionの分析
+    emissions_methods: list[str] = ["weller", "weitzel", "joo", "umezawa"]
+    for method in emissions_methods:
+        msa.logger.info(f"{method}のemission解析を開始します。")
+        # 排出量の計算と基本統計
+        emission_df = MobileSpatialAnalyzer.analyze_emission_rates(
+            hotspots,
+            # all_hotspots,
+            method=method,
+        )
+
+        # タイプ別の統計情報を表示
+        stats = msa.summarize_emissions_by_type(emission_df)
+
+        # 分布の可視化
+        msa.plot_emission_distributions(
+            emission_df,
+            output_dir=output_dir,
+            output_filename=f"emission-{method}.png",
+            save_fig=True,
+            show_fig=False,
+        )

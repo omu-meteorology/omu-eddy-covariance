@@ -701,7 +701,7 @@ class FluxFootprintAnalyzer:
                         marker="o",
                         s=100,
                         alpha=0.7,
-                        label=spot_type.capitalize(),
+                        label=spot_type,  # "bio","gas","comb"
                         edgecolor="black",
                         linewidth=1,
                     )

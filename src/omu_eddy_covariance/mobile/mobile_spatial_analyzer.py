@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from typing import Literal
 from pathlib import Path
 from datetime import timedelta
 from dataclasses import dataclass
@@ -180,7 +181,7 @@ class MobileSpatialAnalyzer:
         ホットスポットを検出して分析します。
 
         Args:
-            duplicate_check_mode (str): 重複チェックのモード。
+            duplicate_check_mode (str): 重複チェックのモード（"none","time_window","time_all"）。
                 - "none": 重複チェックを行わない。
                 - "time_window": 指定された時間窓内の重複のみを除外。
                 - "time_all": すべての時間範囲で重複チェックを行う。
@@ -601,129 +602,6 @@ class MobileSpatialAnalyzer:
 
         plt.close(fig)
 
-    # def plot_scatter_c2h6_ch4(
-    #     self,
-    #     output_dir: str | Path,
-    #     output_filename: str = "scatter_c2h6_ch4",
-    #     dpi: int = 200,
-    #     figsize: tuple[int, int] = (4, 4),
-    #     fontsize: float = 12,
-    #     ratio_labels: dict[float, tuple[float, float, str]] | None = None,
-    #     save_fig: bool = True,
-    #     show_fig: bool = True,
-    # ) -> None:
-    #     """
-    #     C2H6とCH4の散布図をプロットします。
-
-    #     Args:
-    #         output_dir (str | Path): 保存先のディレクトリパス
-    #         output_filename (str): 保存するファイル名。デフォルトは"scatter_c2h6_ch4"。
-    #         dpi (int): 解像度。デフォルトは200。
-    #         figsize (tuple[int, int]): 図のサイズ。デフォルトは(4, 4)。
-    #         fontsize (float): フォントサイズ。デフォルトは12。
-    #         ratio_labels (dict[float, tuple[float, float, str]] | None): 比率線とラベルの設定。
-    #             キーは比率値、値は (x位置, y位置, ラベルテキスト) のタプル。
-    #             Noneの場合はデフォルト設定を使用。デフォルト値:
-    #             {
-    #                 0.001: (1.25, 2, "0.001"),
-    #                 0.005: (1.25, 8, "0.005"),
-    #                 0.010: (1.25, 15, "0.01"),
-    #                 0.020: (1.25, 30, "0.02"),
-    #                 0.030: (1.0, 40, "0.03"),
-    #                 0.076: (0.20, 42, "0.076 (Osaka)")
-    #             }
-    #         savefig (bool): 図の保存を許可するフラグ。デフォルトはTrueで、Falseの場合は`output_dir`の指定に関わらず図を保存しない。
-
-    #     Returns:
-    #         plt.Figure: 作成された散布図のFigureオブジェクト
-    #     """
-    #     output_path: Path = Path(output_dir) / f"{output_filename}.png"
-
-    #     ch4_enhance_threshold: float = self._ch4_enhance_threshold
-    #     correlation_threshold: float = self._correlation_threshold
-    #     data = self._data
-
-    #     plt.rcParams["font.size"] = fontsize
-    #     fig = plt.figure(figsize=figsize, dpi=dpi)
-
-    #     # 全データソースに対してプロット
-    #     for source_name, df in data.items():
-    #         # CH4増加量が閾値未満のデータ
-    #         mask_low = df["ch4_ppm"] - df["ch4_ppm_mv"] < ch4_enhance_threshold
-    #         plt.plot(
-    #             df["ch4_ppm_delta"][mask_low],
-    #             df["c2h6_ppb_delta"][mask_low],
-    #             "o",
-    #             c="gray",
-    #             alpha=0.05,
-    #             ms=2,
-    #             label=f"{source_name} (Low CH4)" if len(data) > 1 else "Low CH4",
-    #         )
-
-    #         # CH4増加量が閾値以上で、相関が低いデータ
-    #         mask_high_low_corr = (
-    #             df["ch4_c2h6_correlation"] < correlation_threshold
-    #         ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
-    #         plt.plot(
-    #             df["ch4_ppm_delta"][mask_high_low_corr],
-    #             df["c2h6_ppb_delta"][mask_high_low_corr],
-    #             "o",
-    #             c="blue",
-    #             alpha=0.5,
-    #             ms=2,
-    #             label=f"{source_name} (Bio)" if len(data) > 1 else "Bio",
-    #         )
-
-    #         # CH4増加量が閾値以上で、相関が高いデータ
-    #         mask_high_high_corr = (
-    #             df["ch4_c2h6_correlation"] >= correlation_threshold
-    #         ) & (df["ch4_ppm"] - df["ch4_ppm_mv"] > ch4_enhance_threshold)
-    #         plt.plot(
-    #             df["ch4_ppm_delta"][mask_high_high_corr],
-    #             df["c2h6_ppb_delta"][mask_high_high_corr],
-    #             "o",
-    #             c="red",
-    #             alpha=0.5,
-    #             ms=2,
-    #             label=f"{source_name} (Gas)" if len(data) > 1 else "Gas",
-    #         )
-
-    #     # デフォルトの比率とラベル設定
-    #     default_ratio_labels = {
-    #         0.001: (1.25, 2, "0.001"),
-    #         0.005: (1.25, 8, "0.005"),
-    #         0.010: (1.25, 15, "0.01"),
-    #         0.020: (1.25, 30, "0.02"),
-    #         0.030: (1.0, 40, "0.03"),
-    #         0.076: (0.20, 42, "0.076 (Osaka)"),
-    #     }
-
-    #     ratio_labels = ratio_labels or default_ratio_labels
-
-    #     # プロット後、軸の設定前に比率の線を追加
-    #     x = np.array([0, 5])
-    #     base_ch4 = 0.0
-    #     base = 0.0
-
-    #     # 各比率に対して線を引く
-    #     for ratio, (x_pos, y_pos, label) in ratio_labels.items():
-    #         y = (x - base_ch4) * 1000 * ratio + base
-    #         plt.plot(x, y, "-", c="black", alpha=0.5)
-    #         plt.text(x_pos, y_pos, label)
-
-    #     # 既存の軸設定を維持
-    #     plt.ylim(0, 50)
-    #     plt.xlim(0, 2.0)
-    #     plt.ylabel("Δ$\\mathregular{C_{2}H_{6}}$ (ppb)")
-    #     plt.xlabel("Δ$\\mathregular{CH_{4}}$ (ppm)")
-
-    #     # グラフの保存または表示
-    #     if save_fig:
-    #         plt.savefig(output_path, bbox_inches="tight")
-    #         self.logger.info(f"散布図を保存しました: {output_path}")
-    #     if show_fig:
-    #         plt.show()
-    #     plt.close(fig)
     def plot_scatter_c2h6_ch4(
         self,
         hotspots: list[HotspotData],
@@ -785,7 +663,7 @@ class MobileSpatialAnalyzer:
                     c=colors[spot_type],
                     alpha=0.5,
                     ms=2,
-                    label=labels[spot_type]
+                    label=labels[spot_type],
                 )
 
         # デフォルトの比率とラベル設定
@@ -1413,3 +1291,238 @@ class MobileSpatialAnalyzer:
         ch.setFormatter(ch_formatter)  # フォーマッターをハンドラーに設定
         new_logger.addHandler(ch)  # StreamHandlerの追加
         return new_logger
+
+    @staticmethod
+    def analyze_emission_rates(
+        hotspots: list[HotspotData],
+        method: Literal["weller", "weitzel", "joo", "umezawa"] = "weller",
+    ) -> pd.DataFrame:
+        """
+        検出されたホットスポットのCH4漏出量を計算・解析します。
+
+        Args:
+            hotspots (list[HotspotData]): 分析対象のホットスポットのリスト
+            method (Literal["weller", "weitzel", "joo", "umezawa"]): 使用する計算式。デフォルトは"weller"。
+                - "weller": ln(Em) = (ln(C) + 0.988)/0.817 (Weller et al., 2019)
+                - "weitzel": ln(Em) = (ln(C) + 0.521)/0.795 (Weitzel and Schmidt, 2023)
+                - "joo": ln(Em) = (ln(C) + 2.738)/1.329 (Joo et al., 2024)
+                - "umezawa": ln(Em) = (ln(C) + 2.716)/0.741 (Umezawa et al., in preparation)
+
+        Returns:
+            pd.DataFrame: 各ホットスポットの排出量データを含むデータフレーム
+        """
+        # 経験式の係数定義
+        emission_formulas = {
+            "weller": {"a": 0.988, "b": 0.817},
+            "weitzel": {"a": 0.521, "b": 0.795},
+            "joo": {"a": 2.738, "b": 1.329},
+            "umezawa": {"a": 2.716, "b": 0.741},
+        }
+
+        if method not in emission_formulas:
+            raise ValueError(f"Unknown method: {method}")
+
+        # 係数の取得
+        a = emission_formulas[method]["a"]
+        b = emission_formulas[method]["b"]
+
+        # 排出量の計算
+        records = []
+        for spot in hotspots:
+            # 漏出量の計算 (L/min)
+            emission_rate = np.exp((np.log(spot.delta_ch4) + a) / b)
+
+            # 日排出量 (L/day)
+            daily_emission = emission_rate * 60 * 24
+
+            # 年間排出量 (L/year)
+            annual_emission = daily_emission * 365
+
+            record = {
+                "source": spot.source,
+                "type": spot.type,
+                "section": spot.section,
+                "latitude": spot.avg_lat,
+                "longitude": spot.avg_lon,
+                "delta_ch4": spot.delta_ch4,
+                "delta_c2h6": spot.delta_c2h6,
+                "ratio": spot.ratio,
+                "emission_rate": emission_rate,  # L/min
+                "daily_emission": daily_emission,  # L/day
+                "annual_emission": annual_emission,  # L/year
+            }
+            records.append(record)
+
+        return pd.DataFrame(records)
+
+    def summarize_emissions_by_type(
+        self,
+        emission_df: pd.DataFrame,
+        show_summary: bool = True,
+    ) -> dict[str, dict[str, float]]:
+        """
+        タイプ別の排出量統計を計算します。
+
+        Args:
+            emission_df (pd.DataFrame): analyze_emission_ratesで生成したデータフレーム
+            show_summary (bool): 結果を表示するかどうか。デフォルトはTrue。
+
+        Returns:
+            dict[str, dict[str, float]]: タイプ別の統計情報
+        """
+        stats = {}
+        types = ["bio", "gas", "comb"]
+
+        for spot_type in types:
+            df_type = emission_df[emission_df["type"] == spot_type]
+            if len(df_type) > 0:
+                type_stats = {
+                    "count": len(df_type),
+                    "emission_rate_min": df_type["emission_rate"].min(),
+                    "emission_rate_max": df_type["emission_rate"].max(),
+                    "emission_rate_mean": df_type["emission_rate"].mean(),
+                    "emission_rate_median": df_type["emission_rate"].median(),
+                    "total_annual_emission": df_type["annual_emission"].sum(),
+                    "mean_annual_emission": df_type["annual_emission"].mean(),
+                }
+                stats[spot_type] = type_stats
+
+                if show_summary:
+                    self.logger.info(f"{spot_type}タイプの統計情報:")
+                    print(f"  検出数: {type_stats['count']}")
+                    print("  排出量 (L/min):")
+                    print(f"    最小値: {type_stats['emission_rate_min']:.2f}")
+                    print(f"    最大値: {type_stats['emission_rate_max']:.2f}")
+                    print(f"    平均値: {type_stats['emission_rate_mean']:.2f}")
+                    print(f"    中央値: {type_stats['emission_rate_median']:.2f}")
+                    print("  年間排出量 (L/year):")
+                    print(f"    合計: {type_stats['total_annual_emission']:.2f}")
+                    print(f"    平均: {type_stats['mean_annual_emission']:.2f}")
+
+        return stats
+
+    def plot_emission_distributions(
+        self,
+        emission_df: pd.DataFrame,
+        output_dir: str | Path,
+        output_filename: str = "emission_distributions.png",
+        dpi: int = 200,
+        figsize: tuple[int, int] = (12, 4),
+        fontsize: float = 12,
+        save_fig: bool = True,
+        show_fig: bool = True,
+    ) -> None:
+        """
+        排出量分布を可視化します。
+
+        Args:
+            emission_df (pd.DataFrame): analyze_emission_ratesで生成したデータフレーム
+            output_dir (str | Path): 保存先ディレクトリ
+            output_filename (str): 出力ファイル名
+            dpi (int): 解像度
+            figsize (tuple[int, int]): 図のサイズ
+            fontsize (float): フォントサイズ
+            save_fig (bool): 図を保存するかどうか
+            show_fig (bool): 図を表示するかどうか
+        """
+        plt.rcParams["font.size"] = fontsize
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize, dpi=dpi)
+
+        # 排出量のヒストグラム (対数スケール)
+        types = ["bio", "gas", "comb"]
+        colors = {"bio": "blue", "gas": "red", "comb": "green"}
+
+        # 1. 排出量レート分布
+        # ビンを事前に計算
+        bins = np.histogram_bin_edges(emission_df["emission_rate"], bins=20)
+        hist_data = {}
+
+        # タイプごとのヒストグラムデータを計算
+        for spot_type in types:  # 順序を固定
+            df_type = emission_df[emission_df["type"] == spot_type]
+            if len(df_type) > 0:
+                counts, _ = np.histogram(df_type["emission_rate"], bins=bins)
+                hist_data[spot_type] = counts
+
+        # 積み上げヒストグラムを作成
+        bottom = np.zeros_like(hist_data.get("bio", np.zeros(len(bins) - 1)))
+        for spot_type in types:  # 積み上げ順序を固定
+            if spot_type in hist_data:
+                ax1.bar(
+                    bins[:-1],
+                    hist_data[spot_type],
+                    width=np.diff(bins),
+                    bottom=bottom,
+                    color=colors[spot_type],
+                    label=spot_type,
+                    alpha=0.6,
+                    align="edge",
+                )
+                bottom += hist_data[spot_type]
+
+        ax1.set_xlabel("Emission Rate (L/min)")
+        ax1.set_ylabel("Frequency")
+        ax1.set_yscale("log")
+        ax1.grid(True, alpha=0.3)
+        ax1.legend()
+
+        # 2. 日排出量分布
+        # ビンを事前に計算
+        bins = np.histogram_bin_edges(emission_df["daily_emission"], bins=20)
+        hist_data = {}
+
+        # タイプごとのヒストグラムデータを計算
+        for spot_type in types:  # 順序を固定
+            df_type = emission_df[emission_df["type"] == spot_type]
+            if len(df_type) > 0:
+                counts, _ = np.histogram(df_type["daily_emission"], bins=bins)
+                hist_data[spot_type] = counts
+
+        # 積み上げヒストグラムを作成
+        bottom = np.zeros_like(hist_data.get("bio", np.zeros(len(bins) - 1)))
+        for spot_type in types:  # 積み上げ順序を固定
+            if spot_type in hist_data:
+                ax2.bar(
+                    bins[:-1],
+                    hist_data[spot_type],
+                    width=np.diff(bins),
+                    bottom=bottom,
+                    color=colors[spot_type],
+                    label=spot_type,
+                    alpha=0.6,
+                    align="edge",
+                )
+                bottom += hist_data[spot_type]
+        ax2.set_xlabel("Daily Emission (L/day)")
+        ax2.set_ylabel("Frequency")
+        ax2.set_yscale("log")
+        ax2.grid(True, alpha=0.3)
+        ax2.legend()
+
+        # 3. CH4増加量と排出量の散布図
+        for spot_type in types:
+            df_type = emission_df[emission_df["type"] == spot_type]
+            if len(df_type) > 0:
+                ax3.scatter(
+                    df_type["delta_ch4"],
+                    df_type["emission_rate"],
+                    alpha=0.5,
+                    label=spot_type,
+                    color=colors[spot_type],
+                )
+        ax3.set_xlabel("ΔCH4 (ppm)")
+        ax3.set_ylabel("Emission Rate (L/min)")
+        ax3.grid(True, alpha=0.3)
+        ax3.legend()
+
+        plt.tight_layout()
+
+        if save_fig:
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, output_filename)
+            plt.savefig(output_path, bbox_inches="tight")
+            self.logger.info(f"排出量分布図を保存しました: {output_path}")
+
+        if show_fig:
+            plt.show()
+        plt.close(fig)
