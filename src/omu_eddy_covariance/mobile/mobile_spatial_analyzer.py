@@ -10,7 +10,6 @@ from pathlib import Path
 from datetime import timedelta
 from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
-from ..commons.emission_data import EmissionData
 from ..commons.hotspot_data import HotspotData
 
 """
@@ -19,6 +18,139 @@ from ..commons.hotspot_data import HotspotData
 center_lat=34.573904320329724,
 center_lon=135.4829511120712,
 """
+
+
+@dataclass
+class EmissionData:
+    """
+    ホットスポットの排出量データを格納するクラス。
+
+    Attributes:
+        source (str): データソース
+        type (str): ホットスポットの種類（"bio", "gas", "comb"）
+        section (str | int | float): セクション情報
+        latitude (float): 緯度
+        longitude (float): 経度
+        delta_ch4 (float): CH4の増加量 (ppm)
+        delta_c2h6 (float): C2H6の増加量 (ppb)
+        ratio (float): C2H6/CH4比
+        emission_rate (float): 排出量 (L/min)
+        daily_emission (float): 日排出量 (L/day)
+        annual_emission (float): 年間排出量 (L/year)
+    """
+
+    source: str
+    type: str
+    section: str | int | float
+    latitude: float
+    longitude: float
+    delta_ch4: float
+    delta_c2h6: float
+    ratio: float
+    emission_rate: float
+    daily_emission: float
+    annual_emission: float
+
+    def __post_init__(self) -> None:
+        """
+        Initialize時のバリデーションを行います。
+
+        Raises:
+            ValueError: 入力値が不正な場合
+        """
+        # sourceのバリデーション
+        if not isinstance(self.source, str) or not self.source.strip():
+            raise ValueError("Source must be a non-empty string")
+
+        # typeのバリデーション
+        valid_types = {"bio", "gas", "comb"}
+        if self.type not in valid_types:
+            raise ValueError(f"Type must be one of {valid_types}")
+
+        # sectionのバリデーション（Noneは許可）
+        if self.section is not None and not isinstance(self.section, (str, int, float)):
+            raise ValueError("Section must be a string, int, float, or None")
+
+        # 緯度のバリデーション
+        if (
+            not isinstance(self.latitude, (int, float))
+            or not -90 <= self.latitude <= 90
+        ):
+            raise ValueError("Latitude must be a number between -90 and 90")
+
+        # 経度のバリデーション
+        if (
+            not isinstance(self.longitude, (int, float))
+            or not -180 <= self.longitude <= 180
+        ):
+            raise ValueError("Longitude must be a number between -180 and 180")
+
+        # delta_ch4のバリデーション
+        if not isinstance(self.delta_ch4, (int, float)) or self.delta_ch4 < 0:
+            raise ValueError("Delta CH4 must be a non-negative number")
+
+        # delta_c2h6のバリデーション
+        if not isinstance(self.delta_c2h6, (int, float)) or self.delta_c2h6 < 0:
+            raise ValueError("Delta C2H6 must be a non-negative number")
+
+        # ratioのバリデーション
+        if not isinstance(self.ratio, (int, float)) or self.ratio < 0:
+            raise ValueError("Ratio must be a non-negative number")
+
+        # emission_rateのバリデーション
+        if not isinstance(self.emission_rate, (int, float)) or self.emission_rate < 0:
+            raise ValueError("Emission rate must be a non-negative number")
+
+        # daily_emissionのバリデーション
+        expected_daily = self.emission_rate * 60 * 24
+        if not math.isclose(self.daily_emission, expected_daily, rel_tol=1e-10):
+            raise ValueError(
+                f"Daily emission ({self.daily_emission}) does not match "
+                f"calculated value from emission rate ({expected_daily})"
+            )
+
+        # annual_emissionのバリデーション
+        expected_annual = self.daily_emission * 365
+        if not math.isclose(self.annual_emission, expected_annual, rel_tol=1e-10):
+            raise ValueError(
+                f"Annual emission ({self.annual_emission}) does not match "
+                f"calculated value from daily emission ({expected_annual})"
+            )
+
+        # NaN値のチェック
+        numeric_fields = [
+            self.latitude,
+            self.longitude,
+            self.delta_ch4,
+            self.delta_c2h6,
+            self.ratio,
+            self.emission_rate,
+            self.daily_emission,
+            self.annual_emission,
+        ]
+        if any(math.isnan(x) for x in numeric_fields):
+            raise ValueError("Numeric fields cannot contain NaN values")
+
+    def to_dict(self) -> dict:
+        """
+        データクラスの内容を辞書形式に変換します。
+
+        Returns:
+            dict: データクラスの属性と値を含む辞書
+        """
+        return {
+            "source": self.source,
+            "type": self.type,
+            "section": self.section,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "delta_ch4": self.delta_ch4,
+            "delta_c2h6": self.delta_c2h6,
+            "ratio": self.ratio,
+            "emission_rate": self.emission_rate,
+            "daily_emission": self.daily_emission,
+            "annual_emission": self.annual_emission,
+        }
 
 
 @dataclass
@@ -480,7 +612,7 @@ class MobileSpatialAnalyzer:
         self,
         hotspots: list[HotspotData],
         output_dir: str | Path,
-        output_filename: str = "ch4_delta_histogram",
+        output_filename: str = "ch4_delta_histogram.png",
         dpi: int = 200,
         figsize: tuple[int, int] = (8, 6),
         fontsize: float = 20,
@@ -508,8 +640,6 @@ class MobileSpatialAnalyzer:
             yscale_log (bool): y軸をlogにするかどうか。デフォルトはTrue。
             print_bins_analysis (bool): ビンごとの内訳を表示するオプション。
         """
-        output_path: Path = Path(output_dir) / f"{output_filename}.png"
-
         plt.rcParams["font.size"] = fontsize
         fig = plt.figure(figsize=figsize, dpi=dpi)
 
@@ -595,6 +725,8 @@ class MobileSpatialAnalyzer:
 
         # グラフの保存または表示
         if save_fig:
+            os.makedirs(output_dir, exist_ok=True)
+            output_path: str = os.path.join(output_dir, output_filename)
             plt.savefig(output_path, bbox_inches="tight")
             self.logger.info(f"ヒストグラムを保存しました: {output_path}")
 
@@ -1297,7 +1429,7 @@ class MobileSpatialAnalyzer:
     def analyze_emission_rates(
         hotspots: list[HotspotData],
         method: Literal["weller", "weitzel", "joo", "umezawa"] = "weller",
-        show_summary: bool = True,
+        print_summary: bool = False,
     ) -> tuple[list[EmissionData], dict[str, dict[str, float]]]:
         """
         検出されたホットスポットのCH4漏出量を計算・解析し、統計情報を生成します。
@@ -1309,7 +1441,7 @@ class MobileSpatialAnalyzer:
                 - "weitzel": ln(Em) = (ln(C) + 0.521)/0.795 (Weitzel and Schmidt, 2023)
                 - "joo": ln(Em) = (ln(C) + 2.738)/1.329 (Joo et al., 2024)
                 - "umezawa": ln(Em) = (ln(C) + 2.716)/0.741 (Umezawa et al., in preparation)
-            show_summary (bool): 統計情報を表示するかどうか。デフォルトはTrue。
+            print_summary (bool): 統計情報を表示するかどうか。デフォルトはTrue。
 
         Returns:
             tuple[list[EmissionData], dict[str, dict[str, float]]]:
@@ -1377,7 +1509,7 @@ class MobileSpatialAnalyzer:
                 }
                 stats[spot_type] = type_stats
 
-                if show_summary:
+                if print_summary:
                     print(f"\n{spot_type}タイプの統計情報:")
                     print(f"  検出数: {type_stats['count']}")
                     print("  排出量 (L/min):")
@@ -1392,128 +1524,163 @@ class MobileSpatialAnalyzer:
         return emission_data_list, stats
 
     @staticmethod
-    def plot_emission_distributions(
-        emission_data: list[EmissionData],
-        output_dir: str | Path,
-        output_filename: str = "emission_distributions.png",
-        dpi: int = 200,
-        figsize: tuple[int, int] = (12, 4),
-        fontsize: float = 12,
-        save_fig: bool = True,
+    def plot_emission_analysis(
+        emission_data_list: list[EmissionData],
+        output_dir: str,
+        output_filename: str = "emission_analysis.png",
+        hist_xlim: tuple[float, float] | None = None,
+        hist_ylim: tuple[float, float] | None = None,
+        scatter_xlim: tuple[float, float] | None = None,
+        scatter_ylim: tuple[float, float] | None = None,
+        hist_bin_width: float = 0.5,  # 区画範囲を指定
+        hist_log_y: bool = False,
+        add_legend: bool = True,
+        dpi: int = 300,
+        figsize: tuple[float, float] = (12, 5),
+        save_fig: bool = False,
         show_fig: bool = True,
+        print_summary: bool = False,
     ) -> None:
-        """
-        排出量分布を可視化します。
+        # データをDataFrameに変換
+        df = pd.DataFrame([e.to_dict() for e in emission_data_list])
 
-        Args:
-            emission_data (list[EmissionData]): analyze_emission_ratesで生成したEmissionDataのリスト
-            output_dir (str | Path): 保存先ディレクトリ
-            output_filename (str): 出力ファイル名
-            dpi (int): 解像度
-            figsize (tuple[int, int]): 図のサイズ
-            fontsize (float): フォントサイズ
-            save_fig (bool): 図を保存するかどうか
-            show_fig (bool): 図を表示するかどうか
-        """
-        plt.rcParams["font.size"] = fontsize
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize, dpi=dpi)
+        # プロットの作成
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
-        # データの整理
-        types = ["bio", "gas", "comb"]
+        # カラーマップの定義
         colors = {"bio": "blue", "gas": "red", "comb": "green"}
 
-        # タイプごとにデータを分類
-        type_data = {t: [] for t in types}
-        for data in emission_data:
-            type_data[data.type].append(data)
+        # 存在するタイプを確認
+        existing_types = sorted(
+            df["type"].unique(), key=lambda x: ["bio", "gas", "comb"].index(x)
+        )
 
-        # 1. 排出量レート分布
-        emission_rates = [data.emission_rate for data in emission_data]
-        bins = np.histogram_bin_edges(emission_rates, bins=20)
-        hist_data = {}
+        # 左側: ヒストグラム
+        # ビンの範囲を設定
+        start = 0  # 必ず0から開始
+        if hist_xlim is not None:
+            end = hist_xlim[1]
+        else:
+            end = np.ceil(df["emission_rate"].max() * 1.05)
 
-        for spot_type in types:
-            rates = [data.emission_rate for data in type_data[spot_type]]
-            if rates:
-                counts, _ = np.histogram(rates, bins=bins)
-                hist_data[spot_type] = counts
+        # ビン数を計算（end値をbin_widthで割り切れるように調整）
+        n_bins = int(np.ceil(end / hist_bin_width))
+        end = n_bins * hist_bin_width
 
-        bottom = np.zeros_like(hist_data.get("bio", np.zeros(len(bins) - 1)))
-        for spot_type in types:
-            if spot_type in hist_data:
+        # ビンの生成（0から開始し、bin_widthの倍数で区切る）
+        bins = np.linspace(start, end, n_bins + 1)
+
+        # タイプごとにヒストグラムを積み上げ
+        bottom = np.zeros(len(bins) - 1)
+        for spot_type in existing_types:
+            data = df[df["type"] == spot_type]["emission_rate"]
+            if len(data) > 0:
+                counts, _ = np.histogram(data, bins=bins)
+                # バーの位置を範囲の開始位置に合わせる
                 ax1.bar(
-                    bins[:-1],
-                    hist_data[spot_type],
-                    width=np.diff(bins),
+                    bins[:-1],  # 範囲の開始位置をx座標として使用
+                    counts,
+                    width=hist_bin_width,  # 幅をbin_widthに設定
                     bottom=bottom,
-                    color=colors[spot_type],
-                    label=spot_type,
                     alpha=0.6,
-                    align="edge",
+                    label=spot_type,
+                    color=colors[spot_type],
+                    align='edge'  # バーを範囲の開始位置に揃える
                 )
-                bottom += hist_data[spot_type]
+                bottom += counts
 
-        ax1.set_xlabel("Emission Rate (L/min)")
+        ax1.set_xlabel("Emission Rate (L min$^{-1}$)")
         ax1.set_ylabel("Frequency")
-        ax1.set_yscale("log")
-        ax1.grid(True, alpha=0.3)
-        ax1.legend()
+        if hist_log_y:
+            ax1.set_yscale("log")
+        if hist_xlim is not None:
+            ax1.set_xlim(hist_xlim)
+        else:
+            ax1.set_xlim(0, np.ceil(df["emission_rate"].max() * 1.05))
 
-        # 2. 日排出量分布
-        daily_emissions = [data.daily_emission for data in emission_data]
-        bins = np.histogram_bin_edges(daily_emissions, bins=20)
-        hist_data = {}
+        if hist_ylim is not None:
+            ax1.set_ylim(hist_ylim)
+        else:
+            ax1.set_ylim(0, ax1.get_ylim()[1])  # 下限を0に設定
 
-        for spot_type in types:
-            emissions = [data.daily_emission for data in type_data[spot_type]]
-            if emissions:
-                counts, _ = np.histogram(emissions, bins=bins)
-                hist_data[spot_type] = counts
+        # 右側: 散布図
+        for spot_type in existing_types:
+            mask = df["type"] == spot_type
+            ax2.scatter(
+                df[mask]["emission_rate"],
+                df[mask]["delta_ch4"],
+                alpha=0.6,
+                label=spot_type,
+                color=colors[spot_type],
+            )
 
-        bottom = np.zeros_like(hist_data.get("bio", np.zeros(len(bins) - 1)))
-        for spot_type in types:
-            if spot_type in hist_data:
-                ax2.bar(
-                    bins[:-1],
-                    hist_data[spot_type],
-                    width=np.diff(bins),
-                    bottom=bottom,
-                    color=colors[spot_type],
-                    label=spot_type,
-                    alpha=0.6,
-                    align="edge",
-                )
-                bottom += hist_data[spot_type]
+        ax2.set_xlabel("Emission Rate (L min$^{-1}$)")
+        ax2.set_ylabel("ΔCH$_4$ (ppm)")
+        if scatter_xlim is not None:
+            ax2.set_xlim(scatter_xlim)
+        else:
+            ax2.set_xlim(0, np.ceil(df["emission_rate"].max() * 1.05))
 
-        ax2.set_xlabel("Daily Emission (L/day)")
-        ax2.set_ylabel("Frequency")
-        ax2.set_yscale("log")
-        ax2.grid(True, alpha=0.3)
-        ax2.legend()
+        if scatter_ylim is not None:
+            ax2.set_ylim(scatter_ylim)
+        else:
+            ax2.set_ylim(0, np.ceil(df["delta_ch4"].max() * 1.05))
 
-        # 3. CH4増加量と排出量の散布図
-        for spot_type in types:
-            if type_data[spot_type]:
-                ax3.scatter(
-                    [data.delta_ch4 for data in type_data[spot_type]],
-                    [data.emission_rate for data in type_data[spot_type]],
-                    alpha=0.5,
-                    label=spot_type,
-                    color=colors[spot_type],
-                )
-
-        ax3.set_xlabel("ΔCH4 (ppm)")
-        ax3.set_ylabel("Emission Rate (L/min)")
-        ax3.grid(True, alpha=0.3)
-        ax3.legend()
+        # 凡例の表示
+        if add_legend:
+            ax1.legend(
+                bbox_to_anchor=(0.5, -0.30),
+                loc="upper center",
+                ncol=len(existing_types),
+            )
+            ax2.legend(
+                bbox_to_anchor=(0.5, -0.30),
+                loc="upper center",
+                ncol=len(existing_types),
+            )
 
         plt.tight_layout()
 
+        # 図の保存
         if save_fig:
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, output_filename)
-            plt.savefig(output_path, bbox_inches="tight")
+            plt.savefig(output_path, bbox_inches="tight", dpi=dpi)
 
+        # 図の表示
         if show_fig:
             plt.show()
+
         plt.close(fig)
+
+        if print_summary:
+            # デバッグ用の出力
+            print("\nビンごとの集計:")
+            print(f"{'Range':>12} | {'bio':>8} | {'gas':>8} | {'total':>8}")
+            print("-" * 50)
+
+            for i in range(len(bins) - 1):
+                bin_start = bins[i]
+                bin_end = bins[i + 1]
+
+                # 各タイプのカウントを計算
+                counts_by_type = {}
+                total = 0
+                for spot_type in existing_types:
+                    mask = (
+                        (df["type"] == spot_type)
+                        & (df["emission_rate"] >= bin_start)
+                        & (df["emission_rate"] < bin_end)
+                    )
+                    count = len(df[mask])
+                    counts_by_type[spot_type] = count
+                    total += count
+
+                # カウントが0の場合はスキップ
+                if total > 0:
+                    range_str = f"{bin_start:5.1f}-{bin_end:<5.1f}"
+                    bio_count = counts_by_type.get("bio", 0)
+                    gas_count = counts_by_type.get("gas", 0)
+                    print(
+                        f"{range_str:>12} | {bio_count:8d} | {gas_count:8d} | {total:8d}"
+                    )

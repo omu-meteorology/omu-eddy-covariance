@@ -1,7 +1,7 @@
-from .commons.emission_data import EmissionData
 from .commons.hotspot_data import HotspotData
 from .footprint.flux_footprint_analyzer import FluxFootprintAnalyzer
 from .mobile.mobile_spatial_analyzer import (
+    EmissionData,
     MobileSpatialAnalyzer,
     MSAInputConfig,
 )
@@ -15,9 +15,9 @@ from .ultra.spectrum_calculator import SpectrumCalculator
 
 # モジュールを __all__ にセット
 __all__ = [
-    "EmissionData",
     "HotspotData",
     "FluxFootprintAnalyzer",
+    "EmissionData",
     "MobileSpatialAnalyzer",
     "MSAInputConfig",
     "MonthlyConverter",

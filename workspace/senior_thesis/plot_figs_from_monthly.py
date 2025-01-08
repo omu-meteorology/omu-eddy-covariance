@@ -54,14 +54,14 @@ output_dir = (
 )
 
 # フラグ
-plot_turbulences: bool = True
+plot_turbulences: bool = False
 plot_spectra: bool = False
 plot_spectra_two: bool = False
-plot_timeseries: bool = True
-plot_diurnals: bool = False
+plot_timeseries: bool = False
+plot_diurnals: bool = True
 plot_seasonal: bool = True
 diurnal_subplot_fontsize: float = 36
-plot_scatter: bool = True
+plot_scatter: bool = False
 plot_sources: bool = True
 
 if __name__ == "__main__":
@@ -119,8 +119,8 @@ if __name__ == "__main__":
     df_combined["Date_index"] = df_combined["Date"]
     df_combined.set_index("Date_index", inplace=True)
 
-    # 濃度データのみを2024-11-01以降に切り出し
-    filter_date = pd.to_datetime("2024-11-01")
+    # 濃度データのみを2024-10-01以降に切り出し
+    filter_date = pd.to_datetime("2024-10-01")
     mask = df_combined.index < filter_date
     df_combined.loc[mask, "CH4_ultra_cal"] = np.nan
     df_combined.loc[mask, "C2H6_ultra_cal"] = np.nan
@@ -418,6 +418,17 @@ if __name__ == "__main__":
                 subplot_label_weekday=subplot_label[0],
                 y_max=150,
             )
+            mfg.plot_source_contributions_diurnal(
+                df=df_month,
+                output_dir=(os.path.join(output_dir, "sources")),
+                output_filename="source_contributions_legend.png",
+                ch4_flux_key="Fch4_ultra",
+                c2h6_flux_key="Fc2h6_ultra",
+                y_max=110,
+                subplot_label=subplot_label[0],
+                subplot_fontsize=24,
+                show_legend=True,
+            )
             mfg.logger.info("'sources'を作成しました。")
 
     # 2ヶ月毎
@@ -469,7 +480,9 @@ if __name__ == "__main__":
         seasons: list[list[int]] = [[6, 7, 8], [9, 10, 11]]
         seasons_tags: list[str] = ["summer", "fall"]
         seasons_subplot_labels: list[str] = ["(a)", "(b)"]
-        for season, tag, subplot_label in zip(seasons, seasons_tags,seasons_subplot_labels):
+        for season, tag, subplot_label in zip(
+            seasons, seasons_tags, seasons_subplot_labels
+        ):
             # 月ごとのDataFrameを作成
             df_season: pd.DataFrame = MonthlyConverter.extract_monthly_data(
                 df=df_combined, target_months=season

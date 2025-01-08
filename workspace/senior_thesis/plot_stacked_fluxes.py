@@ -72,18 +72,18 @@ def plot_stacked_fluxes(
             df["month"],
             bio,
             width,
-            label="生物起源",
-            color="green",
-            alpha=0.5,
+            label="bio",
+            color="blue",
+            alpha=0.6,
         )
         ax.bar(
             df["month"],
             gas,
             width,
             bottom=bio,
-            label="都市ガス起源",
-            color="orange",
-            alpha=0.5,
+            label="gas",
+            color="red",
+            alpha=0.6,
         )
 
         # x軸の設定

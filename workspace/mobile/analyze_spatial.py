@@ -66,7 +66,7 @@ west_sections_list: list[int] = [
     1,
 ]  # 西側となるセクション番号（num_sectionsに応じて変更）
 output_dir: str = (
-    "/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/output"
+    "/home/connect0459/labo/omu-eddy-covariance/workspace/mobile/private/outputs"
 )
 
 if __name__ == "__main__":
@@ -140,8 +140,17 @@ if __name__ == "__main__":
     msa.export_hotspots_to_csv(hotspots=hotspots, output_dir=output_dir)
 
     # Emissionの分析
-    emissions_methods: list[str] = ["weller", "weitzel", "joo", "umezawa"]
-    for method in emissions_methods:
+    # [method, rate_lim]
+    emissions_methods_configs: list[list[str | tuple[float, float]]] = [
+        ["weller", (0, 5)],
+        ["weitzel", (0, 3)],
+        ["joo", (0, 10)],
+        ["umezawa", (0, 50)],
+    ]
+    for configs in emissions_methods_configs:
+        method = configs[0]
+        emission_rate_lim: tuple[float, float] = configs[1]
+
         msa.logger.info(f"{method}のemission解析を開始します。")
         # 排出量の計算と基本統計
         emission_data_list, _ = MobileSpatialAnalyzer.analyze_emission_rates(
@@ -150,10 +159,21 @@ if __name__ == "__main__":
         )
 
         # 分布の可視化
-        MobileSpatialAnalyzer.plot_emission_distributions(
+        MobileSpatialAnalyzer.plot_emission_analysis(
             emission_data_list,
             output_dir=output_dir,
-            output_filename=f"emission-{method}.png",
+            output_filename=f"emission_plots-{method}.png",
+            hist_log_y=False,
+            hist_xlim=emission_rate_lim,
+            scatter_xlim=emission_rate_lim,
+            # hist_xlim=(0, 50),
+            # scatter_xlim=(0, 50),
+            # hist_ylim=(0, 15),
+            scatter_ylim=(0, 1.6),
+            hist_bin_width=0.5,
+            add_legend=True,
+            figsize=(12, 5),
             save_fig=True,
             show_fig=False,
+            print_summary=True,
         )

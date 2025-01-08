@@ -731,8 +731,8 @@ class MonthlyFiguresGenerator:
         output_dir: str,
         ch4_flux_key: str,
         c2h6_flux_key: str,
-        gas_label: str = "都市ガス起源",
-        bio_label: str = "生物起源",
+        gas_label: str = "gas",
+        bio_label: str = "bio",
         datetime_key: str = "Date",
         output_filename: str = "source_contributions.png",
         window_size: int = 6,  # 移動平均の窓サイズ
@@ -810,16 +810,16 @@ class MonthlyFiguresGenerator:
             time_points,
             0,
             hourly_means_smoothed["ch4_bio"],
-            color="green",
-            alpha=0.5,
+            color="blue",
+            alpha=0.6,
             label=bio_label,
         )
         ax.fill_between(
             time_points,
             hourly_means_smoothed["ch4_bio"],
             hourly_means_smoothed["ch4_bio"] + hourly_means_smoothed["ch4_gas"],
-            color="orange",
-            alpha=0.5,
+            color="red",
+            alpha=0.6,
             label=gas_label,
         )
 
@@ -882,8 +882,8 @@ class MonthlyFiguresGenerator:
         output_dir: str,
         ch4_flux_key: str,
         c2h6_flux_key: str,
-        gas_label: str = "都市ガス起源",
-        bio_label: str = "生物起源",
+        gas_label: str = "gas",
+        bio_label: str = "bio",
         datetime_key: str = "Date",
         output_filename: str = "source_contributions_by_date.png",
         show_label: bool = True,
@@ -958,16 +958,16 @@ class MonthlyFiguresGenerator:
                 time_points,
                 0,
                 hourly_means["ch4_bio"],
-                color="green",
-                alpha=0.5,
+                color="blue",
+                alpha=0.6,
                 label=bio_label,
             )
             ax.fill_between(
                 time_points,
                 hourly_means["ch4_bio"],
                 hourly_means["ch4_bio"] + hourly_means["ch4_gas"],
-                color="orange",
-                alpha=0.5,
+                color="red",
+                alpha=0.6,
                 label=gas_label,
             )
 
@@ -1446,8 +1446,8 @@ class MonthlyFiguresGenerator:
             direction_data["bio_flux"],
             width=np.radians(360 / num_directions),
             bottom=0.0,
-            color="green",
-            alpha=0.5,
+            color="blue",
+            alpha=0.6,
             label=bio_label,
         )
 
@@ -1457,8 +1457,8 @@ class MonthlyFiguresGenerator:
             direction_data["gas_flux"],
             width=np.radians(360 / num_directions),
             bottom=direction_data["bio_flux"],
-            color="orange",
-            alpha=0.5,
+            color="red",
+            alpha=0.6,
             label=gas_label,
         )
 
