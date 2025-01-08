@@ -54,14 +54,14 @@ output_dir = (
 )
 
 # フラグ
-plot_turbulences: bool = False
+plot_turbulences: bool = True
 plot_spectra: bool = False
 plot_spectra_two: bool = False
-plot_timeseries: bool = False
+plot_timeseries: bool = True
 plot_diurnals: bool = False
 plot_seasonal: bool = True
 diurnal_subplot_fontsize: float = 36
-plot_scatter: bool = False
+plot_scatter: bool = True
 plot_sources: bool = True
 
 if __name__ == "__main__":
@@ -119,8 +119,8 @@ if __name__ == "__main__":
     df_combined["Date_index"] = df_combined["Date"]
     df_combined.set_index("Date_index", inplace=True)
 
-    # 濃度データのみを2024-10-01移行に切り出し
-    filter_date = pd.to_datetime("2024-10-01")
+    # 濃度データのみを2024-11-01以降に切り出し
+    filter_date = pd.to_datetime("2024-11-01")
     mask = df_combined.index < filter_date
     df_combined.loc[mask, "CH4_ultra_cal"] = np.nan
     df_combined.loc[mask, "C2H6_ultra_cal"] = np.nan

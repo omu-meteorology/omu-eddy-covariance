@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import timedelta
 from dataclasses import dataclass
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
+from ..commons.emission_data import EmissionData
 from ..commons.hotspot_data import HotspotData
 
 """
@@ -1296,9 +1297,10 @@ class MobileSpatialAnalyzer:
     def analyze_emission_rates(
         hotspots: list[HotspotData],
         method: Literal["weller", "weitzel", "joo", "umezawa"] = "weller",
-    ) -> pd.DataFrame:
+        show_summary: bool = True,
+    ) -> tuple[list[EmissionData], dict[str, dict[str, float]]]:
         """
-        検出されたホットスポットのCH4漏出量を計算・解析します。
+        検出されたホットスポットのCH4漏出量を計算・解析し、統計情報を生成します。
 
         Args:
             hotspots (list[HotspotData]): 分析対象のホットスポットのリスト
@@ -1307,9 +1309,12 @@ class MobileSpatialAnalyzer:
                 - "weitzel": ln(Em) = (ln(C) + 0.521)/0.795 (Weitzel and Schmidt, 2023)
                 - "joo": ln(Em) = (ln(C) + 2.738)/1.329 (Joo et al., 2024)
                 - "umezawa": ln(Em) = (ln(C) + 2.716)/0.741 (Umezawa et al., in preparation)
+            show_summary (bool): 統計情報を表示するかどうか。デフォルトはTrue。
 
         Returns:
-            pd.DataFrame: 各ホットスポットの排出量データを含むデータフレーム
+            tuple[list[EmissionData], dict[str, dict[str, float]]]:
+                - 各ホットスポットの排出量データを含むリスト
+                - タイプ別の統計情報を含む辞書
         """
         # 経験式の係数定義
         emission_formulas = {
@@ -1327,49 +1332,34 @@ class MobileSpatialAnalyzer:
         b = emission_formulas[method]["b"]
 
         # 排出量の計算
-        records = []
+        emission_data_list = []
         for spot in hotspots:
             # 漏出量の計算 (L/min)
             emission_rate = np.exp((np.log(spot.delta_ch4) + a) / b)
-
             # 日排出量 (L/day)
             daily_emission = emission_rate * 60 * 24
-
             # 年間排出量 (L/year)
             annual_emission = daily_emission * 365
 
-            record = {
-                "source": spot.source,
-                "type": spot.type,
-                "section": spot.section,
-                "latitude": spot.avg_lat,
-                "longitude": spot.avg_lon,
-                "delta_ch4": spot.delta_ch4,
-                "delta_c2h6": spot.delta_c2h6,
-                "ratio": spot.ratio,
-                "emission_rate": emission_rate,  # L/min
-                "daily_emission": daily_emission,  # L/day
-                "annual_emission": annual_emission,  # L/year
-            }
-            records.append(record)
+            emission_data = EmissionData(
+                source=spot.source,
+                type=spot.type,
+                section=spot.section,
+                latitude=spot.avg_lat,
+                longitude=spot.avg_lon,
+                delta_ch4=spot.delta_ch4,
+                delta_c2h6=spot.delta_c2h6,
+                ratio=spot.ratio,
+                emission_rate=emission_rate,
+                daily_emission=daily_emission,
+                annual_emission=annual_emission,
+            )
+            emission_data_list.append(emission_data)
 
-        return pd.DataFrame(records)
+        # 統計計算用にDataFrameを作成
+        emission_df = pd.DataFrame([e.to_dict() for e in emission_data_list])
 
-    def summarize_emissions_by_type(
-        self,
-        emission_df: pd.DataFrame,
-        show_summary: bool = True,
-    ) -> dict[str, dict[str, float]]:
-        """
-        タイプ別の排出量統計を計算します。
-
-        Args:
-            emission_df (pd.DataFrame): analyze_emission_ratesで生成したデータフレーム
-            show_summary (bool): 結果を表示するかどうか。デフォルトはTrue。
-
-        Returns:
-            dict[str, dict[str, float]]: タイプ別の統計情報
-        """
+        # タイプ別の統計情報を計算
         stats = {}
         types = ["bio", "gas", "comb"]
 
@@ -1388,7 +1378,7 @@ class MobileSpatialAnalyzer:
                 stats[spot_type] = type_stats
 
                 if show_summary:
-                    self.logger.info(f"{spot_type}タイプの統計情報:")
+                    print(f"\n{spot_type}タイプの統計情報:")
                     print(f"  検出数: {type_stats['count']}")
                     print("  排出量 (L/min):")
                     print(f"    最小値: {type_stats['emission_rate_min']:.2f}")
@@ -1399,11 +1389,11 @@ class MobileSpatialAnalyzer:
                     print(f"    合計: {type_stats['total_annual_emission']:.2f}")
                     print(f"    平均: {type_stats['mean_annual_emission']:.2f}")
 
-        return stats
+        return emission_data_list, stats
 
+    @staticmethod
     def plot_emission_distributions(
-        self,
-        emission_df: pd.DataFrame,
+        emission_data: list[EmissionData],
         output_dir: str | Path,
         output_filename: str = "emission_distributions.png",
         dpi: int = 200,
@@ -1416,7 +1406,7 @@ class MobileSpatialAnalyzer:
         排出量分布を可視化します。
 
         Args:
-            emission_df (pd.DataFrame): analyze_emission_ratesで生成したデータフレーム
+            emission_data (list[EmissionData]): analyze_emission_ratesで生成したEmissionDataのリスト
             output_dir (str | Path): 保存先ディレクトリ
             output_filename (str): 出力ファイル名
             dpi (int): 解像度
@@ -1428,25 +1418,28 @@ class MobileSpatialAnalyzer:
         plt.rcParams["font.size"] = fontsize
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize, dpi=dpi)
 
-        # 排出量のヒストグラム (対数スケール)
+        # データの整理
         types = ["bio", "gas", "comb"]
         colors = {"bio": "blue", "gas": "red", "comb": "green"}
 
+        # タイプごとにデータを分類
+        type_data = {t: [] for t in types}
+        for data in emission_data:
+            type_data[data.type].append(data)
+
         # 1. 排出量レート分布
-        # ビンを事前に計算
-        bins = np.histogram_bin_edges(emission_df["emission_rate"], bins=20)
+        emission_rates = [data.emission_rate for data in emission_data]
+        bins = np.histogram_bin_edges(emission_rates, bins=20)
         hist_data = {}
 
-        # タイプごとのヒストグラムデータを計算
-        for spot_type in types:  # 順序を固定
-            df_type = emission_df[emission_df["type"] == spot_type]
-            if len(df_type) > 0:
-                counts, _ = np.histogram(df_type["emission_rate"], bins=bins)
+        for spot_type in types:
+            rates = [data.emission_rate for data in type_data[spot_type]]
+            if rates:
+                counts, _ = np.histogram(rates, bins=bins)
                 hist_data[spot_type] = counts
 
-        # 積み上げヒストグラムを作成
         bottom = np.zeros_like(hist_data.get("bio", np.zeros(len(bins) - 1)))
-        for spot_type in types:  # 積み上げ順序を固定
+        for spot_type in types:
             if spot_type in hist_data:
                 ax1.bar(
                     bins[:-1],
@@ -1467,20 +1460,18 @@ class MobileSpatialAnalyzer:
         ax1.legend()
 
         # 2. 日排出量分布
-        # ビンを事前に計算
-        bins = np.histogram_bin_edges(emission_df["daily_emission"], bins=20)
+        daily_emissions = [data.daily_emission for data in emission_data]
+        bins = np.histogram_bin_edges(daily_emissions, bins=20)
         hist_data = {}
 
-        # タイプごとのヒストグラムデータを計算
-        for spot_type in types:  # 順序を固定
-            df_type = emission_df[emission_df["type"] == spot_type]
-            if len(df_type) > 0:
-                counts, _ = np.histogram(df_type["daily_emission"], bins=bins)
+        for spot_type in types:
+            emissions = [data.daily_emission for data in type_data[spot_type]]
+            if emissions:
+                counts, _ = np.histogram(emissions, bins=bins)
                 hist_data[spot_type] = counts
 
-        # 積み上げヒストグラムを作成
         bottom = np.zeros_like(hist_data.get("bio", np.zeros(len(bins) - 1)))
-        for spot_type in types:  # 積み上げ順序を固定
+        for spot_type in types:
             if spot_type in hist_data:
                 ax2.bar(
                     bins[:-1],
@@ -1493,6 +1484,7 @@ class MobileSpatialAnalyzer:
                     align="edge",
                 )
                 bottom += hist_data[spot_type]
+
         ax2.set_xlabel("Daily Emission (L/day)")
         ax2.set_ylabel("Frequency")
         ax2.set_yscale("log")
@@ -1501,15 +1493,15 @@ class MobileSpatialAnalyzer:
 
         # 3. CH4増加量と排出量の散布図
         for spot_type in types:
-            df_type = emission_df[emission_df["type"] == spot_type]
-            if len(df_type) > 0:
+            if type_data[spot_type]:
                 ax3.scatter(
-                    df_type["delta_ch4"],
-                    df_type["emission_rate"],
+                    [data.delta_ch4 for data in type_data[spot_type]],
+                    [data.emission_rate for data in type_data[spot_type]],
                     alpha=0.5,
                     label=spot_type,
                     color=colors[spot_type],
                 )
+
         ax3.set_xlabel("ΔCH4 (ppm)")
         ax3.set_ylabel("Emission Rate (L/min)")
         ax3.grid(True, alpha=0.3)
@@ -1521,7 +1513,6 @@ class MobileSpatialAnalyzer:
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, output_filename)
             plt.savefig(output_path, bbox_inches="tight")
-            self.logger.info(f"排出量分布図を保存しました: {output_path}")
 
         if show_fig:
             plt.show()
