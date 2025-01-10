@@ -143,8 +143,8 @@ if __name__ == "__main__":
     # [method, rate_lim]
     emissions_methods_configs: list[list[str | tuple[float, float]]] = [
         ["weller", (0, 5)],
-        ["weitzel", (0, 3)],
-        ["joo", (0, 10)],
+        # ["weitzel", (0, 3)],
+        # ["joo", (0, 10)],
         ["umezawa", (0, 50)],
     ]
     for configs in emissions_methods_configs:
@@ -156,6 +156,7 @@ if __name__ == "__main__":
         emission_data_list, _ = MobileSpatialAnalyzer.analyze_emission_rates(
             hotspots,
             method=method,
+            print_summary=True
         )
 
         # 分布の可視化
@@ -163,17 +164,17 @@ if __name__ == "__main__":
             emission_data_list,
             output_dir=output_dir,
             output_filename=f"emission_plots-{method}.png",
-            hist_log_y=False,
-            hist_xlim=emission_rate_lim,
-            scatter_xlim=emission_rate_lim,
-            # hist_xlim=(0, 50),
-            # scatter_xlim=(0, 50),
-            # hist_ylim=(0, 15),
+            hist_log_y=True,
+            # hist_xlim=emission_rate_lim,
+            # scatter_xlim=emission_rate_lim,
+            hist_xlim=(0, 50),
+            scatter_xlim=(0, 50),
+            hist_ylim=(0, 100),
             scatter_ylim=(0, 1.6),
             hist_bin_width=0.5,
-            add_legend=True,
-            figsize=(12, 5),
+            add_legend=False,
             save_fig=True,
             show_fig=False,
-            print_summary=True,
+            show_scatter=False
+            # print_summary=True,
         )

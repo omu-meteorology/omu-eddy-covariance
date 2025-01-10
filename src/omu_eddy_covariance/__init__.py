@@ -7,6 +7,7 @@ from .mobile.mobile_spatial_analyzer import (
 )
 from .monthly.monthly_converter import MonthlyConverter
 from .monthly.monthly_figures_generator import MonthlyFiguresGenerator
+from .monthly.monthly_stats import MonthlyStats
 from .transfer_function.fft_files_reorganizer import FftFileReorganizer
 from .transfer_function.transfer_function_calculator import TransferFunctionCalculator
 from .ultra.eddydata_preprocessor import EddyDataPreprocessor
@@ -22,6 +23,7 @@ __all__ = [
     "MSAInputConfig",
     "MonthlyConverter",
     "MonthlyFiguresGenerator",
+    "MonthlyStats",
     "FftFileReorganizer",
     "TransferFunctionCalculator",
     "EddyDataPreprocessor",

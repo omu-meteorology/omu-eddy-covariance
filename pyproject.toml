@@ -7,14 +7,15 @@ authors = [{ name = "connect0459", email = "connect0459@gmail.com" }]
 # PILの代わりにfork先のpillowをインストール
 # 詳細は<https://pillow.readthedocs.io/en/stable/>を参照
 dependencies = [
-  "folium>=0.18.0",  # 地図
+  "folium>=0.18.0", # 地図
   "jpholiday",
   "matplotlib",
   "numpy",
   "openpyxl>=3.1.5",
   "pandas",
-  "pillow",          # 画像
+  "pillow", # 画像
   "scipy",
+  "seaborn>=0.13.2",
   "tqdm",
 ]
 readme = "README.md"

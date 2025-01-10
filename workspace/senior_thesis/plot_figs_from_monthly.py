@@ -57,12 +57,12 @@ output_dir = (
 plot_turbulences: bool = False
 plot_spectra: bool = False
 plot_spectra_two: bool = False
-plot_timeseries: bool = False
-plot_diurnals: bool = True
-plot_seasonal: bool = True
+plot_timeseries: bool = True
+plot_diurnals: bool = False
+plot_seasonal: bool = False
 diurnal_subplot_fontsize: float = 36
 plot_scatter: bool = False
-plot_sources: bool = True
+plot_sources: bool = False
 
 if __name__ == "__main__":
     # Ultra
@@ -93,6 +93,7 @@ if __name__ == "__main__":
             end_date=end_date,
             include_end_date=include_end_date,
         )
+        # カラムの重複による自動リネームに対処
         df_ultra["Wind direction"] = df_ultra["Wind direction_x"]
         df_ultra["WS vector"] = df_ultra["WS vector_x"]
 
@@ -144,6 +145,34 @@ if __name__ == "__main__":
             c2h6_conc_key="C2H6_ultra_cal",
             c2h6_flux_key="Fc2h6_ultra",
             output_dir=(os.path.join(output_dir, "timeseries")),
+            print_summary=False,
+        )
+        df_combined_without_fleeze = df_combined.copy()
+        freeze_mask = (df_combined_without_fleeze.index >= "2024-09-02") & (
+            df_combined_without_fleeze.index <= "2024-09-10"
+        )
+        df_combined_without_fleeze.loc[freeze_mask, "Fch4_ultra"] = 0
+        df_combined_without_fleeze.loc[freeze_mask, "Fc2h6_ultra"] = 0
+        mfg.plot_ch4c2h6_timeseries(
+            df=df_combined_without_fleeze,
+            output_dir=os.path.join(output_dir, "tests"),
+            ch4_flux_key="Fch4_ultra",
+            c2h6_flux_key="Fc2h6_ultra",
+            ch4_ylim=(-1, 90),
+            c2h6_ylim=(-0.1, 6),
+            start_date="2024-05-15",
+            end_date="2024-11-30",
+        )
+        mfg.plot_ch4_flux_comparison(
+            df=df_combined,
+            output_dir=os.path.join(output_dir, "tests"),
+            output_filename="timeseries-g2401_ultra-11.png",
+            g2401_flux_key="Fch4_picaro",
+            ultra_flux_key="Fch4_ultra",
+            y_lim=(10, 60),
+            start_date="2024-10-01",
+            end_date="2024-11-30",
+            show_ci=False,
         )
         mfg.logger.info("'timeseries'を作成しました。")
 
@@ -246,6 +275,26 @@ if __name__ == "__main__":
             df_month_for_diurnanls = df_month.copy()
             if month == 10 or month == 11:
                 df_month_for_diurnanls["Fch4_open"] = np.nan
+
+            mfg.plot_diurnal_concentrations(
+                df=df_month_for_diurnanls,
+                output_dir=os.path.join(output_dir, "diurnal_conc"),
+                output_filename=f"diurnal_conc-{month_str}.png",
+                ch4_conc_key="CH4_ultra_cal",
+                c2h6_conc_key="C2H6_ultra_cal",
+                show_std=True,
+                alpha_std=0.2,
+                ch4_ylim=(1.9, 2.3),
+                c2h6_ylim=(-3, 11),
+                subplot_label_ch4="(a)"
+                if month == 10
+                else "(b)"
+                if month == 11
+                else None,
+                add_legend=True if month == 11 else False,
+                interval="30min",
+                show_stats=False,
+            )
             # 日変化パターンを月ごとに作成
             mfg.plot_c1c2_fluxes_diurnal_patterns(
                 df=df_month_for_diurnanls,
@@ -268,6 +317,48 @@ if __name__ == "__main__":
                 ax1_ylim=(-20, 150),
                 ax2_ylim=(0, 6),
             )
+            mfg.plot_c1c2_fluxes_diurnal_patterns(
+                df=df_month_for_diurnanls,
+                y_cols_ch4=["Fch4_ultra", "Fch4_picaro"],
+                y_cols_c2h6=["Fc2h6_ultra"],
+                labels_ch4=["Ultra", "G2401"],
+                labels_c2h6=["Ultra"],
+                legend_only_ch4=True,
+                show_label=True,
+                # show_legend=True,
+                # show_label=False,
+                show_legend=False,
+                subplot_fontsize=diurnal_subplot_fontsize,
+                subplot_label_ch4=None,
+                subplot_label_c2h6=None,
+                colors_ch4=["red", "blue"],
+                colors_c2h6=["orange"],
+                output_dir=(os.path.join(output_dir, "diurnal")),
+                output_filename=f"diurnal_g2401_ultra-{month_str}.png",  # タグ付けしたファイル名
+                ax1_ylim=(-20, 150),
+                ax2_ylim=(0, 6),
+            )
+            # mfg.plot_c1c2_fluxes_diurnal_patterns(
+            #     df=df_month_for_diurnanls,
+            #     y_cols_ch4=["Fch4_ultra",  "Fch4_picaro"],
+            #     y_cols_c2h6=["Fc2h6_ultra"],
+            #     labels_ch4=["Ultra", "G2401"],
+            #     labels_c2h6=["Ultra"],
+            #     legend_only_ch4=True,
+            #     show_label=True,
+            #     # show_legend=True,
+            #     # show_label=False,
+            #     show_legend=True,
+            #     subplot_fontsize=diurnal_subplot_fontsize,
+            #     subplot_label_ch4=None,
+            #     subplot_label_c2h6=None,
+            #     colors_ch4=["red", "blue"],
+            #     colors_c2h6=["orange"],
+            #     output_dir=(os.path.join(output_dir, "diurnal")),
+            #     output_filename="diurnal_g2401_ultra_legend.png",  # タグ付けしたファイル名
+            #     ax1_ylim=(-20, 150),
+            #     ax2_ylim=(0, 6),
+            # )
             if month == 11:
                 mfg.plot_c1c2_fluxes_diurnal_patterns(
                     df=df_month_for_diurnanls,
@@ -285,6 +376,28 @@ if __name__ == "__main__":
                     output_dir=(os.path.join(output_dir, "diurnal")),
                     output_filename="diurnal-legend.png",  # タグ付けしたファイル名
                 )
+                MonthlyFiguresGenerator.setup_plot_params(font_size=19)
+                mfg.plot_c1c2_fluxes_diurnal_patterns(
+                    df=df_month_for_diurnanls,
+                    y_cols_ch4=["Fch4_ultra", "Fch4_picaro"],
+                    y_cols_c2h6=["Fc2h6_ultra"],
+                    labels_ch4=["Ultra CH$_4$", "G2401"],
+                    labels_c2h6=["Ultra C$_2$H$_6$"],
+                    legend_only_ch4=False,
+                    show_label=True,
+                    # show_legend=True,
+                    # show_label=False,
+                    show_legend=True,
+                    subplot_label_ch4=None,
+                    subplot_label_c2h6=None,
+                    colors_ch4=["red", "blue"],
+                    colors_c2h6=["orange"],
+                    output_dir=(os.path.join(output_dir, "diurnal")),
+                    output_filename="diurnal_g2401_ultra_with_c2h6-11.png",  # タグ付けしたファイル名
+                    ax1_ylim=(-20, 150),
+                    ax2_ylim=(0, 6),
+                )
+                MonthlyFiguresGenerator.setup_plot_params()
 
             mfg.plot_c1c2_fluxes_diurnal_patterns_by_date(
                 df=df_month_for_diurnanls,
@@ -360,8 +473,8 @@ if __name__ == "__main__":
                 df=df_month,
                 x_col="Fch4_ultra",
                 y_col="Fc2h6_ultra",
-                xlabel=r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                ylabel=r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                xlabel=r"CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)",
+                ylabel=r"C$_2$H$_6$ flux (nmol m$^{-2}$ s$^{-1}$)",
                 output_dir=(os.path.join(output_dir, "scatter")),
                 output_filename=f"scatter-ultra_c1c2_f-{month_str}.png",
                 x_axis_range=(-50, 400),
@@ -374,8 +487,8 @@ if __name__ == "__main__":
                     df=df_month,
                     x_col="Fch4_open",
                     y_col="Fch4_ultra",
-                    xlabel=r"Open Path CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                    ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                    xlabel=r"Open Path CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)",
+                    ylabel=r"Ultra CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)",
                     output_dir=(os.path.join(output_dir, "scatter")),
                     output_filename=f"scatter-open_ultra-{month_str}.png",
                     x_axis_range=(-50, 200),
@@ -389,8 +502,8 @@ if __name__ == "__main__":
                 df=df_month,
                 x_col="Fch4_picaro",
                 y_col="Fch4_ultra",
-                xlabel=r"G2401 CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
-                ylabel=r"Ultra CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)",
+                xlabel=r"G2401 CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)",
+                ylabel=r"Ultra CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)",
                 output_dir=(os.path.join(output_dir, "scatter")),
                 output_filename=f"scatter-g2401_ultra-{month_str}.png",
                 x_axis_range=(-50, 200),
@@ -430,6 +543,13 @@ if __name__ == "__main__":
                 show_legend=True,
             )
             mfg.logger.info("'sources'を作成しました。")
+
+        MonthlyFiguresGenerator.plot_flux_distributions(
+            g2401_flux=df_month["Fch4_picaro"],
+            ultra_flux=df_month["Fch4_ultra"],
+            month=month,
+            output_dir=os.path.join(output_dir, "tests"),
+        )
 
     # 2ヶ月毎
     months_dos: list[list[int]] = [[5, 6], [7, 8], [9, 10], [11]]

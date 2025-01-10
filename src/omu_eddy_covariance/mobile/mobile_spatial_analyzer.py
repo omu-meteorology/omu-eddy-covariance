@@ -1429,7 +1429,7 @@ class MobileSpatialAnalyzer:
     def analyze_emission_rates(
         hotspots: list[HotspotData],
         method: Literal["weller", "weitzel", "joo", "umezawa"] = "weller",
-        print_summary: bool = False,
+        print_summary: bool = True,
     ) -> tuple[list[EmissionData], dict[str, dict[str, float]]]:
         """
         検出されたホットスポットのCH4漏出量を計算・解析し、統計情報を生成します。
@@ -1494,10 +1494,17 @@ class MobileSpatialAnalyzer:
         # タイプ別の統計情報を計算
         stats = {}
         types = ["bio", "gas", "comb"]
-
+        # emission_formulas の定義の後に、排出量カテゴリーの閾値を定義
+        emission_categories = {
+            "low": {"min": 0, "max": 6},  # < 6 L/min
+            "medium": {"min": 6, "max": 40},  # 6-40 L/min
+            "high": {"min": 40, "max": float('inf')}  # > 40 L/min
+        }
+        # stats計算部分を以下のように修正
         for spot_type in types:
             df_type = emission_df[emission_df["type"] == spot_type]
             if len(df_type) > 0:
+                # 既存の統計情報を計算
                 type_stats = {
                     "count": len(df_type),
                     "emission_rate_min": df_type["emission_rate"].min(),
@@ -1507,6 +1514,16 @@ class MobileSpatialAnalyzer:
                     "total_annual_emission": df_type["annual_emission"].sum(),
                     "mean_annual_emission": df_type["annual_emission"].mean(),
                 }
+                
+                # 排出量カテゴリー別の統計を追加
+                category_counts = {
+                    "low": len(df_type[df_type["emission_rate"] < emission_categories["low"]["max"]]),
+                    "medium": len(df_type[(df_type["emission_rate"] >= emission_categories["medium"]["min"]) & 
+                                        (df_type["emission_rate"] < emission_categories["medium"]["max"])]),
+                    "high": len(df_type[df_type["emission_rate"] >= emission_categories["high"]["min"]])
+                }
+                type_stats["emission_categories"] = category_counts
+                
                 stats[spot_type] = type_stats
 
                 if print_summary:
@@ -1517,10 +1534,14 @@ class MobileSpatialAnalyzer:
                     print(f"    最大値: {type_stats['emission_rate_max']:.2f}")
                     print(f"    平均値: {type_stats['emission_rate_mean']:.2f}")
                     print(f"    中央値: {type_stats['emission_rate_median']:.2f}")
+                    print("  排出量カテゴリー別の検出数:")
+                    print(f"    低放出 (< 6 L/min): {category_counts['low']}")
+                    print(f"    中放出 (6-40 L/min): {category_counts['medium']}")
+                    print(f"    高放出 (> 40 L/min): {category_counts['high']}")
                     print("  年間排出量 (L/year):")
                     print(f"    合計: {type_stats['total_annual_emission']:.2f}")
                     print(f"    平均: {type_stats['mean_annual_emission']:.2f}")
-
+                    
         return emission_data_list, stats
 
     @staticmethod
@@ -1528,24 +1549,51 @@ class MobileSpatialAnalyzer:
         emission_data_list: list[EmissionData],
         output_dir: str,
         output_filename: str = "emission_analysis.png",
+        dpi: int = 300,
+        figsize: tuple[float, float] = (12, 5),
+        add_legend: bool = True,
+        hist_log_y: bool = False,
         hist_xlim: tuple[float, float] | None = None,
         hist_ylim: tuple[float, float] | None = None,
         scatter_xlim: tuple[float, float] | None = None,
         scatter_ylim: tuple[float, float] | None = None,
-        hist_bin_width: float = 0.5,  # 区画範囲を指定
-        hist_log_y: bool = False,
-        add_legend: bool = True,
-        dpi: int = 300,
-        figsize: tuple[float, float] = (12, 5),
+        hist_bin_width: float = 0.5,
+        print_summary: bool = False,
         save_fig: bool = False,
         show_fig: bool = True,
-        print_summary: bool = False,
+        show_scatter: bool = True,  # 散布図の表示を制御するオプションを追加
     ) -> None:
+        """
+        排出量分析のプロットを作成する静的メソッド。
+
+        Args:
+            emission_data_list (list[EmissionData]): EmissionDataオブジェクトのリスト。
+            output_dir (str): 出力先ディレクトリのパス。
+            output_filename (str, optional): 保存するファイル名。デフォルトは"emission_analysis.png"。
+            dpi (int, optional): プロットの解像度。デフォルトは300。
+            figsize (tuple[float, float], optional): プロットのサイズ。デフォルトは(12, 5)。
+            add_legend (bool, optional): 凡例を追加するかどうか。デフォルトはTrue。
+            hist_log_y (bool, optional): ヒストグラムのy軸を対数スケールにするかどうか。デフォルトはFalse。
+            hist_xlim (tuple[float, float] | None, optional): ヒストグラムのx軸の範囲。デフォルトはNone。
+            hist_ylim (tuple[float, float] | None, optional): ヒストグラムのy軸の範囲。デフォルトはNone。
+            scatter_xlim (tuple[float, float] | None, optional): 散布図のx軸の範囲。デフォルトはNone。
+            scatter_ylim (tuple[float, float] | None, optional): 散布図のy軸の範囲。デフォルトはNone。
+            hist_bin_width (float, optional): ヒストグラムのビンの幅。デフォルトは0.5。
+            print_summary (bool, optional): 集計結果を表示するかどうか。デフォルトはFalse。
+            save_fig (bool, optional): 図をファイルに保存するかどうか。デフォルトはFalse。
+            show_fig (bool, optional): 図を表示するかどうか。デフォルトはTrue。
+            show_scatter (bool, optional): 散布図（右図）を表示するかどうか。デフォルトはTrue。
+        """
         # データをDataFrameに変換
         df = pd.DataFrame([e.to_dict() for e in emission_data_list])
 
-        # プロットの作成
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+        # プロットの作成（散布図の有無に応じてサブプロット数を調整）
+        if show_scatter:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+            axes = [ax1, ax2]
+        else:
+            fig, ax1 = plt.subplots(1, 1, figsize=(figsize[0] // 2, figsize[1]))
+            axes = [ax1]
 
         # カラーマップの定義
         colors = {"bio": "blue", "gas": "red", "comb": "green"}
@@ -1576,23 +1624,23 @@ class MobileSpatialAnalyzer:
             data = df[df["type"] == spot_type]["emission_rate"]
             if len(data) > 0:
                 counts, _ = np.histogram(data, bins=bins)
-                # バーの位置を範囲の開始位置に合わせる
                 ax1.bar(
-                    bins[:-1],  # 範囲の開始位置をx座標として使用
+                    bins[:-1],
                     counts,
-                    width=hist_bin_width,  # 幅をbin_widthに設定
+                    width=hist_bin_width,
                     bottom=bottom,
                     alpha=0.6,
                     label=spot_type,
                     color=colors[spot_type],
-                    align='edge'  # バーを範囲の開始位置に揃える
                 )
                 bottom += counts
 
-        ax1.set_xlabel("Emission Rate (L min$^{-1}$)")
+        ax1.set_xlabel("CH$_4$ Emission (L min$^{-1}$)")
         ax1.set_ylabel("Frequency")
         if hist_log_y:
-            ax1.set_yscale("log")
+            # ax1.set_yscale("log")
+            # 非線形スケールを設定（linthreshで線形から対数への遷移点を指定）
+            ax1.set_yscale("symlog", linthresh=1.0)
         if hist_xlim is not None:
             ax1.set_xlim(hist_xlim)
         else:
@@ -1603,41 +1651,38 @@ class MobileSpatialAnalyzer:
         else:
             ax1.set_ylim(0, ax1.get_ylim()[1])  # 下限を0に設定
 
-        # 右側: 散布図
-        for spot_type in existing_types:
-            mask = df["type"] == spot_type
-            ax2.scatter(
-                df[mask]["emission_rate"],
-                df[mask]["delta_ch4"],
-                alpha=0.6,
-                label=spot_type,
-                color=colors[spot_type],
-            )
+        if show_scatter:
+            # 右側: 散布図
+            for spot_type in existing_types:
+                mask = df["type"] == spot_type
+                ax2.scatter(
+                    df[mask]["emission_rate"],
+                    df[mask]["delta_ch4"],
+                    alpha=0.6,
+                    label=spot_type,
+                    color=colors[spot_type],
+                )
 
-        ax2.set_xlabel("Emission Rate (L min$^{-1}$)")
-        ax2.set_ylabel("ΔCH$_4$ (ppm)")
-        if scatter_xlim is not None:
-            ax2.set_xlim(scatter_xlim)
-        else:
-            ax2.set_xlim(0, np.ceil(df["emission_rate"].max() * 1.05))
+            ax2.set_xlabel("Emission Rate (L min$^{-1}$)")
+            ax2.set_ylabel("ΔCH$_4$ (ppm)")
+            if scatter_xlim is not None:
+                ax2.set_xlim(scatter_xlim)
+            else:
+                ax2.set_xlim(0, np.ceil(df["emission_rate"].max() * 1.05))
 
-        if scatter_ylim is not None:
-            ax2.set_ylim(scatter_ylim)
-        else:
-            ax2.set_ylim(0, np.ceil(df["delta_ch4"].max() * 1.05))
+            if scatter_ylim is not None:
+                ax2.set_ylim(scatter_ylim)
+            else:
+                ax2.set_ylim(0, np.ceil(df["delta_ch4"].max() * 1.05))
 
         # 凡例の表示
         if add_legend:
-            ax1.legend(
-                bbox_to_anchor=(0.5, -0.30),
-                loc="upper center",
-                ncol=len(existing_types),
-            )
-            ax2.legend(
-                bbox_to_anchor=(0.5, -0.30),
-                loc="upper center",
-                ncol=len(existing_types),
-            )
+            for ax in axes:
+                ax.legend(
+                    bbox_to_anchor=(0.5, -0.30),
+                    loc="upper center",
+                    ncol=len(existing_types),
+                )
 
         plt.tight_layout()
 

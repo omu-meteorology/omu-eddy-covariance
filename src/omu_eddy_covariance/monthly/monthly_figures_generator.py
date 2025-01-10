@@ -3,14 +3,54 @@ import glob
 import jpholiday
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from tqdm import tqdm
-from scipy import linalg
+from scipy import linalg, stats
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 from logging import getLogger, Formatter, Logger, StreamHandler, DEBUG, INFO
 from ..ultra.eddydata_preprocessor import EddyDataPreprocessor
 from ..ultra.spectrum_calculator import SpectrumCalculator
+
+
+# 移動平均の計算関数
+def calculate_rolling_stats(data: pd.Series, window: int, confidence_interval) -> tuple:
+    """移動平均と信頼区間を計算する。
+
+    Args:
+        data: 入力データ系列
+        window: 移動平均の窓サイズ
+
+    Returns:
+        tuple: (移動平均, 下側信頼区間, 上側信頼区間)
+    """
+    # データ数が少なすぎる場合は警告
+    if len(data) < window:
+        window = len(data) // 4  # データ長の1/4を窓サイズとして使用
+        raise ValueError(f"データ数が少ないため、窓サイズを{window}に調整しました")
+
+    # 最小窓サイズの設定
+    window = max(3, min(window, len(data)))
+
+    # NaNを含むデータの処理（線形補間を行わない）
+    data_cleaned = data.copy()
+
+    # 移動平均の計算（NaNを含む場合はその期間の移動平均もNaNになる）
+    rolling_mean = data_cleaned.rolling(
+        window=window,
+        center=True,
+        min_periods=3,  # 最低3点あれば計算する
+    ).mean()
+
+    rolling_std = data_cleaned.rolling(window=window, center=True, min_periods=3).std()
+
+    # 信頼区間の計算
+    z_score = stats.norm.ppf((1 + confidence_interval) / 2)
+    ci_lower = rolling_mean - z_score * rolling_std
+    ci_upper = rolling_mean + z_score * rolling_std
+
+    return rolling_mean, ci_lower, ci_upper
 
 
 class MonthlyFiguresGenerator:
@@ -18,7 +58,6 @@ class MonthlyFiguresGenerator:
         self,
         logger: Logger | None = None,
         logging_debug: bool = False,
-        
     ) -> None:
         """
         クラスのコンストラクタ
@@ -98,6 +137,7 @@ class MonthlyFiguresGenerator:
         ch4_flux_key: str = "Fch4_ultra",
         c2h6_conc_key: str = "C2H6_ultra",
         c2h6_flux_key: str = "Fc2h6_ultra",
+        print_summary: bool = True,
     ) -> None:
         """
         CH4とC2H6の濃度とフラックスの時系列プロットを作成する
@@ -111,35 +151,37 @@ class MonthlyFiguresGenerator:
             ch4_flux_key: CH4フラックス列の名前
             c2h6_conc_key: C2H6濃度列の名前
             c2h6_flux_key: C2H6フラックス列の名前
+            print_summary: 解析情報をprintするかどうか
         """
         # 出力ディレクトリの作成
         os.makedirs(output_dir, exist_ok=True)
         output_path: str = os.path.join(output_dir, output_filename)
 
-        # 統計情報の計算と表示
-        for name, key in [
-            ("CH4 concentration", ch4_conc_key),
-            ("CH4 flux", ch4_flux_key),
-            ("C2H6 concentration", c2h6_conc_key),
-            ("C2H6 flux", c2h6_flux_key),
-        ]:
-            # NaNを除外してから統計量を計算
-            valid_data = df[key].dropna()
+        if print_summary:
+            # 統計情報の計算と表示
+            for name, key in [
+                ("CH4 concentration", ch4_conc_key),
+                ("CH4 flux", ch4_flux_key),
+                ("C2H6 concentration", c2h6_conc_key),
+                ("C2H6 flux", c2h6_flux_key),
+            ]:
+                # NaNを除外してから統計量を計算
+                valid_data = df[key].dropna()
 
-            if len(valid_data) > 0:
-                percentile_5 = np.nanpercentile(valid_data, 5)
-                percentile_95 = np.nanpercentile(valid_data, 95)
-                mean_value = np.nanmean(valid_data)
-                positive_ratio = (valid_data > 0).mean() * 100
+                if len(valid_data) > 0:
+                    percentile_5 = np.nanpercentile(valid_data, 5)
+                    percentile_95 = np.nanpercentile(valid_data, 95)
+                    mean_value = np.nanmean(valid_data)
+                    positive_ratio = (valid_data > 0).mean() * 100
 
-                print(f"\n{name}:")
-                print(
-                    f"90パーセンタイルレンジ: {percentile_5:.2f} - {percentile_95:.2f}"
-                )
-                print(f"平均値: {mean_value:.2f}")
-                print(f"正の値の割合: {positive_ratio:.1f}%")
-            else:
-                print(f"\n{name}: データが存在しません")
+                    print(f"\n{name}:")
+                    print(
+                        f"90パーセンタイルレンジ: {percentile_5:.2f} - {percentile_95:.2f}"
+                    )
+                    print(f"平均値: {mean_value:.2f}")
+                    print(f"正の値の割合: {positive_ratio:.1f}%")
+                else:
+                    print(f"\n{name}: データが存在しません")
 
         # プロットの作成
         _, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
@@ -153,7 +195,7 @@ class MonthlyFiguresGenerator:
 
         # CH4フラックスのプロット
         ax2.scatter(df[datetime_key], df[ch4_flux_key], color="red", alpha=0.5, s=20)
-        ax2.set_ylabel("CH$_4$ Flux\n(nmol m$^{-2}$ s$^{-1}$)")
+        ax2.set_ylabel("CH$_4$ flux\n(nmol m$^{-2}$ s$^{-1}$)")
         ax2.set_ylim(-100, 600)
         # ax2.set_yticks([-100, 0, 200, 400, 600])
         ax2.text(0.02, 0.98, "(b)", transform=ax2.transAxes, va="top", fontsize=20)
@@ -171,7 +213,7 @@ class MonthlyFiguresGenerator:
         ax4.scatter(
             df[datetime_key], df[c2h6_flux_key], color="orange", alpha=0.5, s=20
         )
-        ax4.set_ylabel("C$_2$H$_6$ Flux\n(nmol m$^{-2}$ s$^{-1}$)")
+        ax4.set_ylabel("C$_2$H$_6$ flux\n(nmol m$^{-2}$ s$^{-1}$)")
         ax4.set_ylim(-20, 40)
         ax4.text(0.02, 0.98, "(d)", transform=ax4.transAxes, va="top", fontsize=20)
         ax4.grid(True, alpha=0.3)
@@ -187,6 +229,363 @@ class MonthlyFiguresGenerator:
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close()
 
+        if print_summary:
+
+            def analyze_top_values(df, column_name, top_percent=20):
+                print(f"\n{column_name}の上位{top_percent}%の分析:")
+
+                # DataFrameのコピーを作成し、日時関連の列を追加
+                df_analysis = df.copy()
+                df_analysis["hour"] = pd.to_datetime(df_analysis[datetime_key]).dt.hour
+                df_analysis["month"] = pd.to_datetime(
+                    df_analysis[datetime_key]
+                ).dt.month
+                df_analysis["weekday"] = pd.to_datetime(
+                    df_analysis[datetime_key]
+                ).dt.dayofweek
+
+                # 上位20%のしきい値を計算
+                threshold = df[column_name].quantile(1 - top_percent / 100)
+                high_values = df_analysis[df_analysis[column_name] > threshold]
+
+                # 月ごとの分析
+                print("\n月別分布:")
+                monthly_counts = high_values.groupby("month").size()
+                total_counts = df_analysis.groupby("month").size()
+                monthly_percentages = (monthly_counts / total_counts * 100).round(1)
+
+                # 月ごとのデータを安全に表示
+                available_months = set(monthly_counts.index) & set(total_counts.index)
+                for month in sorted(available_months):
+                    print(
+                        f"月{month}: {monthly_percentages[month]}% ({monthly_counts[month]}件/{total_counts[month]}件)"
+                    )
+
+                # 時間帯ごとの分析（3時間区切り）
+                print("\n時間帯別分布:")
+                # copyを作成して新しい列を追加
+                high_values = high_values.copy()
+                high_values["time_block"] = high_values["hour"] // 3 * 3
+                time_blocks = high_values.groupby("time_block").size()
+                total_time_blocks = df_analysis.groupby(
+                    df_analysis["hour"] // 3 * 3
+                ).size()
+                time_percentages = (time_blocks / total_time_blocks * 100).round(1)
+
+                # 時間帯ごとのデータを安全に表示
+                available_blocks = set(time_blocks.index) & set(total_time_blocks.index)
+                for block in sorted(available_blocks):
+                    print(
+                        f"{block:02d}:00-{block+3:02d}:00: {time_percentages[block]}% ({time_blocks[block]}件/{total_time_blocks[block]}件)"
+                    )
+
+                # 曜日ごとの分析
+                print("\n曜日別分布:")
+                weekday_names = ["月曜", "火曜", "水曜", "木曜", "金曜", "土曜", "日曜"]
+                weekday_counts = high_values.groupby("weekday").size()
+                total_weekdays = df_analysis.groupby("weekday").size()
+                weekday_percentages = (weekday_counts / total_weekdays * 100).round(1)
+
+                # 曜日ごとのデータを安全に表示
+                available_days = set(weekday_counts.index) & set(total_weekdays.index)
+                for day in sorted(available_days):
+                    if 0 <= day <= 6:  # 有効な曜日インデックスのチェック
+                        print(
+                            f"{weekday_names[day]}: {weekday_percentages[day]}% ({weekday_counts[day]}件/{total_weekdays[day]}件)"
+                        )
+
+            # 濃度とフラックスそれぞれの分析を実行
+            print("\n=== 上位値の時間帯・曜日分析 ===")
+            analyze_top_values(df, ch4_conc_key)
+            analyze_top_values(df, ch4_flux_key)
+            analyze_top_values(df, c2h6_conc_key)
+            analyze_top_values(df, c2h6_flux_key)
+
+    def plot_ch4c2h6_timeseries(
+        self,
+        df: pd.DataFrame,
+        output_dir: str,
+        ch4_flux_key: str,
+        c2h6_flux_key: str,
+        output_filename: str = "timeseries_year.png",
+        datetime_key: str = "Date",
+        window_size: int = 24 * 7,  # 1週間の移動平均のデフォルト値
+        confidence_interval: float = 0.95,  # 95%信頼区間
+        subplot_label_ch4: str | None = "(a)",
+        subplot_label_c2h6: str | None = "(b)",
+        subplot_fontsize: int = 20,
+        show_ci: bool = True,
+        ch4_ylim: tuple[float, float] | None = None,
+        c2h6_ylim: tuple[float, float] | None = None,
+        start_date: str | None = None,  # 追加："YYYY-MM-DD"形式
+        end_date: str | None = None,  # 追加："YYYY-MM-DD"形式
+        figsize: tuple[float, float] = (16, 6),
+    ) -> None:
+        """CH4とC2H6フラックスの時系列変動をプロット
+
+        Args:
+            df (pd.DataFrame): データフレーム
+            output_dir (str): 出力ディレクトリのパス
+            ch4_flux_key (str): CH4フラックスのカラム名
+            c2h6_flux_key (str): C2H6フラックスのカラム名
+            output_filename (str): 出力ファイル名
+            datetime_key (str): 日時カラムの名前
+            window_size (int): 移動平均の窓サイズ
+            confidence_interval (float): 信頼区間(0-1)
+            subplot_label_ch4 (str | None): CH4プロットのラベル
+            subplot_label_c2h6 (str | None): C2H6プロットのラベル
+            subplot_fontsize (int): サブプロットのフォントサイズ
+            show_ci (bool): 信頼区間を表示するか
+            ch4_ylim (tuple[float, float] | None): CH4のy軸範囲
+            c2h6_ylim (tuple[float, float] | None): C2H6のy軸範囲
+            start_date (str | None): 開始日（YYYY-MM-DD形式）
+            end_date (str | None): 終了日（YYYY-MM-DD形式）
+        """
+        # 出力ディレクトリの作成
+        os.makedirs(output_dir, exist_ok=True)
+        output_path: str = os.path.join(output_dir, output_filename)
+
+        # データの準備
+        df = df.copy()
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df[datetime_key] = pd.to_datetime(df[datetime_key])
+            df.set_index(datetime_key, inplace=True)
+
+        # 日付範囲の処理
+        if start_date is not None:
+            start_dt = pd.to_datetime(start_date)
+            if start_dt < df.index.min():
+                self.logger.warning(
+                    f"指定された開始日{start_date}がデータの開始日{df.index.min():%Y-%m-%d}より前です。"
+                    f"データの開始日を使用します。"
+                )
+                start_dt = df.index.min()
+        else:
+            start_dt = df.index.min()
+
+        if end_date is not None:
+            end_dt = pd.to_datetime(end_date)
+            if end_dt > df.index.max():
+                self.logger.warning(
+                    f"指定された終了日{end_date}がデータの終了日{df.index.max():%Y-%m-%d}より後です。"
+                    f"データの終了日を使用します。"
+                )
+                end_dt = df.index.max()
+        else:
+            end_dt = df.index.max()
+
+        # 指定された期間のデータを抽出
+        mask = (df.index >= start_dt) & (df.index <= end_dt)
+        df = df[mask]
+
+        # CH4とC2H6の移動平均と信頼区間を計算
+        ch4_mean, ch4_lower, ch4_upper = calculate_rolling_stats(
+            df[ch4_flux_key], window_size, confidence_interval
+        )
+        c2h6_mean, c2h6_lower, c2h6_upper = calculate_rolling_stats(
+            df[c2h6_flux_key], window_size, confidence_interval
+        )
+
+        # プロットの作成
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+        # CH4プロット
+        ax1.plot(df.index, ch4_mean, "red", label="CH$_4$")
+        if show_ci:
+            ax1.fill_between(df.index, ch4_lower, ch4_upper, color="red", alpha=0.2)
+        if subplot_label_ch4:
+            ax1.text(
+                0.02,
+                0.98,
+                subplot_label_ch4,
+                transform=ax1.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+        ax1.set_ylabel("CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)")
+        if ch4_ylim is not None:
+            ax1.set_ylim(ch4_ylim)
+        ax1.grid(True, alpha=0.3)
+
+        # C2H6プロット
+        ax2.plot(df.index, c2h6_mean, "orange", label="C$_2$H$_6$")
+        if show_ci:
+            ax2.fill_between(
+                df.index, c2h6_lower, c2h6_upper, color="orange", alpha=0.2
+            )
+        if subplot_label_c2h6:
+            ax2.text(
+                0.02,
+                0.98,
+                subplot_label_c2h6,
+                transform=ax2.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+        ax2.set_ylabel("C$_2$H$_6$ flux (nmol m$^{-2}$ s$^{-1}$)")
+        if c2h6_ylim is not None:
+            ax2.set_ylim(c2h6_ylim)
+        ax2.grid(True, alpha=0.3)
+
+        # x軸の設定
+        for ax in [ax1, ax2]:
+            ax.set_xlabel("Month")
+            # x軸の範囲を設定
+            ax.set_xlim(start_dt, end_dt)
+
+            # 1ヶ月ごとの主目盛り
+            ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+
+            # カスタムフォーマッタの作成（数字を通常フォントで表示）
+            def date_formatter(x, p):
+                date = mdates.num2date(x)
+                return f'{date.strftime("%m")}'
+
+            ax.xaxis.set_major_formatter(plt.FuncFormatter(date_formatter))
+
+            # 補助目盛りの設定
+            ax.xaxis.set_minor_locator(mdates.MonthLocator())
+            # ティックラベルの回転と位置調整
+            plt.setp(ax.xaxis.get_majorticklabels(), ha="right")
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+    def plot_ch4_flux_comparison(
+        self,
+        df: pd.DataFrame,
+        output_dir: str,
+        g2401_flux_key: str,
+        ultra_flux_key: str,
+        output_filename: str = "ch4_flux_comparison.png",
+        datetime_key: str = "Date",
+        window_size: int = 24 * 7,  # 1週間の移動平均のデフォルト値
+        confidence_interval: float = 0.95,  # 95%信頼区間
+        subplot_label: str | None = None,
+        subplot_fontsize: int = 20,
+        show_ci: bool = True,
+        y_lim: tuple[float, float] | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        figsize: tuple[float, float] = (12, 6),
+        legend_loc: str = "upper right",
+    ) -> None:
+        """G2401とUltraによるCH4フラックスの時系列比較プロット
+
+        Args:
+            df (pd.DataFrame): データフレーム
+            output_dir (str): 出力ディレクトリのパス
+            g2401_flux_key (str): G2401のCH4フラックスのカラム名
+            ultra_flux_key (str): UltraのCH4フラックスのカラム名
+            output_filename (str): 出力ファイル名
+            datetime_key (str): 日時カラムの名前
+            window_size (int): 移動平均の窓サイズ
+            confidence_interval (float): 信頼区間(0-1)
+            subplot_label (str | None): プロットのラベル
+            subplot_fontsize (int): サブプロットのフォントサイズ
+            show_ci (bool): 信頼区間を表示するか
+            y_lim (tuple[float, float] | None): y軸の範囲
+            start_date (str | None): 開始日（YYYY-MM-DD形式）
+            end_date (str | None): 終了日（YYYY-MM-DD形式）
+            figsize (tuple[float, float]): 図のサイズ
+            legend_loc (str): 凡例の位置
+        """
+        # 出力ディレクトリの作成
+        os.makedirs(output_dir, exist_ok=True)
+        output_path: str = os.path.join(output_dir, output_filename)
+
+        # データの準備
+        df = df.copy()
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df[datetime_key] = pd.to_datetime(df[datetime_key])
+            df.set_index(datetime_key, inplace=True)
+
+        # 日付範囲の処理（既存のコードと同様）
+        if start_date is not None:
+            start_dt = pd.to_datetime(start_date)
+            if start_dt < df.index.min():
+                self.logger.warning(
+                    f"指定された開始日{start_date}がデータの開始日{df.index.min():%Y-%m-%d}より前です。"
+                    f"データの開始日を使用します。"
+                )
+                start_dt = df.index.min()
+        else:
+            start_dt = df.index.min()
+
+        if end_date is not None:
+            end_dt = pd.to_datetime(end_date)
+            if end_dt > df.index.max():
+                self.logger.warning(
+                    f"指定された終了日{end_date}がデータの終了日{df.index.max():%Y-%m-%d}より後です。"
+                    f"データの終了日を使用します。"
+                )
+                end_dt = df.index.max()
+        else:
+            end_dt = df.index.max()
+
+        # 指定された期間のデータを抽出
+        mask = (df.index >= start_dt) & (df.index <= end_dt)
+        df = df[mask]
+
+        # 移動平均の計算（既存の関数を使用）
+        g2401_mean, g2401_lower, g2401_upper = calculate_rolling_stats(
+            df[g2401_flux_key], window_size, confidence_interval
+        )
+        ultra_mean, ultra_lower, ultra_upper = calculate_rolling_stats(
+            df[ultra_flux_key], window_size, confidence_interval
+        )
+
+        # プロットの作成
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # G2401データのプロット
+        ax.plot(df.index, g2401_mean, "blue", label="G2401", alpha=0.7)
+        if show_ci:
+            ax.fill_between(df.index, g2401_lower, g2401_upper, color="blue", alpha=0.2)
+
+        # Ultraデータのプロット
+        ax.plot(df.index, ultra_mean, "red", label="Ultra", alpha=0.7)
+        if show_ci:
+            ax.fill_between(df.index, ultra_lower, ultra_upper, color="red", alpha=0.2)
+
+        # プロットの設定
+        if subplot_label:
+            ax.text(
+                0.02,
+                0.98,
+                subplot_label,
+                transform=ax.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+
+        ax.set_ylabel("CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)")
+        ax.set_xlabel("Month")
+
+        if y_lim is not None:
+            ax.set_ylim(y_lim)
+
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc=legend_loc)
+
+        # x軸の設定
+        ax.set_xlim(start_dt, end_dt)
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+
+        # カスタムフォーマッタの作成（数字を通常フォントで表示）
+        def date_formatter(x, p):
+            date = mdates.num2date(x)
+            return f'{date.strftime("%m")}'
+
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(date_formatter))
+        ax.xaxis.set_minor_locator(mdates.MonthLocator())
+        plt.setp(ax.xaxis.get_majorticklabels(), ha="right")
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
     def plot_c1c2_fluxes_diurnal_patterns(
         self,
         df: pd.DataFrame,
@@ -201,6 +600,8 @@ class MonthlyFiguresGenerator:
         legend_only_ch4: bool = False,
         show_label: bool = True,
         show_legend: bool = True,
+        show_std: bool = False,  # 標準偏差表示のオプションを追加
+        std_alpha: float = 0.2,  # 標準偏差の透明度
         subplot_fontsize: int = 20,
         subplot_label_ch4: str | None = "(a)",
         subplot_label_c2h6: str | None = "(b)",
@@ -215,37 +616,70 @@ class MonthlyFiguresGenerator:
         target_columns = y_cols_ch4 + y_cols_c2h6
         hourly_means, time_points = self._prepare_diurnal_data(df, target_columns)
 
+        # 標準偏差の計算を追加
+        hourly_stds = {}
+        if show_std:
+            hourly_stds = df.groupby(df.index.hour)[target_columns].std()
+            # 24時間目のデータ点を追加
+            last_hour = hourly_stds.iloc[0:1].copy()
+            last_hour.index = [24]
+            hourly_stds = pd.concat([hourly_stds, last_hour])
+
         # プロットの作成
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
         # CH4のプロット (左側)
         ch4_lines = []
         for y_col, label, color in zip(y_cols_ch4, labels_ch4, colors_ch4):
+            mean_values = hourly_means["all"][y_col]
             line = ax1.plot(
                 time_points,
-                hourly_means["all"][y_col],
+                mean_values,
                 "-o",
                 label=label,
                 color=color,
             )
             ch4_lines.extend(line)
 
+            # 標準偏差の表示
+            if show_std:
+                std_values = hourly_stds[y_col]
+                ax1.fill_between(
+                    time_points,
+                    mean_values - std_values,
+                    mean_values + std_values,
+                    color=color,
+                    alpha=std_alpha,
+                )
+
         # C2H6のプロット (右側)
         c2h6_lines = []
         for y_col, label, color in zip(y_cols_c2h6, labels_c2h6, colors_c2h6):
+            mean_values = hourly_means["all"][y_col]
             line = ax2.plot(
                 time_points,
-                hourly_means["all"][y_col],
+                mean_values,
                 "o-",
                 label=label,
                 color=color,
             )
             c2h6_lines.extend(line)
 
+            # 標準偏差の表示
+            if show_std:
+                std_values = hourly_stds[y_col]
+                ax2.fill_between(
+                    time_points,
+                    mean_values - std_values,
+                    mean_values + std_values,
+                    color=color,
+                    alpha=std_alpha,
+                )
+
         # 軸の設定
         for ax, ylabel, subplot_label in [
-            (ax1, r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_ch4),
-            (ax2, r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_c2h6),
+            (ax1, r"CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_ch4),
+            (ax2, r"C$_2$H$_6$ flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_c2h6),
         ]:
             self._setup_diurnal_axes(
                 ax=ax,
@@ -301,12 +735,15 @@ class MonthlyFiguresGenerator:
         plot_holiday: bool = True,
         show_label: bool = True,
         show_legend: bool = True,
+        show_std: bool = False,  # 標準偏差表示のオプションを追加
+        std_alpha: float = 0.2,  # 標準偏差の透明度
         legend_only_ch4: bool = False,
         subplot_fontsize: int = 20,
         subplot_label_ch4: str | None = "(a)",
         subplot_label_c2h6: str | None = "(b)",
         ax1_ylim: tuple[float, float] | None = None,
         ax2_ylim: tuple[float, float] | None = None,
+        print_summary: bool = True,  # 追加: 統計情報を表示するかどうか
     ) -> None:
         """CH4とC2H6の日変化パターンを日付分類して1つの図に並べてプロットする"""
         os.makedirs(output_dir, exist_ok=True)
@@ -317,6 +754,34 @@ class MonthlyFiguresGenerator:
         hourly_means, time_points = self._prepare_diurnal_data(
             df, target_columns, include_date_types=True
         )
+
+        # 標準偏差の計算を追加
+        hourly_stds = {}
+        if show_std:
+            for condition in ["all", "weekday", "weekend", "holiday"]:
+                if condition == "all":
+                    condition_data = df
+                elif condition == "weekday":
+                    condition_data = df[
+                        ~(
+                            df.index.dayofweek.isin([5, 6])
+                            | df.index.map(lambda x: jpholiday.is_holiday(x.date()))
+                        )
+                    ]
+                elif condition == "weekend":
+                    condition_data = df[df.index.dayofweek.isin([5, 6])]
+                else:  # holiday
+                    condition_data = df[
+                        df.index.map(lambda x: jpholiday.is_holiday(x.date()))
+                    ]
+
+                hourly_stds[condition] = condition_data.groupby(
+                    condition_data.index.hour
+                )[target_columns].std()
+                # 24時間目のデータ点を追加
+                last_hour = hourly_stds[condition].iloc[0:1].copy()
+                last_hour.index = [24]
+                hourly_stds[condition] = pd.concat([hourly_stds[condition], last_hour])
 
         # プロットスタイルの設定
         styles = {
@@ -368,21 +833,43 @@ class MonthlyFiguresGenerator:
 
         # CH4とC2H6のプロット
         for condition, means in selected_conditions.items():
-            style = styles[condition].copy()  # スタイルをコピーして変更
+            style = styles[condition].copy()
 
-            # CH4プロット（実線）
-            line_ch4 = ax1.plot(time_points, means[y_col_ch4], marker="o", **style)
+            # CH4プロット
+            mean_values_ch4 = means[y_col_ch4]
+            line_ch4 = ax1.plot(time_points, mean_values_ch4, marker="o", **style)
             ch4_lines.extend(line_ch4)
 
-            # C2H6プロット（破線）
-            style["linestyle"] = "--"  # C2H6用に破線に変更
-            line_c2h6 = ax2.plot(time_points, means[y_col_c2h6], marker="o", **style)
+            if show_std and condition in hourly_stds:
+                std_values = hourly_stds[condition][y_col_ch4]
+                ax1.fill_between(
+                    time_points,
+                    mean_values_ch4 - std_values,
+                    mean_values_ch4 + std_values,
+                    color=style["color"],
+                    alpha=std_alpha,
+                )
+
+            # C2H6プロット
+            style["linestyle"] = "--"
+            mean_values_c2h6 = means[y_col_c2h6]
+            line_c2h6 = ax2.plot(time_points, mean_values_c2h6, marker="o", **style)
             c2h6_lines.extend(line_c2h6)
+
+            if show_std and condition in hourly_stds:
+                std_values = hourly_stds[condition][y_col_c2h6]
+                ax2.fill_between(
+                    time_points,
+                    mean_values_c2h6 - std_values,
+                    mean_values_c2h6 + std_values,
+                    color=style["color"],
+                    alpha=std_alpha,
+                )
 
         # 軸の設定
         for ax, ylabel, subplot_label in [
-            (ax1, r"CH$_4$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_ch4),
-            (ax2, r"C$_2$H$_6$ Flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_c2h6),
+            (ax1, r"CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_ch4),
+            (ax2, r"C$_2$H$_6$ flux (nmol m$^{-2}$ s$^{-1}$)", subplot_label_c2h6),
         ]:
             self._setup_diurnal_axes(
                 ax=ax,
@@ -425,6 +912,250 @@ class MonthlyFiguresGenerator:
 
         fig.savefig(output_path, dpi=300, bbox_inches="tight")
         plt.close(fig)
+
+        # 日変化パターンの統計分析を追加
+        if print_summary:
+            # 平日と休日のデータを準備
+            dates = pd.to_datetime(df.index)
+            is_weekend = dates.dayofweek.isin([5, 6])
+            is_holiday = dates.map(lambda x: jpholiday.is_holiday(x.date()))
+            is_weekday = ~(is_weekend | is_holiday)
+
+            weekday_data = df[is_weekday]
+            holiday_data = df[is_weekend | is_holiday]
+
+            def get_diurnal_stats(data, column):
+                # 時間ごとの平均値を計算
+                hourly_means = data.groupby(data.index.hour)[column].mean()
+
+                # 8-16時の時間帯の統計
+                daytime_means = hourly_means[
+                    (hourly_means.index >= 8) & (hourly_means.index <= 16)
+                ]
+
+                if len(daytime_means) == 0:
+                    return None
+
+                return {
+                    "mean": daytime_means.mean(),
+                    "max": daytime_means.max(),
+                    "max_hour": daytime_means.idxmax(),
+                    "min": daytime_means.min(),
+                    "min_hour": daytime_means.idxmin(),
+                    "hours_count": len(daytime_means),
+                }
+
+            # CH4とC2H6それぞれの統計を計算
+            for col, gas_name in [(y_col_ch4, "CH4"), (y_col_c2h6, "C2H6")]:
+                print(f"\n=== {gas_name} フラックス 8-16時の統計分析 ===")
+
+                weekday_stats = get_diurnal_stats(weekday_data, col)
+                holiday_stats = get_diurnal_stats(holiday_data, col)
+
+                if weekday_stats and holiday_stats:
+                    print("\n平日:")
+                    print(f"  平均値: {weekday_stats['mean']:.2f}")
+                    print(
+                        f"  最大値: {weekday_stats['max']:.2f} ({weekday_stats['max_hour']}時)"
+                    )
+                    print(
+                        f"  最小値: {weekday_stats['min']:.2f} ({weekday_stats['min_hour']}時)"
+                    )
+                    print(f"  集計時間数: {weekday_stats['hours_count']}")
+
+                    print("\n休日:")
+                    print(f"  平均値: {holiday_stats['mean']:.2f}")
+                    print(
+                        f"  最大値: {holiday_stats['max']:.2f} ({holiday_stats['max_hour']}時)"
+                    )
+                    print(
+                        f"  最小値: {holiday_stats['min']:.2f} ({holiday_stats['min_hour']}時)"
+                    )
+                    print(f"  集計時間数: {holiday_stats['hours_count']}")
+
+                    # 平日/休日の比率を計算
+                    print("\n平日/休日の比率:")
+                    print(
+                        f"  平均値比: {weekday_stats['mean']/holiday_stats['mean']:.2f}"
+                    )
+                    print(
+                        f"  最大値比: {weekday_stats['max']/holiday_stats['max']:.2f}"
+                    )
+                    print(
+                        f"  最小値比: {weekday_stats['min']/holiday_stats['min']:.2f}"
+                    )
+                else:
+                    print("十分なデータがありません")
+
+    def plot_diurnal_concentrations(
+        self,
+        df: pd.DataFrame,
+        output_dir: str,
+        ch4_conc_key: str = "CH4_ultra_cal",
+        c2h6_conc_key: str = "C2H6_ultra_cal",
+        datetime_key: str = "Date",
+        output_filename: str = "diurnal_concentrations.png",
+        show_std: bool = True,
+        alpha_std: float = 0.2,
+        add_legend: bool = True,  # 凡例表示のオプションを追加
+        show_stats: bool = True,
+        subplot_label_ch4: str | None = None,
+        subplot_label_c2h6: str | None = None,
+        subplot_fontsize: int = 24,
+        ch4_ylim: tuple[float, float] | None = None,
+        c2h6_ylim: tuple[float, float] | None = None,
+        interval: str = "1H",  # "30min" または "1H" を指定
+    ) -> None:
+        """CH4とC2H6の濃度の日内変動を描画する
+
+        Args:
+            df (pd.DataFrame): 濃度データを含むDataFrame
+            output_dir (str): 出力ディレクトリのパス
+            ch4_conc_key (str): CH4濃度のカラム名
+            c2h6_conc_key (str): C2H6濃度のカラム名
+            datetime_key (str): 日時カラム名
+            output_filename (str): 出力ファイル名
+            show_std (bool): 標準偏差を表示するかどうか
+            alpha_std (float): 標準偏差の透明度
+            add_legend (bool): 凡例を追加するかどうか
+            show_stats (bool): 統計情報を表示するかどうか
+            subplot_label_ch4 (str | None): CH4プロットのラベル
+            subplot_label_c2h6 (str | None): C2H6プロットのラベル
+            subplot_fontsize (int): サブプロットのフォントサイズ
+            ch4_ylim (tuple[float, float] | None): CH4のy軸範囲
+            c2h6_ylim (tuple[float, float] | None): C2H6のy軸範囲
+            interval (str): 時間間隔。"30min"または"1H"を指定
+        """
+        # 出力ディレクトリの作成
+        os.makedirs(output_dir, exist_ok=True)
+        output_path: str = os.path.join(output_dir, output_filename)
+
+        # データの準備
+        df = df.copy()
+        if interval == "30min":
+            # 30分間隔の場合、時間と30分を別々に取得
+            df["hour"] = pd.to_datetime(df[datetime_key]).dt.hour
+            df["minute"] = pd.to_datetime(df[datetime_key]).dt.minute
+            df["time_bin"] = df["hour"] + df["minute"].map({0: 0, 30: 0.5})
+        else:
+            # 1時間間隔の場合
+            df["time_bin"] = pd.to_datetime(df[datetime_key]).dt.hour
+
+        # 時間ごとの平均値と標準偏差を計算
+        hourly_stats = df.groupby("time_bin")[[ch4_conc_key, c2h6_conc_key]].agg(
+            ["mean", "std"]
+        )
+
+        # 最後のデータポイントを追加（最初のデータを使用）
+        last_point = hourly_stats.iloc[0:1].copy()
+        last_point.index = [
+            hourly_stats.index[-1] + (0.5 if interval == "30min" else 1)
+        ]
+        hourly_stats = pd.concat([hourly_stats, last_point])
+
+        # 時間軸の作成
+        if interval == "30min":
+            time_points = pd.date_range("2024-01-01", periods=49, freq="30min")
+            x_ticks = [0, 6, 12, 18, 24]  # 主要な時間のティック
+        else:
+            time_points = pd.date_range("2024-01-01", periods=25, freq="1H")
+            x_ticks = [0, 6, 12, 18, 24]
+
+        # プロットの作成
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+        # CH4濃度プロット
+        mean_ch4 = hourly_stats[ch4_conc_key]["mean"]
+        if show_std:
+            std_ch4 = hourly_stats[ch4_conc_key]["std"]
+            ax1.fill_between(
+                time_points,
+                mean_ch4 - std_ch4,
+                mean_ch4 + std_ch4,
+                color="red",
+                alpha=alpha_std,
+            )
+        ch4_line = ax1.plot(time_points, mean_ch4, "red", label="CH$_4$")[0]
+
+        ax1.set_ylabel("CH$_4$ (ppm)")
+        if ch4_ylim is not None:
+            ax1.set_ylim(ch4_ylim)
+        if subplot_label_ch4:
+            ax1.text(
+                0.02,
+                0.98,
+                subplot_label_ch4,
+                transform=ax1.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+
+        # C2H6濃度プロット
+        mean_c2h6 = hourly_stats[c2h6_conc_key]["mean"]
+        if show_std:
+            std_c2h6 = hourly_stats[c2h6_conc_key]["std"]
+            ax2.fill_between(
+                time_points,
+                mean_c2h6 - std_c2h6,
+                mean_c2h6 + std_c2h6,
+                color="orange",
+                alpha=alpha_std,
+            )
+        c2h6_line = ax2.plot(time_points, mean_c2h6, "orange", label="C$_2$H$_6$")[0]
+
+        ax2.set_ylabel("C$_2$H$_6$ (ppb)")
+        if c2h6_ylim is not None:
+            ax2.set_ylim(c2h6_ylim)
+        if subplot_label_c2h6:
+            ax2.text(
+                0.02,
+                0.98,
+                subplot_label_c2h6,
+                transform=ax2.transAxes,
+                va="top",
+                fontsize=subplot_fontsize,
+            )
+
+        # 両プロットの共通設定
+        for ax in [ax1, ax2]:
+            ax.set_xlabel("Time (hour)")
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%-H"))
+            ax.xaxis.set_major_locator(mdates.HourLocator(byhour=x_ticks))
+            ax.set_xlim(time_points[0], time_points[-1])
+            # 1時間ごとの縦線を表示
+            ax.grid(True, which="major", alpha=0.3)
+            # 補助目盛りは表示するが、グリッド線は表示しない
+            # if interval == "30min":
+            #     ax.xaxis.set_minor_locator(mdates.MinuteLocator(byminute=[30]))
+            #     ax.tick_params(which='minor', length=4)
+
+        # 共通の凡例を図の下部に配置
+        if add_legend:
+            fig.legend(
+                [ch4_line, c2h6_line],
+                ["CH$_4$", "C$_2$H$_6$"],
+                loc="center",
+                bbox_to_anchor=(0.5, 0.02),
+                ncol=2,
+            )
+        plt.subplots_adjust(bottom=0.2)
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+        if show_stats:
+            # 統計情報の表示
+            for name, key in [("CH4", ch4_conc_key), ("C2H6", c2h6_conc_key)]:
+                stats = hourly_stats[key]
+                mean_vals = stats["mean"]
+
+                print(f"\n{name}濃度の日内変動統計:")
+                print(f"最小値: {mean_vals.min():.3f} (Hour: {mean_vals.idxmin()})")
+                print(f"最大値: {mean_vals.max():.3f} (Hour: {mean_vals.idxmax()})")
+                print(f"平均値: {mean_vals.mean():.3f}")
+                print(f"日内変動幅: {mean_vals.max() - mean_vals.min():.3f}")
+                print(f"最大/最小比: {mean_vals.max()/mean_vals.min():.3f}")
 
     def plot_flux_diurnal_patterns_with_std(
         self,
@@ -737,7 +1468,7 @@ class MonthlyFiguresGenerator:
         output_filename: str = "source_contributions.png",
         window_size: int = 6,  # 移動平均の窓サイズ
         show_stats: bool = True,  # 統計情報を表示するかどうか,
-        show_legend:bool=False,
+        show_legend: bool = False,
         smooth: bool = False,
         y_max: float = 100,  # y軸の上限値を追加
         subplot_label: str | None = None,
@@ -888,7 +1619,7 @@ class MonthlyFiguresGenerator:
         output_filename: str = "source_contributions_by_date.png",
         show_label: bool = True,
         show_legend: bool = False,
-        show_stats: bool = True,  # 統計情報を表示するかどうか,
+        show_stats: bool = False,  # 統計情報を表示するかどうか,
         subplot_fontsize: int = 20,
         subplot_label_weekday: str | None = None,
         subplot_label_weekend: str | None = None,
@@ -1035,7 +1766,9 @@ class MonthlyFiguresGenerator:
                 (data_weekday, "Weekdays"),
                 (data_holiday, "Weekends & Holidays"),
             ]:
-                hourly_means = data.groupby(data.index.hour)[["ch4_gas", "ch4_bio"]].mean()
+                hourly_means = data.groupby(data.index.hour)[
+                    ["ch4_gas", "ch4_bio"]
+                ].mean()
                 total_flux = hourly_means["ch4_gas"] + hourly_means["ch4_bio"]
 
                 print(f"\n{label}の統計:")
@@ -1820,3 +2553,111 @@ class MonthlyFiguresGenerator:
             default_params.update(plot_params)
 
         plt.rcParams.update(default_params)  # プロットパラメータを更新
+
+    @staticmethod
+    def plot_flux_distributions(
+        g2401_flux: pd.Series,
+        ultra_flux: pd.Series,
+        month: int,
+        output_dir: str,
+        xlim: tuple[float, float] = (-50, 200),
+        bandwidth: float = 1.0,  # デフォルト値を1.0に設定
+    ) -> None:
+        """両測器のCH4フラックス分布を可視化
+
+        Args:
+            g2401_flux: G2401で測定されたフラックス値の配列
+            ultra_flux: Ultraで測定されたフラックス値の配列
+            month: 測定月
+            output_dir: 出力ディレクトリ
+            xlim: x軸の範囲（タプル）
+            bandwidth: カーネル密度推定のバンド幅調整係数（デフォルト: 1.0）
+        """
+        # nanを除去
+        g2401_flux = g2401_flux.dropna()
+        ultra_flux = ultra_flux.dropna()
+
+        plt.figure(figsize=(10, 6))
+
+        # KDEプロット（確率密度推定）
+        sns.kdeplot(
+            data=g2401_flux, label="G2401", color="blue", alpha=0.5, bw_adjust=bandwidth
+        )
+        sns.kdeplot(
+            data=ultra_flux, label="Ultra", color="red", alpha=0.5, bw_adjust=bandwidth
+        )
+
+        # 平均値と中央値のマーカー
+        plt.axvline(
+            g2401_flux.mean(),
+            color="blue",
+            linestyle="--",
+            alpha=0.5,
+            label="G2401 mean",
+        )
+        plt.axvline(
+            ultra_flux.mean(),
+            color="red",
+            linestyle="--",
+            alpha=0.5,
+            label="Ultra mean",
+        )
+        plt.axvline(
+            np.median(g2401_flux),
+            color="blue",
+            linestyle=":",
+            alpha=0.5,
+            label="G2401 median",
+        )
+        plt.axvline(
+            np.median(ultra_flux),
+            color="red",
+            linestyle=":",
+            alpha=0.5,
+            label="Ultra median",
+        )
+
+        # 軸ラベルとタイトル
+        plt.xlabel(r"CH$_4$ flux (nmol m$^{-2}$ s$^{-1}$)")
+        plt.ylabel("Probability Density")
+        plt.title(f"Distribution of CH$_4$ fluxes - Month {month}")
+
+        # x軸の範囲設定
+        plt.xlim(xlim)
+
+        # グリッド表示
+        plt.grid(True, alpha=0.3)
+
+        # 統計情報
+        stats_text = (
+            f"G2401:\n"
+            f"  Mean: {g2401_flux.mean():.2f}\n"
+            f"  Median: {np.median(g2401_flux):.2f}\n"
+            f"  Std: {g2401_flux.std():.2f}\n"
+            f"Ultra:\n"
+            f"  Mean: {ultra_flux.mean():.2f}\n"
+            f"  Median: {np.median(ultra_flux):.2f}\n"
+            f"  Std: {ultra_flux.std():.2f}"
+        )
+        plt.text(
+            0.02,
+            0.98,
+            stats_text,
+            transform=plt.gca().transAxes,
+            verticalalignment="top",
+            fontsize=10,
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        )
+
+        # 凡例の表示
+        plt.legend(loc="upper right")
+
+        # グラフの保存
+        os.makedirs(output_dir, exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(output_dir, f"flux_distribution_month_{month}.png"),
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()

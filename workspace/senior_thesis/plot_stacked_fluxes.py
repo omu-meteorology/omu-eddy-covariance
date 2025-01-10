@@ -105,7 +105,7 @@ def plot_stacked_fluxes(
 
         # x軸とy軸のラベルを各サブプロットに設定
         ax.set_xlabel("Month")
-        ax.set_ylabel(f"CH$_4$ Flux ({flux_unit})")
+        ax.set_ylabel(f"CH$_4$ flux ({flux_unit})")
 
         # グラフの装飾
         ax.set_title(titles[direction])
